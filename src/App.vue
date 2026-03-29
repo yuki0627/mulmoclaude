@@ -2,9 +2,28 @@
   <div class="flex h-screen bg-gray-900 text-white">
     <!-- Sidebar -->
     <div class="w-80 flex-shrink-0 border-r border-gray-700 flex flex-col">
-      <div class="p-4 border-b border-gray-700">
-        <h1 class="text-lg font-semibold">MulmoClaude</h1>
-        <p class="text-sm text-gray-400">{{ currentRole.name }}</p>
+      <div class="p-4 border-b border-gray-700 flex items-center justify-between">
+        <div>
+          <h1 class="text-lg font-semibold">MulmoClaude</h1>
+          <p class="text-sm text-gray-400">{{ currentRole.name }}</p>
+        </div>
+        <div class="flex gap-2">
+          <button
+            class="text-gray-400 hover:text-white"
+            @click="onRoleChange"
+            title="New session"
+          >
+            <span class="material-icons">add_circle_outline</span>
+          </button>
+          <button
+            class="text-gray-400 hover:text-white"
+            :class="{ 'text-blue-400': showHistory }"
+            @click="toggleHistory"
+            title="Session history"
+          >
+            <span class="material-icons">history</span>
+          </button>
+        </div>
       </div>
 
       <!-- Role selector -->
@@ -20,8 +39,26 @@
         </select>
       </div>
 
+      <!-- Session history panel -->
+      <div v-if="showHistory" class="flex-1 overflow-y-auto p-4 space-y-2">
+        <p v-if="sessions.length === 0" class="text-xs text-gray-500">No sessions yet.</p>
+        <div
+          v-for="session in sessions"
+          :key="session.id"
+          class="cursor-pointer rounded border border-gray-700 hover:border-gray-500 p-2 text-sm"
+          @click="loadSession(session.id)"
+        >
+          <div class="flex items-center gap-1 text-xs text-gray-400 mb-1">
+            <span class="material-icons text-xs">{{ roleIcon(session.roleId) }}</span>
+            <span>{{ roleName(session.roleId) }}</span>
+            <span class="ml-auto">{{ formatDate(session.startedAt) }}</span>
+          </div>
+          <p class="text-gray-300 truncate">{{ session.preview || "(no messages)" }}</p>
+        </div>
+      </div>
+
       <!-- Tool result previews -->
-      <div class="flex-1 overflow-y-auto p-4 space-y-2">
+      <div v-else class="flex-1 overflow-y-auto p-4 space-y-2">
         <div
           v-for="result in toolResults"
           :key="result.uuid"
@@ -88,11 +125,18 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed } from "vue";
+import { ref, computed, onMounted } from "vue";
 import { v4 as uuidv4 } from "uuid";
 import { ROLES } from "./config/roles";
 import { getPlugin } from "./tools";
 import type { ToolResultComplete } from "gui-chat-protocol/vue";
+
+interface SessionSummary {
+  id: string;
+  roleId: string;
+  startedAt: string;
+  preview: string;
+}
 
 const roles = ROLES;
 const currentRoleId = ref(ROLES[0].id);
@@ -107,10 +151,27 @@ const statusMessage = ref("");
 const toolResults = ref<ToolResultComplete[]>([]);
 const selectedResultUuid = ref<string | null>(null);
 
+const showHistory = ref(false);
+const sessions = ref<SessionSummary[]>([]);
+
 const selectedResult = computed(
   () =>
     toolResults.value.find((r) => r.uuid === selectedResultUuid.value) ?? null,
 );
+
+function roleIcon(roleId: string): string {
+  return ROLES.find((r) => r.id === roleId)?.icon ?? "star";
+}
+
+function roleName(roleId: string): string {
+  return ROLES.find((r) => r.id === roleId)?.name ?? roleId;
+}
+
+function formatDate(iso: string): string {
+  const d = new Date(iso);
+  return d.toLocaleDateString(undefined, { month: "short", day: "numeric" }) +
+    " " + d.toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" });
+}
 
 function makeTextResult(
   text: string,
@@ -139,6 +200,48 @@ function onRoleChange() {
   selectedResultUuid.value = null;
   statusMessage.value = "";
   chatSessionId.value = uuidv4();
+}
+
+async function fetchSessions() {
+  try {
+    const res = await fetch("/api/sessions");
+    sessions.value = await res.json();
+  } catch {
+    sessions.value = [];
+  }
+}
+
+async function toggleHistory() {
+  showHistory.value = !showHistory.value;
+  if (showHistory.value) await fetchSessions();
+}
+
+async function loadSession(id: string) {
+  const res = await fetch(`/api/sessions/${id}`);
+  const entries: Record<string, unknown>[] = await res.json();
+
+  const meta = entries.find((e) => e.type === "session_meta");
+  if (meta?.roleId) currentRoleId.value = meta.roleId as string;
+  chatSessionId.value = id;
+
+  toolResults.value = [];
+  for (const entry of entries) {
+    if (entry.type === "session_meta") continue;
+    if (entry.source === "user" && entry.type === "text") {
+      toolResults.value.push(makeTextResult(entry.message as string, "user"));
+    } else if (entry.source === "assistant" && entry.type === "text") {
+      toolResults.value.push(makeTextResult(entry.message as string, "assistant"));
+    } else if (entry.source === "tool" && entry.type === "tool_result") {
+      toolResults.value.push(entry.result as ToolResultComplete);
+    }
+  }
+
+  // Select last non-text result, or last result
+  const lastTool = [...toolResults.value].reverse().find((r) => r.toolName !== "text-response");
+  selectedResultUuid.value =
+    lastTool?.uuid ?? toolResults.value[toolResults.value.length - 1]?.uuid ?? null;
+
+  showHistory.value = false;
 }
 
 async function sendMessage(text?: string) {
@@ -201,4 +304,6 @@ async function sendMessage(text?: string) {
     statusMessage.value = "";
   }
 }
+
+onMounted(fetchSessions);
 </script>

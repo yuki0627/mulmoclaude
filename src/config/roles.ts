@@ -24,14 +24,6 @@ export const ROLES: Role[] = [
     availablePlugins: ["manageTodoList", "calendar", "contacts", "switchRole"],
   },
   {
-    id: "developer",
-    name: "Developer",
-    icon: "code",
-    prompt:
-      "You are a coding assistant with full access to the workspace file system. Read, write, and modify code files. Use bash to run commands, tests, and scripts. Show file structure and diffs visually when helpful.",
-    availablePlugins: ["fileTree", "diffViewer", "docReader", "switchRole"],
-  },
-  {
     id: "office",
     name: "Office",
     icon: "business_center",
