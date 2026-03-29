@@ -18,6 +18,7 @@
     "cors": "^2.8.6",
     "dotenv": "^17.2.4",
     "express": "^5.2.1",
+    "@gui-chat-plugin/text-response": "^0.1.1",
     "gui-chat-protocol": "^0.0.4",
     "material-icons": "^1.13.14",
     "uuid": "^13.0.0",

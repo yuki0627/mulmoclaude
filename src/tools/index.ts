@@ -1,13 +1,8 @@
 import type { ToolPlugin } from "./types";
+import TextResponsePlugin from "@gui-chat-plugin/text-response/vue";
 
-/**
- * Plugin registry
- * Add gui-chat-protocol plugins here as they are implemented.
- */
 const plugins: Record<string, ToolPlugin> = {
-  // e.g.:
-  // todo: todoPlugin,
-  // calendar: calendarPlugin,
+  "text-response": TextResponsePlugin.plugin as unknown as ToolPlugin,
 };
 
 export function getPlugin(name: string): ToolPlugin | null {

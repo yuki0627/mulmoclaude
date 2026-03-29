@@ -29,7 +29,12 @@
           :class="result.uuid === selectedResultUuid ? 'border-blue-500 bg-blue-900/20' : 'border-gray-700 hover:border-gray-500'"
           @click="selectedResultUuid = result.uuid"
         >
-          {{ result.title || result.toolName }}
+          <component
+            :is="getPlugin(result.toolName)?.previewComponent"
+            v-if="getPlugin(result.toolName)?.previewComponent"
+            :result="result"
+          />
+          <span v-else>{{ result.title || result.toolName }}</span>
         </div>
       </div>
 
@@ -41,12 +46,12 @@
             type="text"
             placeholder="Type a task..."
             class="flex-1 bg-gray-800 border border-gray-600 rounded px-3 py-2 text-sm"
-            @keydown.enter="sendMessage"
+            @keydown.enter="sendMessage()"
           />
           <button
             class="bg-blue-600 hover:bg-blue-700 rounded px-3 py-2 text-sm"
             :disabled="isRunning"
-            @click="sendMessage"
+            @click="sendMessage()"
           >
             <span class="material-icons text-base">send</span>
           </button>
@@ -59,25 +64,15 @@
     <div class="flex-1 overflow-auto p-6">
       <div v-if="selectedResult">
         <component
-          :is="selectedResultPlugin?.viewComponent"
-          v-if="selectedResultPlugin?.viewComponent"
+          :is="getPlugin(selectedResult.toolName)?.viewComponent"
+          v-if="getPlugin(selectedResult.toolName)?.viewComponent"
           :selected-result="selectedResult"
           :send-text-message="sendMessage"
         />
         <pre v-else class="text-sm text-gray-300 whitespace-pre-wrap">{{ JSON.stringify(selectedResult, null, 2) }}</pre>
       </div>
-      <div v-else class="flex flex-col gap-4 max-w-2xl mx-auto">
-        <div
-          v-for="(msg, i) in messages"
-          :key="i"
-          class="rounded-lg p-4"
-          :class="msg.role === 'user' ? 'bg-gray-800 self-end text-right' : 'bg-gray-700'"
-        >
-          <p class="text-sm whitespace-pre-wrap">{{ msg.text }}</p>
-        </div>
-        <div v-if="messages.length === 0" class="flex items-center justify-center h-64 text-gray-600">
-          <p>Start a conversation</p>
-        </div>
+      <div v-else class="flex items-center justify-center h-full text-gray-600">
+        <p>Start a conversation</p>
       </div>
     </div>
   </div>
@@ -85,6 +80,7 @@
 
 <script setup lang="ts">
 import { ref, computed } from "vue";
+import { v4 as uuidv4 } from "uuid";
 import { ROLES } from "./config/roles";
 import { getPlugin } from "./tools";
 import type { ToolResultComplete } from "gui-chat-protocol/vue";
@@ -96,19 +92,24 @@ const currentRole = computed(() => ROLES.find(r => r.id === currentRoleId.value)
 const userInput = ref("");
 const isRunning = ref(false);
 const statusMessage = ref("");
-const messages = ref<{ role: "user" | "assistant"; text: string }[]>([]);
 const toolResults = ref<ToolResultComplete[]>([]);
 const selectedResultUuid = ref<string | null>(null);
 
 const selectedResult = computed(() =>
   toolResults.value.find(r => r.uuid === selectedResultUuid.value) ?? null
 );
-const selectedResultPlugin = computed(() =>
-  selectedResult.value ? getPlugin(selectedResult.value.toolName) : null
-);
+
+function makeTextResult(text: string, role: "user" | "assistant"): ToolResultComplete {
+  return {
+    uuid: uuidv4(),
+    toolName: "text-response",
+    message: text,
+    title: role === "user" ? "You" : "Assistant",
+    data: { text, role, transportKind: "text-rest" },
+  } as ToolResultComplete;
+}
 
 function onRoleChange() {
-  messages.value = [];
   toolResults.value = [];
   selectedResultUuid.value = null;
   statusMessage.value = "";
@@ -120,8 +121,10 @@ async function sendMessage(text?: string) {
   userInput.value = "";
   isRunning.value = true;
   statusMessage.value = "Thinking...";
-  messages.value.push({ role: "user", text: message });
-  selectedResultUuid.value = null;
+
+  const userResult = makeTextResult(message, "user");
+  toolResults.value.push(userResult);
+  selectedResultUuid.value = userResult.uuid;
 
   try {
     const response = await fetch("/api/agent", {
@@ -145,7 +148,9 @@ async function sendMessage(text?: string) {
         if (data.type === "status") {
           statusMessage.value = data.message;
         } else if (data.type === "text") {
-          messages.value.push({ role: "assistant", text: data.message });
+          const result = makeTextResult(data.message, "assistant");
+          toolResults.value.push(result);
+          selectedResultUuid.value = result.uuid;
         } else if (data.type === "tool_result") {
           const result: ToolResultComplete = data.result;
           const existing = toolResults.value.findIndex(r => r.uuid === result.uuid);

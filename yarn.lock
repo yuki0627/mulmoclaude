@@ -243,6 +243,14 @@
     "@eslint/core" "^1.1.1"
     levn "^0.4.1"
 
+"@gui-chat-plugin/text-response@^0.1.1":
+  version "0.1.1"
+  resolved "https://registry.yarnpkg.com/@gui-chat-plugin/text-response/-/text-response-0.1.1.tgz#929b57f08b20ff6a8c18a61174d6827bf212d7f8"
+  integrity sha512-xHzLp1vX6niZvwbK6OUfhAMnzpm4bqT1PBLr4Lr/CNmDRSnSsyxv/+A9JP+sf2P3yGBC4iG1m/feMJJC0fw0lA==
+  dependencies:
+    gui-chat-protocol "^0.0.3"
+    marked "^17.0.1"
+
 "@humanfs/core@^0.19.1":
   version "0.19.1"
   resolved "https://registry.yarnpkg.com/@humanfs/core/-/core-0.19.1.tgz#17c55ca7d426733fe3c561906b8173c336b40a77"
@@ -1441,6 +1449,11 @@ graceful-fs@^4.2.4:
   resolved "https://registry.yarnpkg.com/graceful-fs/-/graceful-fs-4.2.11.tgz#4183e4e8bf08bb6e05bbb2f7d2e0c8f712ca40e3"
   integrity sha512-RbJ5/jmFcNNCcDV5o9eTnBLJ/HszWV0P73bc+Ff4nS/rJj+YaS6IGyiOL0VoBYX+l1Wrl3k63h/KrH+nhJ0XvQ==
 
+gui-chat-protocol@^0.0.3:
+  version "0.0.3"
+  resolved "https://registry.yarnpkg.com/gui-chat-protocol/-/gui-chat-protocol-0.0.3.tgz#0e86a15ade6c46ed698abaa6ae6aed5edfdd8dde"
+  integrity sha512-usoH2h4rONFl4E54y1Cl9O3WXS73q3XVs5aiCTAxJa+462nW6QVGPPOGyeeieFqMmjCHNWBfvtHAklg+D+eFRA==
+
 gui-chat-protocol@^0.0.4:
   version "0.0.4"
   resolved "https://registry.yarnpkg.com/gui-chat-protocol/-/gui-chat-protocol-0.0.4.tgz#dd8c0c4a979f06f87cfc406760491834f1d4ce69"
@@ -1681,6 +1694,11 @@ magic-string@^0.30.19, magic-string@^0.30.21:
   integrity sha512-vd2F4YUyEXKGcLHoq+TEyCjxueSeHnFxyyjNp80yg0XV4vUhnDer/lvvlqM/arB5bXQN5K2/3oinyCRyx8T2CQ==
   dependencies:
     "@jridgewell/sourcemap-codec" "^1.5.5"
+
+marked@^17.0.1:
+  version "17.0.5"
+  resolved "https://registry.yarnpkg.com/marked/-/marked-17.0.5.tgz#8fc6878a439463a007b05d346d2ad50a87ec3f0e"
+  integrity sha512-6hLvc0/JEbRjRgzI6wnT2P1XuM1/RrrDEX0kPt0N7jGm1133g6X7DlxFasUIx+72aKAr904GTxhSLDrd5DIlZg==
 
 material-icons@^1.13.14:
   version "1.13.14"
