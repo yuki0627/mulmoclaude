@@ -9,13 +9,14 @@ const PORT = process.env.PORT ?? "3001";
 const PLUGIN_NAMES = (process.env.PLUGIN_NAMES ?? "")
   .split(",")
   .filter(Boolean);
+const ROLE_IDS = (process.env.ROLE_IDS ?? "").split(",").filter(Boolean);
 const BASE_URL = `http://localhost:${PORT}`;
 
 interface ToolDef {
   name: string;
   description: string;
   inputSchema: object;
-  endpoint: string;
+  endpoint?: string; // absent for tools handled specially (e.g. switchRole)
 }
 
 const ALL_TOOLS: Record<string, ToolDef> = {
@@ -52,6 +53,22 @@ const ALL_TOOLS: Record<string, ToolDef> = {
     },
     endpoint: "/api/todos",
   },
+  switchRole: {
+    name: "switchRole",
+    description:
+      "Switch to a different AI role, resetting the conversation context. Use when the user's request is better served by another role.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        roleId: {
+          type: "string",
+          enum: ROLE_IDS,
+          description: "The ID of the role to switch to.",
+        },
+      },
+      required: ["roleId"],
+    },
+  },
 };
 
 const tools = PLUGIN_NAMES.map((name) => ALL_TOOLS[name]).filter(Boolean);
@@ -64,6 +81,15 @@ async function handleToolCall(
   name: string,
   args: Record<string, unknown>,
 ): Promise<string> {
+  if (name === "switchRole") {
+    await fetch(`${BASE_URL}/api/internal/switch-role?session=${SESSION_ID}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ roleId: args.roleId }),
+    });
+    return `Switching to ${args.roleId} role`;
+  }
+
   const tool = tools.find((t) => t.name === name);
   if (!tool) throw new Error(`Unknown tool: ${name}`);
 

@@ -20,6 +20,14 @@ router.post("/internal/tool-result", async (req: Request, res: Response) => {
   res.json({ ok: pushed });
 });
 
+// Called by the MCP server to trigger a role switch on the frontend
+router.post("/internal/switch-role", async (req: Request, res: Response) => {
+  const { session } = req.query as { session: string };
+  const { roleId } = req.body as { roleId: string };
+  const pushed = await pushToSession(session, { type: "switch_role", roleId });
+  res.json({ ok: pushed });
+});
+
 router.post("/agent", async (req: Request, res: Response) => {
   const { message, roleId, chatSessionId } = req.body as {
     message: string;

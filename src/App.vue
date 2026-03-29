@@ -175,6 +175,11 @@ async function sendMessage(text?: string) {
 
         if (data.type === "status") {
           statusMessage.value = data.message;
+        } else if (data.type === "switch_role") {
+          setTimeout(() => {
+            currentRoleId.value = data.roleId;
+            onRoleChange();
+          }, 0);
         } else if (data.type === "text") {
           toolResults.value.push(makeTextResult(data.message, "assistant"));
         } else if (data.type === "tool_result") {

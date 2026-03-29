@@ -3,15 +3,17 @@ import { writeFile, unlink } from "fs/promises";
 import { tmpdir } from "os";
 import { join } from "path";
 import type { Role } from "../src/config/roles.js";
+import { ROLES } from "../src/config/roles.js";
 
 export type AgentEvent =
   | { type: "status"; message: string }
   | { type: "text"; message: string }
   | { type: "tool_result"; result: unknown }
+  | { type: "switch_role"; roleId: string }
   | { type: "error"; message: string };
 
 // Plugin names that have a corresponding MCP tool definition in mcp-server.ts
-const MCP_PLUGINS = new Set(["manageTodoList"]);
+const MCP_PLUGINS = new Set(["manageTodoList", "switchRole"]);
 
 export async function* runAgent(
   message: string,
@@ -43,6 +45,7 @@ export async function* runAgent(
             SESSION_ID: sessionId,
             PORT: String(port),
             PLUGIN_NAMES: activePlugins.join(","),
+            ROLE_IDS: ROLES.map((r) => r.id).join(","),
           },
         },
       },
