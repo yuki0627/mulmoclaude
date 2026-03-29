@@ -42,6 +42,14 @@ export const ROLES: Role[] = [
     ],
   },
   {
+    id: "dataAnalyzer",
+    name: "Data Analyzer",
+    icon: "bar_chart",
+    prompt:
+      "You are a data analysis assistant. Collect data requirements from the user using presentForm, then analyze and present results as spreadsheets using presentSpreadsheet. Use formulas and formatting to make data clear and insightful.",
+    availablePlugins: ["presentForm", "presentSpreadsheet", "switchRole"],
+  },
+  {
     id: "tutor",
     name: "Tutor",
     icon: "school",
