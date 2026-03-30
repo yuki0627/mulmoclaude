@@ -8,6 +8,7 @@ const router = Router();
 export interface TodoItem {
   id: string;
   text: string;
+  note?: string;
   completed: boolean;
   createdAt: number;
 }
@@ -29,10 +30,11 @@ function saveTodos(items: TodoItem[]): void {
 }
 
 router.post("/todos", (req: Request, res: Response) => {
-  const { action, text, newText } = req.body as {
+  const { action, text, newText, note } = req.body as {
     action: string;
     text?: string;
     newText?: string;
+    note?: string;
   };
 
   let items = loadTodos();
@@ -55,6 +57,7 @@ router.post("/todos", (req: Request, res: Response) => {
       const item: TodoItem = {
         id: `todo_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
         text,
+        ...(note !== undefined && { note }),
         completed: false,
         createdAt: Date.now(),
       };
@@ -94,6 +97,7 @@ router.post("/todos", (req: Request, res: Response) => {
       if (item) {
         const oldText = item.text;
         item.text = newText;
+        if (note !== undefined) item.note = note || undefined;
         saveTodos(items);
         message = `Updated: "${oldText}" → "${newText}"`;
         jsonData = { oldText, newText };

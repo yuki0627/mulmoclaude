@@ -178,9 +178,7 @@ function parseYamlValue(raw: string): string | number | boolean | null {
   return raw;
 }
 
-function parseYaml(
-  text: string,
-): {
+function parseYaml(text: string): {
   title: string;
   props: Record<string, string | number | boolean | null>;
 } | null {

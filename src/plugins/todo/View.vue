@@ -1,6 +1,8 @@
 <template>
-  <div class="h-full bg-white flex flex-col p-6">
-    <div class="flex items-center justify-between mb-4">
+  <div class="h-full bg-white flex flex-col">
+    <div
+      class="flex items-center justify-between px-6 py-4 border-b border-gray-100"
+    >
       <h2 class="text-lg font-semibold text-gray-800">Todo List</h2>
       <span class="text-sm text-gray-500"
         >{{ completedCount }}/{{ items.length }} completed</span
@@ -14,28 +16,40 @@
       No todo items yet
     </div>
 
-    <ul v-else class="flex-1 overflow-y-auto space-y-2">
+    <ul v-else class="flex-1 overflow-y-auto p-4 space-y-2">
       <li
         v-for="item in items"
         :key="item.id"
-        class="flex items-center gap-3 p-3 rounded-lg border border-gray-200 hover:bg-gray-50 group"
+        class="flex items-center gap-3 p-3 rounded-lg border cursor-pointer group"
+        :class="
+          selectedId === item.id
+            ? 'border-blue-400 bg-blue-50'
+            : 'border-gray-200 hover:bg-gray-50'
+        "
+        @click="selectItem(item)"
       >
         <input
           type="checkbox"
           :checked="item.completed"
-          class="cursor-pointer"
+          class="cursor-pointer shrink-0"
+          @click.stop
           @change="toggle(item)"
         />
-        <span
-          class="flex-1 text-sm"
-          :class="
-            item.completed ? 'line-through text-gray-400' : 'text-gray-800'
-          "
-          >{{ item.text }}</span
-        >
+        <div class="flex-1 min-w-0">
+          <span
+            class="text-sm"
+            :class="
+              item.completed ? 'line-through text-gray-400' : 'text-gray-800'
+            "
+            >{{ item.text }}</span
+          >
+          <div v-if="item.note" class="text-xs text-gray-400 mt-0.5">
+            {{ item.note }}
+          </div>
+        </div>
         <button
-          class="opacity-0 group-hover:opacity-100 text-gray-400 hover:text-red-500 text-xs px-1"
-          @click="remove(item)"
+          class="opacity-0 group-hover:opacity-100 text-gray-400 hover:text-red-500 text-xs px-1 shrink-0"
+          @click.stop="remove(item)"
         >
           ✕
         </button>
@@ -44,16 +58,49 @@
 
     <button
       v-if="hasCompleted"
-      class="mt-4 text-sm text-gray-500 hover:text-gray-700 self-start"
+      class="mx-6 mb-2 text-sm text-gray-500 hover:text-gray-700 self-start"
       @click="clearCompleted"
     >
       Clear completed
     </button>
+
+    <!-- Item YAML editor -->
+    <div v-if="selectedId" class="border-t border-blue-200 bg-blue-50 shrink-0">
+      <div
+        class="flex items-center justify-between px-4 py-2 text-sm font-medium text-blue-700"
+      >
+        <span>Edit item</span>
+        <button
+          class="text-blue-400 hover:text-blue-600 text-xs"
+          @click="selectedId = null"
+        >
+          ✕
+        </button>
+      </div>
+      <div class="px-3 pb-3">
+        <textarea
+          v-model="yamlText"
+          class="w-full h-24 p-3 font-mono text-xs bg-white border border-blue-300 rounded resize-y focus:outline-none focus:border-blue-500"
+          spellcheck="false"
+        />
+        <div class="flex items-center gap-2 mt-2">
+          <button
+            class="px-3 py-1.5 text-sm rounded bg-blue-500 text-white hover:bg-blue-600"
+            @click="applyItemEdit"
+          >
+            Update
+          </button>
+          <span v-if="yamlError" class="text-xs text-red-500">{{
+            yamlError
+          }}</span>
+        </div>
+      </div>
+    </div>
   </div>
 </template>
 
 <script setup lang="ts">
-import { computed } from "vue";
+import { computed, ref, watch } from "vue";
 import type { ToolResultComplete } from "gui-chat-protocol/vue";
 import type { TodoData, TodoItem } from "./index";
 
@@ -67,6 +114,108 @@ const completedCount = computed(
   () => items.value.filter((i) => i.completed).length,
 );
 const hasCompleted = computed(() => items.value.some((i) => i.completed));
+
+// ── YAML helpers ─────────────────────────────────────────────────────────────
+
+function yamlStringValue(v: string): string {
+  const needsQuotes =
+    v === "" ||
+    /[:#\[\]{},&*?|<>=!%@`]/.test(v) ||
+    /^\s|\s$/.test(v) ||
+    /^(true|false|null|~)$/i.test(v) ||
+    /^\d/.test(v);
+  if (needsQuotes) {
+    return `"${v.replace(/\\/g, "\\\\").replace(/"/g, '\\"')}"`;
+  }
+  return v;
+}
+
+function serializeYaml(item: TodoItem): string {
+  return [
+    `text: ${yamlStringValue(item.text)}`,
+    `note: ${item.note ? yamlStringValue(item.note) : ""}`,
+  ].join("\n");
+}
+
+function parseYamlValue(raw: string): string {
+  if (raw.startsWith('"') && raw.endsWith('"')) {
+    return raw.slice(1, -1).replace(/\\"/g, '"').replace(/\\\\/g, "\\");
+  }
+  if (raw.startsWith("'") && raw.endsWith("'")) {
+    return raw.slice(1, -1);
+  }
+  return raw;
+}
+
+function parseYaml(text: string): { text: string; note: string } | null {
+  const result: Record<string, string> = {};
+  for (const line of text.split("\n")) {
+    const trimmed = line.trim();
+    if (!trimmed || trimmed.startsWith("#")) continue;
+    const colonIdx = line.indexOf(": ");
+    if (colonIdx === -1) {
+      // "key:" with empty value
+      const colonEnd = line.indexOf(":");
+      if (colonEnd !== -1) result[line.slice(0, colonEnd).trim()] = "";
+      continue;
+    }
+    result[line.slice(0, colonIdx).trim()] = parseYamlValue(
+      line.slice(colonIdx + 2).trim(),
+    );
+  }
+  if (typeof result["text"] !== "string" || !result["text"]) return null;
+  return { text: result["text"], note: result["note"] ?? "" };
+}
+
+// ── Item selection & YAML edit ────────────────────────────────────────────────
+
+const selectedId = ref<string | null>(null);
+const selectedOriginalText = ref<string>("");
+const yamlText = ref("");
+const yamlError = ref("");
+
+function selectItem(item: TodoItem) {
+  if (selectedId.value === item.id) {
+    selectedId.value = null;
+    return;
+  }
+  selectedId.value = item.id;
+  selectedOriginalText.value = item.text;
+  yamlText.value = serializeYaml(item);
+  yamlError.value = "";
+}
+
+watch(
+  () => props.selectedResult.data,
+  () => {
+    if (selectedId.value) {
+      const item = items.value.find((i) => i.id === selectedId.value);
+      if (item) {
+        yamlText.value = serializeYaml(item);
+        selectedOriginalText.value = item.text;
+      } else {
+        selectedId.value = null;
+      }
+    }
+  },
+);
+
+async function applyItemEdit() {
+  yamlError.value = "";
+  const parsed = parseYaml(yamlText.value);
+  if (!parsed) {
+    yamlError.value = "Could not parse YAML — 'text' field is required";
+    return;
+  }
+  await callApi({
+    action: "update",
+    text: selectedOriginalText.value,
+    newText: parsed.text,
+    note: parsed.note,
+  });
+}
+
+// ── API ───────────────────────────────────────────────────────────────────────
 
 async function callApi(body: Record<string, unknown>) {
   const response = await fetch("/api/todos", {
@@ -87,6 +236,7 @@ function toggle(item: TodoItem) {
 }
 
 function remove(item: TodoItem) {
+  if (selectedId.value === item.id) selectedId.value = null;
   callApi({ action: "delete", text: item.text });
 }
 

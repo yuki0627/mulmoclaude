@@ -5,6 +5,7 @@ import Preview from "./Preview.vue";
 export interface TodoItem {
   id: string;
   text: string;
+  note?: string;
   completed: boolean;
   createdAt: number;
 }
@@ -43,6 +44,11 @@ const todoPlugin: ToolPlugin<TodoData> = {
         newText: {
           type: "string",
           description: "For 'update' only: the replacement text.",
+        },
+        note: {
+          type: "string",
+          description:
+            "For 'add' or 'update': an optional note or extra detail for the item.",
         },
       },
       required: ["action"],
