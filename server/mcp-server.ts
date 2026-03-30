@@ -392,6 +392,55 @@ const ALL_TOOLS: Record<string, ToolDef> = {
     },
     endpoint: "/api/edit-image",
   },
+  playOthello: {
+    name: "playOthello",
+    description:
+      "Play Othello/Reversi. Start a new game or make moves on the board.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        action: {
+          type: "string",
+          enum: ["new_game", "move", "pass"],
+          description: "Action to perform.",
+        },
+        board: {
+          type: "array",
+          description: "Current board state (8×8 grid). Required for move/pass.",
+          items: { type: "array", items: { type: "string" } },
+        },
+        currentSide: {
+          type: "string",
+          enum: ["B", "W"],
+          description: "Whose turn it is. Required for move/pass.",
+        },
+        row: {
+          type: "number",
+          description: "Row index 0–7 for the move. Required for move.",
+        },
+        col: {
+          type: "number",
+          description: "Column index 0–7 for the move. Required for move.",
+        },
+        playerNames: {
+          type: "object",
+          description: "Player names for B and W sides.",
+          properties: {
+            B: { type: "string" },
+            W: { type: "string" },
+          },
+        },
+        firstPlayer: {
+          type: "string",
+          enum: ["user", "computer"],
+          description:
+            "Which player should play as Black (goes first) for 'new_game' action. If not specified, will be chosen randomly.",
+        },
+      },
+      required: ["action"],
+    },
+    endpoint: "/api/othello",
+  },
   switchRole: {
     name: "switchRole",
     description:
