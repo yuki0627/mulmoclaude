@@ -24,6 +24,18 @@ function loadItems(): ScheduledItem[] {
   }
 }
 
+function sortItems(items: ScheduledItem[]): ScheduledItem[] {
+  return [...items].sort((a, b) => {
+    const aDate = typeof a.props.date === "string" ? a.props.date : null;
+    const bDate = typeof b.props.date === "string" ? b.props.date : null;
+    const aTime = typeof a.props.time === "string" ? a.props.time : "00:00";
+    const bTime = typeof b.props.time === "string" ? b.props.time : "00:00";
+    const aKey = aDate ? `0_${aDate}_${aTime}` : `1_${a.createdAt}`;
+    const bKey = bDate ? `0_${bDate}_${bTime}` : `1_${b.createdAt}`;
+    return aKey < bKey ? -1 : aKey > bKey ? 1 : 0;
+  });
+}
+
 function saveItems(items: ScheduledItem[]): void {
   const file = schedulerFile();
   fs.mkdirSync(path.dirname(file), { recursive: true });
@@ -66,6 +78,7 @@ router.post("/scheduler", (req: Request, res: Response) => {
         props: props ?? {},
       };
       items.push(item);
+      items = sortItems(items);
       saveItems(items);
       message = `Added: "${title}"`;
       jsonData = { added: item.id };
@@ -103,6 +116,7 @@ router.post("/scheduler", (req: Request, res: Response) => {
             }
           }
         }
+        items = sortItems(items);
         saveItems(items);
         message = `Updated: "${item.title}"`;
         jsonData = { updated: id };
@@ -117,7 +131,7 @@ router.post("/scheduler", (req: Request, res: Response) => {
         res.status(400).json({ error: "items array required" });
         return;
       }
-      items = replaceItems;
+      items = sortItems(replaceItems);
       saveItems(items);
       message = `Replaced all items (${items.length} total)`;
       jsonData = { count: items.length };
