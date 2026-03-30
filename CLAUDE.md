@@ -85,15 +85,32 @@ Each plugin is a `ToolPlugin` (from `gui-chat-protocol/vue`, extended in `src/to
 - `viewComponent` — Vue component rendered in the canvas
 - `previewComponent` — Vue component shown in the sidebar
 
-Adding a new plugin requires updates in **four places** — missing any one will silently break it:
+### Adding a package plugin (`@gui-chat-plugin/*` or `@mulmochat-plugin/*`)
 
-1. **`src/plugins/<name>/index.ts`** — plugin definition (`toolDefinition`, `execute()`, components)
-2. **`src/tools/index.ts`** — register in the `plugins` map
-3. **`src/config/roles.ts`** — add plugin name to each role's `availablePlugins`
-4. **`server/agent.ts`** — add plugin name to `MCP_PLUGINS` set (controls which plugins are exposed to the Claude CLI)
-5. **`server/mcp-server.ts`** — add a full entry to `ALL_TOOLS` (name, description, inputSchema, endpoint) so the MCP server can handle the tool call
+Package plugins export a canonical `TOOL_DEFINITION` that is used directly — **do not copy or re-type the schema**. Required updates in **4 places**:
 
-> Steps 4 and 5 are easy to miss. If a plugin is in `availablePlugins` but absent from `MCP_PLUGINS` or `ALL_TOOLS`, it will be silently dropped and Claude won't see the MCP tool.
+1. **`server/mcp-server.ts`** — import `TOOL_DEFINITION` from the package, add to the imports list and the `TOOL_ENDPOINTS` map, and include the def in the `ALL_TOOLS` spread array
+2. **`src/tools/index.ts`** — import the plugin's vue export and register it in the `plugins` map using `TOOL_NAME` as the key (must match exactly — check the package's exported `TOOL_NAME`)
+3. **`src/config/roles.ts`** — add the tool name to the relevant role's `availablePlugins`
+4. **`server/agent.ts`** — add the tool name to `MCP_PLUGINS`
+
+For the server route, add a handler in `server/routes/plugins.ts` that calls the package's `execute*` function.
+
+### Adding a local plugin (`src/plugins/<name>/`)
+
+Local plugins import Vue components, so their `toolDefinition` must live in a **separate file** to allow server-side imports without pulling in Vue:
+
+1. **`src/plugins/<name>/definition.ts`** — `toolDefinition` only, no Vue imports
+2. **`src/plugins/<name>/index.ts`** — imports `toolDefinition` from `./definition`, adds `execute()` and Vue components
+3. **`server/routes/`** — add a new route file with the backend logic
+4. **`server/mcp-server.ts`** — import the definition from `../src/plugins/<name>/definition.js`, add to `TOOL_ENDPOINTS` and the `ALL_TOOLS` spread array
+5. **`src/tools/index.ts`** — register plugin in the `plugins` map
+6. **`src/config/roles.ts`** — add tool name to relevant role's `availablePlugins`
+7. **`server/agent.ts`** — add tool name to `MCP_PLUGINS`
+
+> If a plugin is in `availablePlugins` but absent from `MCP_PLUGINS` or `ALL_TOOLS`, it will be silently dropped and Claude won't see the MCP tool.
+
+> The key in `src/tools/index.ts` must exactly match the tool's `name` field (i.e. `TOOL_NAME` from the package, or `toolDefinition.name` for local plugins). This is what the frontend uses to look up the view component when rendering a tool result.
 
 ## Tech Stack
 
