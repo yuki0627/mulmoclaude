@@ -30,7 +30,7 @@ const MCP_PLUGINS = new Set([
   "generateHtml",
   "editHtml",
   "editImage",
-  "present3d",
+  "present3D",
   "playOthello",
 ]);
 
