@@ -4,6 +4,22 @@
  * back to the active frontend SSE stream via the session registry.
  */
 
+import { TOOL_DEFINITION as MarkdownDef } from "@gui-chat-plugin/markdown";
+import { TOOL_DEFINITION as SpreadsheetDef } from "@gui-chat-plugin/spreadsheet";
+import { TOOL_DEFINITION as MindMapDef } from "@gui-chat-plugin/mindmap";
+import { TOOL_DEFINITION as GenerateImageDef } from "@mulmochat-plugin/generate-image";
+import { TOOL_DEFINITION as QuizDef } from "@mulmochat-plugin/quiz";
+import { TOOL_DEFINITION as FormDef } from "@mulmochat-plugin/form";
+import { TOOL_DEFINITION as CanvasDef } from "@gui-chat-plugin/canvas";
+import { TOOL_DEFINITION as GenerateHtmlDef } from "@gui-chat-plugin/generate-html";
+import { TOOL_DEFINITION as EditHtmlDef } from "@gui-chat-plugin/edit-html";
+import { TOOL_DEFINITION as EditImageDef } from "@gui-chat-plugin/edit-image";
+import { TOOL_DEFINITION as Present3DDef } from "@gui-chat-plugin/present3d";
+import { TOOL_DEFINITION as OthelloDef } from "@gui-chat-plugin/othello";
+import TodoDef from "../src/plugins/todo/definition.js";
+import SchedulerDef from "../src/plugins/scheduler/definition.js";
+import type { ToolDefinition } from "gui-chat-protocol";
+
 const SESSION_ID = process.env.SESSION_ID ?? "";
 const PORT = process.env.PORT ?? "3001";
 const PLUGIN_NAMES = (process.env.PLUGIN_NAMES ?? "")
@@ -19,431 +35,52 @@ interface ToolDef {
   endpoint?: string; // absent for tools handled specially (e.g. switchRole)
 }
 
+function fromPackage(def: ToolDefinition, endpoint: string): ToolDef {
+  return {
+    name: def.name,
+    description: def.description,
+    inputSchema: def.parameters as object,
+    endpoint,
+  };
+}
+
+// Endpoint map — the only MulmoChat-specific part per tool
+const TOOL_ENDPOINTS: Record<string, string> = {
+  [TodoDef.name]: "/api/todos",
+  [SchedulerDef.name]: "/api/scheduler",
+  [MarkdownDef.name]: "/api/present-document",
+  [SpreadsheetDef.name]: "/api/present-spreadsheet",
+  [MindMapDef.name]: "/api/mindmap",
+  [GenerateImageDef.name]: "/api/generate-image",
+  [QuizDef.name]: "/api/quiz",
+  [FormDef.name]: "/api/form",
+  [CanvasDef.name]: "/api/canvas",
+  [GenerateHtmlDef.name]: "/api/generate-html",
+  [EditHtmlDef.name]: "/api/edit-html",
+  [EditImageDef.name]: "/api/edit-image",
+  [Present3DDef.name]: "/api/present3d",
+  [OthelloDef.name]: "/api/othello",
+};
+
 const ALL_TOOLS: Record<string, ToolDef> = {
-  manageTodoList: {
-    name: "manageTodoList",
-    description:
-      "Manage a todo list — show items, add, update, check/uncheck, or delete. Use whenever the user mentions tasks, todos, or things to remember.",
-    inputSchema: {
-      type: "object",
-      properties: {
-        action: {
-          type: "string",
-          enum: [
-            "show",
-            "add",
-            "delete",
-            "update",
-            "check",
-            "uncheck",
-            "clear_completed",
-          ],
-          description: "Action to perform.",
-        },
-        text: {
-          type: "string",
-          description: "Item text or partial text to find.",
-        },
-        newText: {
-          type: "string",
-          description: "For 'update' only: replacement text.",
-        },
-      },
-      required: ["action"],
-    },
-    endpoint: "/api/todos",
-  },
-  manageScheduler: {
-    name: "manageScheduler",
-    description:
-      "Manage a scheduler — show, add, update, or delete scheduled items. Each item has a title and dynamic properties (e.g. date, time, location, description). Use this whenever the user mentions events, appointments, reminders, or things to schedule.",
-    inputSchema: {
-      type: "object",
-      properties: {
-        action: {
-          type: "string",
-          enum: ["show", "add", "delete", "update"],
-          description: "Action to perform.",
-        },
-        title: {
-          type: "string",
-          description:
-            "For 'add': item title. For 'update': new title (optional).",
-        },
-        id: {
-          type: "string",
-          description: "For 'delete' and 'update': the item id.",
-        },
-        props: {
-          type: "object",
-          description:
-            "For 'add': initial properties like { date, time, location }. For 'update': properties to merge in; set a key to null to remove it.",
-          additionalProperties: {
-            oneOf: [
-              { type: "string" },
-              { type: "number" },
-              { type: "boolean" },
-              { type: "null" },
-            ],
-          },
-        },
-      },
-      required: ["action"],
-    },
-    endpoint: "/api/scheduler",
-  },
-  presentDocument: {
-    name: "presentDocument",
-    description: "Display a document in markdown format.",
-    inputSchema: {
-      type: "object",
-      properties: {
-        title: { type: "string", description: "Title for the document" },
-        markdown: {
-          type: "string",
-          description: "The markdown content to display.",
-        },
-      },
-      required: ["title", "markdown"],
-    },
-    endpoint: "/api/present-document",
-  },
-  presentSpreadsheet: {
-    name: "presentSpreadsheet",
-    description:
-      "Display an Excel-like spreadsheet with formulas and calculations.",
-    inputSchema: {
-      type: "object",
-      properties: {
-        title: { type: "string", description: "Title for the spreadsheet" },
-        sheets: {
-          type: "array",
-          description:
-            "Sheets to render. Each has a name and 2D array of cells.",
-          items: {
-            type: "object",
-            properties: {
-              name: { type: "string" },
-              data: {
-                type: "array",
-                items: {
-                  type: "array",
-                  items: {
-                    type: "object",
-                    properties: {
-                      v: {
-                        oneOf: [{ type: "string" }, { type: "number" }],
-                        description:
-                          "Cell value or formula (string starting with '=')",
-                      },
-                      f: {
-                        type: "string",
-                        description:
-                          "Format code, e.g. '$#,##0.00', '#,##0', '0.00%', 'MM/DD/YYYY'",
-                      },
-                    },
-                    required: ["v"],
-                  },
-                },
-              },
-            },
-            required: ["name", "data"],
-          },
-        },
-      },
-      required: ["title", "sheets"],
-    },
-    endpoint: "/api/present-spreadsheet",
-  },
-  createMindMap: {
-    name: "createMindMap",
-    description:
-      "Create or update an interactive mind map to visualize ideas and their relationships.",
-    inputSchema: {
-      type: "object",
-      properties: {
-        action: {
-          type: "string",
-          enum: [
-            "create",
-            "add_node",
-            "delete_node",
-            "connect",
-            "update",
-            "rebalance",
-          ],
-          description:
-            "Action: create (new map), add_node, delete_node, connect (link two nodes), update, rebalance (recalculate layout)",
-        },
-        title: {
-          type: "string",
-          description: "Title of the mind map (required for create)",
-        },
-        centralIdea: {
-          type: "string",
-          description: "Central concept (required for create)",
-        },
-        ideas: {
-          type: "array",
-          items: { type: "string" },
-          description: "Initial branch ideas (for create)",
-        },
-        parentNodeId: {
-          type: "string",
-          description: "Parent node ID (for add_node)",
-        },
-        newIdea: {
-          type: "string",
-          description: "New idea text (for add_node)",
-        },
-        nodeIdToDelete: {
-          type: "string",
-          description: "Node ID to delete (for delete_node)",
-        },
-        fromNodeId: {
-          type: "string",
-          description: "Source node ID (for connect)",
-        },
-        toNodeId: {
-          type: "string",
-          description: "Target node ID (for connect)",
-        },
-        connectionLabel: {
-          type: "string",
-          description: "Optional connection label",
-        },
-        existingMap: {
-          type: "object",
-          description:
-            "Current mind map state (for update/add_node/connect/rebalance)",
-        },
-      },
-      required: ["action"],
-    },
-    endpoint: "/api/mindmap",
-  },
-  generateImage: {
-    name: "generateImage",
-    description:
-      "Generate an image based on the prompt and display it. Be descriptive and specify concrete details in the prompt. Each call generates one image.",
-    inputSchema: {
-      type: "object",
-      properties: {
-        prompt: {
-          type: "string",
-          description: "A detailed prompt describing the image to generate",
-        },
-      },
-      required: ["prompt"],
-    },
-    endpoint: "/api/generate-image",
-  },
-  putQuestions: {
-    name: "putQuestions",
-    description:
-      "Present a set of multiple choice questions to test the user's knowledge or abilities. Each question should have 2-6 answer choices.",
-    inputSchema: {
-      type: "object",
-      properties: {
-        title: { type: "string", description: "Optional title for the quiz" },
-        questions: {
-          type: "array",
-          description: "Array of multiple choice questions",
-          items: {
-            type: "object",
-            properties: {
-              question: { type: "string" },
-              choices: {
-                type: "array",
-                items: { type: "string" },
-                minItems: 2,
-                maxItems: 6,
-              },
-              correctAnswer: {
-                type: "number",
-                description: "0-based index of correct answer",
-              },
-            },
-            required: ["question", "choices"],
-          },
-          minItems: 1,
-        },
-      },
-      required: ["questions"],
-    },
-    endpoint: "/api/quiz",
-  },
-  presentForm: {
-    name: "presentForm",
-    description:
-      "Create a structured form to collect information from the user. Supports text, textarea, radio, dropdown, checkbox, date, time, and number fields.",
-    inputSchema: {
-      type: "object",
-      properties: {
-        title: { type: "string" },
-        description: { type: "string" },
-        fields: {
-          type: "array",
-          items: {
-            type: "object",
-            properties: {
-              id: { type: "string" },
-              type: {
-                type: "string",
-                enum: [
-                  "text",
-                  "textarea",
-                  "radio",
-                  "dropdown",
-                  "checkbox",
-                  "date",
-                  "time",
-                  "number",
-                ],
-              },
-              label: { type: "string" },
-              description: { type: "string" },
-              required: { type: "boolean" },
-              placeholder: { type: "string" },
-              choices: { type: "array", items: { type: "string" } },
-            },
-            required: ["id", "type", "label"],
-          },
-        },
-      },
-      required: ["fields"],
-    },
-    endpoint: "/api/form",
-  },
-  openCanvas: {
-    name: "openCanvas",
-    description:
-      "Open a drawing canvas for the user to create drawings, sketches, or diagrams.",
-    inputSchema: { type: "object", properties: {}, required: [] },
-    endpoint: "/api/canvas",
-  },
-  generateHtml: {
-    name: "generateHtml",
-    description:
-      "Generate a complete, standalone HTML page using AI. Be descriptive about layout, styling, interactivity, colors, and functionality.",
-    inputSchema: {
-      type: "object",
-      properties: {
-        prompt: {
-          type: "string",
-          description: "Detailed description of the desired HTML page.",
-        },
-      },
-      required: ["prompt"],
-    },
-    endpoint: "/api/generate-html",
-  },
-  editHtml: {
-    name: "editHtml",
-    description:
-      "Edit the currently displayed HTML page. Describe the modifications needed; the current HTML will be updated automatically.",
-    inputSchema: {
-      type: "object",
-      properties: {
-        prompt: {
-          type: "string",
-          description: "Detailed description of the modifications to make.",
-        },
-      },
-      required: ["prompt"],
-    },
-    endpoint: "/api/edit-html",
-  },
-  present3d: {
-    name: "present3d",
-    description:
-      "Display interactive 3D visualizations using the full ShapeScript language with expressions, variables, control flow, and functions.",
-    inputSchema: {
-      type: "object",
-      properties: {
-        title: {
-          type: "string",
-          description: "Title for the 3D visualization",
-        },
-        script: {
-          type: "string",
-          description:
-            "ShapeScript code defining the 3D scene. Supports primitives (cube, sphere, cylinder, cone, torus), CSG operations (union, difference, intersection), transformations (position, rotation, size), materials (color, opacity), variables, for-loops, if/else, and math functions like sin/cos.",
-        },
-      },
-      required: ["title", "script"],
-    },
-    endpoint: "/api/present3d",
-  },
-  editImage: {
-    name: "editImage",
-    description:
-      "Edit or transform the currently selected image based on a prompt. The user must have an image selected in the sidebar. Use for style transfer, modifications, or transformations of existing images.",
-    inputSchema: {
-      type: "object",
-      properties: {
-        prompt: {
-          type: "string",
-          description:
-            "A detailed description of the edits or transformation to apply to the image",
-        },
-      },
-      required: ["prompt"],
-    },
-    endpoint: "/api/edit-image",
-  },
-  playOthello: {
-    name: "playOthello",
-    description:
-      "Play Othello/Reversi. Start a new game or make moves on the board.",
-    inputSchema: {
-      type: "object",
-      properties: {
-        action: {
-          type: "string",
-          enum: ["new_game", "move", "pass"],
-          description: "Action to perform.",
-        },
-        board: {
-          type: "array",
-          description:
-            "Current board state (8×8 grid). Required for move/pass.",
-          items: { type: "array", items: { type: "string" } },
-        },
-        currentSide: {
-          type: "string",
-          enum: ["B", "W"],
-          description: "Whose turn it is. Required for move/pass.",
-        },
-        row: {
-          type: "number",
-          description: "Row index 0–7 for the move. Required for move.",
-        },
-        col: {
-          type: "number",
-          description: "Column index 0–7 for the move. Required for move.",
-        },
-        playerNames: {
-          type: "object",
-          description:
-            "Player assignments (required for 'move' and 'pass' actions).",
-          properties: {
-            B: { type: "string", enum: ["user", "computer"] },
-            W: { type: "string", enum: ["user", "computer"] },
-          },
-          required: ["B", "W"],
-        },
-        firstPlayer: {
-          type: "string",
-          enum: ["user", "computer"],
-          description:
-            "Which player should play as Black (goes first) for 'new_game' action. If not specified, will be chosen randomly.",
-        },
-      },
-      required: ["action"],
-    },
-    endpoint: "/api/othello",
-  },
+  ...Object.fromEntries(
+    [
+      TodoDef,
+      SchedulerDef,
+      MarkdownDef,
+      SpreadsheetDef,
+      MindMapDef,
+      GenerateImageDef,
+      QuizDef,
+      FormDef,
+      CanvasDef,
+      GenerateHtmlDef,
+      EditHtmlDef,
+      EditImageDef,
+      Present3DDef,
+      OthelloDef,
+    ].map((def) => [def.name, fromPackage(def, TOOL_ENDPOINTS[def.name])]),
+  ),
   switchRole: {
     name: "switchRole",
     description:
