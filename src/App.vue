@@ -182,6 +182,7 @@
       v-if="showRightSidebar"
       ref="rightSidebarRef"
       :tool-call-history="toolCallHistory"
+      :available-tools="availableTools"
     />
   </div>
 </template>
@@ -224,6 +225,8 @@ const showRightSidebar = ref(
 );
 const toolCallHistory = ref<ToolCallHistoryItem[]>([]);
 const rightSidebarRef = ref<InstanceType<typeof RightSidebar> | null>(null);
+
+const availableTools = computed(() => currentRole.value.availablePlugins);
 
 const selectedResult = computed(
   () =>

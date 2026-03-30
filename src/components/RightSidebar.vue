@@ -2,6 +2,20 @@
   <div
     class="w-80 flex-shrink-0 border-l border-gray-200 flex flex-col bg-white text-gray-900"
   >
+    <div class="p-4 border-b border-gray-200 flex-shrink-0 space-y-2">
+      <div class="text-xs font-semibold text-gray-500 uppercase tracking-wide">
+        Available Tools
+      </div>
+      <div class="flex flex-wrap gap-1">
+        <span
+          v-for="tool in availableTools"
+          :key="tool"
+          class="text-xs bg-gray-100 text-gray-700 rounded px-2 py-0.5 border border-gray-200"
+          >{{ tool }}</span
+        >
+      </div>
+    </div>
+
     <div class="p-4 border-b border-gray-200 flex-shrink-0">
       <h2 class="text-lg font-semibold">Tool Call History</h2>
     </div>
@@ -22,12 +36,18 @@
         class="border border-gray-300 rounded p-3 bg-white text-xs space-y-1"
       >
         <div class="flex justify-between items-start gap-2">
-          <span class="font-semibold text-blue-600 break-all">{{ call.toolName }}</span>
-          <span class="text-gray-400 flex-shrink-0">{{ formatTime(call.timestamp) }}</span>
+          <span class="font-semibold text-blue-600 break-all">{{
+            call.toolName
+          }}</span>
+          <span class="text-gray-400 flex-shrink-0">{{
+            formatTime(call.timestamp)
+          }}</span>
         </div>
         <div>
           <div class="font-medium text-gray-500 mb-1">Arguments</div>
-          <pre class="bg-gray-50 p-2 rounded overflow-x-auto text-gray-700">{{ formatJson(call.args) }}</pre>
+          <pre class="bg-gray-50 p-2 rounded overflow-x-auto text-gray-700">{{
+            formatJson(call.args)
+          }}</pre>
         </div>
         <div v-if="call.error">
           <div class="font-medium text-gray-500 mb-1">Error</div>
@@ -35,7 +55,9 @@
         </div>
         <div v-else-if="call.result !== undefined">
           <div class="font-medium text-gray-500 mb-1">Result</div>
-          <pre class="bg-green-50 p-2 rounded overflow-x-auto text-gray-700">{{ call.result }}</pre>
+          <pre class="bg-green-50 p-2 rounded overflow-x-auto text-gray-700">{{
+            call.result
+          }}</pre>
         </div>
         <div v-else>
           <div class="text-gray-400 italic">Running...</div>
@@ -59,6 +81,7 @@ export interface ToolCallHistoryItem {
 
 defineProps<{
   toolCallHistory: ToolCallHistoryItem[];
+  availableTools: string[];
 }>();
 
 const historyContainer = ref<HTMLDivElement | null>(null);

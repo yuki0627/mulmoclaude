@@ -144,9 +144,7 @@ export async function* runAgent(
             if (b.type === "tool_result") {
               const raw = b.content;
               const contentStr =
-                typeof raw === "string"
-                  ? raw
-                  : JSON.stringify(raw);
+                typeof raw === "string" ? raw : JSON.stringify(raw);
               yield {
                 type: "tool_call_result",
                 toolUseId: b.tool_use_id as string,
