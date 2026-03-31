@@ -2,7 +2,7 @@
 
 ## Goal
 
-Add a `generateMulmoScript` local plugin that lets Claude generate a story or presentation in [MulmoScript](../../mulmo/src/types/schema.ts) format and present it visually to the user as an interactive storyboard in the canvas.
+Add a `presentMulmoScript` local plugin that lets Claude generate a story or presentation in [MulmoScript](../../mulmo/src/types/schema.ts) format and present it visually to the user as an interactive storyboard in the canvas.
 
 ---
 
@@ -10,7 +10,7 @@ Add a `generateMulmoScript` local plugin that lets Claude generate a story or pr
 
 1. User asks a story/presentation role to create content (e.g. "Make a 5-slide intro to quantum computing")
 2. Claude constructs a valid `mulmoScript` JSON following the schema
-3. Claude calls `generateMulmoScript` with the assembled script
+3. Claude calls `presentMulmoScript` with the assembled script
 4. The plugin saves the script to `<workspace>/stories/<filename>.json`
 5. The canvas renders an interactive storyboard view — one card per beat showing narration text, speaker, and visual type
 6. The sidebar preview shows the script title and beat count
@@ -79,9 +79,9 @@ Supported `image.type` values: `markdown`, `textSlide`, `html_tailwind`, `mermai
 
 ## Implementation
 
-### 1. `src/plugins/generateMulmoScript/definition.ts`
+### 1. `src/plugins/presentMulmoScript/definition.ts`
 
-Tool name: `generateMulmoScript`
+Tool name: `presentMulmoScript`
 
 Input schema:
 ```typescript
@@ -93,17 +93,17 @@ Input schema:
 
 The schema description must guide Claude to produce valid MulmoScript, referencing the beat structure, speaker dictionary, and image types.
 
-### 2. `src/plugins/generateMulmoScript/index.ts`
+### 2. `src/plugins/presentMulmoScript/index.ts`
 
 - Imports `toolDefinition` from `./definition`
 - `execute(args)`:
   - Validates the script has required fields (`$mulmocast`, `beats`, `speechParams`)
   - Derives filename from `args.filename` or slug of `script.title`, timestamped to avoid collisions
   - Writes the script as pretty-printed JSON to `<workspacePath>/stories/<filename>.json`
-  - Returns a `ToolResult` with `type: "generateMulmoScript"`, the script data, and the saved path
+  - Returns a `ToolResult` with `type: "presentMulmoScript"`, the script data, and the saved path
 - Exports `viewComponent` (View.vue) and `previewComponent` (Preview.vue)
 
-### 3. `src/plugins/generateMulmoScript/View.vue`
+### 3. `src/plugins/presentMulmoScript/View.vue`
 
 Storyboard view — renders the full script visually:
 
@@ -133,7 +133,7 @@ Each beat card shows:
 
 Include a "Download JSON" button that triggers a browser download of the saved file.
 
-### 4. `src/plugins/generateMulmoScript/Preview.vue`
+### 4. `src/plugins/presentMulmoScript/Preview.vue`
 
 Sidebar preview — shows:
 - Script title (or filename)
@@ -152,20 +152,20 @@ Sidebar preview — shows:
 ### 6. Wire-up (4 files)
 
 **`server/mcp-server.ts`**
-- Import `toolDefinition` from `../src/plugins/generateMulmoScript/definition.js`
-- Add `generateMulmoScript` to `TOOL_ENDPOINTS` → `"/api/mulmo-script"`
+- Import `toolDefinition` from `../src/plugins/presentMulmoScript/definition.js`
+- Add `presentMulmoScript` to `TOOL_ENDPOINTS` → `"/api/mulmo-script"`
 - Add `toolDefinition` to the `ALL_TOOLS` spread array
 
 **`src/tools/index.ts`**
-- Import plugin from `../plugins/generateMulmoScript/index`
-- Register as `generateMulmoScript` in the `plugins` map
+- Import plugin from `../plugins/presentMulmoScript/index`
+- Register as `presentMulmoScript` in the `plugins` map
 
 **`src/config/roles.ts`**
 - Add a new `storyteller` role (see below)
-- Optionally add `generateMulmoScript` to the `office` role
+- Optionally add `presentMulmoScript` to the `office` role
 
 **`server/agent.ts`**
-- Add `"generateMulmoScript"` to `MCP_PLUGINS`
+- Add `"presentMulmoScript"` to `MCP_PLUGINS`
 
 ---
 
@@ -183,7 +183,7 @@ When asked to create a story, presentation, explainer, or educational video:
 2. Choose appropriate image types per beat (markdown for text-heavy slides, textSlide for title/bullet slides, imagePrompt to describe a generated image, mermaid for diagrams)
 3. Write clear narration text for each beat (this becomes the voiceover)
 4. Assemble the complete mulmoScript JSON following the template below exactly
-5. Call generateMulmoScript with the assembled script
+5. Call presentMulmoScript with the assembled script
 
 Always use Google providers as shown in the template. Keep beat texts conversational and engaging.
 
@@ -266,7 +266,7 @@ Always use Google providers as shown in the template. Keep beat texts conversati
   ]
 }
 \`\`\``,
-  availablePlugins: ["generateMulmoScript", "switchRole"],
+  availablePlugins: ["presentMulmoScript", "switchRole"],
   queries: [
     "Create a 5-slide intro to quantum computing",
     "Make a short story about a robot who learns to paint",
@@ -280,7 +280,7 @@ Always use Google providers as shown in the template. Keep beat texts conversati
 ## File Checklist
 
 ```
-src/plugins/generateMulmoScript/
+src/plugins/presentMulmoScript/
   definition.ts          ← tool schema only (no Vue)
   index.ts               ← execute() + Vue component refs
   View.vue               ← storyboard canvas view
