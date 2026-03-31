@@ -253,10 +253,7 @@ export const ROLES: Role[] = [
       "When creating a role, ask the user for the role name, purpose, and any specific instructions, then choose appropriate plugins from the available set and write a clear system prompt. " +
       "Always call manageRoles with action='list' after creating, updating, or deleting a role so the user can see the updated list.",
     availablePlugins: ["manageRoles", "switchRole"],
-    queries: [
-      "Show my custom roles",
-      "Create a new role for me"
-    ],
+    queries: ["Show my custom roles", "Create a new role for me"],
   },
 ];
 

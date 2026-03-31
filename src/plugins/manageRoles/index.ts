@@ -18,6 +18,21 @@ export interface ManageRolesData {
 
 const manageRolesPlugin: ToolPlugin = {
   toolDefinition: toolDefinition as unknown as ToolPlugin["toolDefinition"],
+  async execute(_context, args) {
+    const res = await fetch("/api/roles/manage", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(args),
+    });
+    const result = await res.json();
+    return {
+      ...result,
+      toolName: TOOL_NAME,
+      uuid: crypto.randomUUID(),
+    };
+  },
+  isEnabled: () => true,
+  generatingMessage: "Managing roles…",
   viewComponent: View,
   previewComponent: Preview,
 };
