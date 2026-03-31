@@ -18,7 +18,7 @@
     "@google/genai": "^1.47.0",
     "@gui-chat-plugin/browse": "^0.1.1",
     "@gui-chat-plugin/camera": "^0.3.0",
-    "@gui-chat-plugin/canvas": "^0.3.0",
+    "@gui-chat-plugin/canvas": "^0.3.3",
     "@gui-chat-plugin/edit-html": "^0.1.1",
     "@gui-chat-plugin/edit-image": "^0.3.0",
     "@gui-chat-plugin/generate-html": "^0.1.1",
