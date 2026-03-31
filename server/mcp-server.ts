@@ -18,6 +18,7 @@ import { TOOL_DEFINITION as Present3DDef } from "@gui-chat-plugin/present3d";
 import { TOOL_DEFINITION as OthelloDef } from "@gui-chat-plugin/othello";
 import TodoDef from "../src/plugins/todo/definition.js";
 import SchedulerDef from "../src/plugins/scheduler/definition.js";
+import PresentMulmoScriptDef from "../src/plugins/presentMulmoScript/definition.js";
 import { toolDefinition as ManageRolesDef } from "../src/plugins/manageRoles/definition.js";
 import type { ToolDefinition } from "gui-chat-protocol";
 
@@ -62,6 +63,7 @@ const TOOL_ENDPOINTS: Record<string, string> = {
   [Present3DDef.name]: "/api/present3d",
   [OthelloDef.name]: "/api/othello",
   [ManageRolesDef.name]: "/api/roles/manage",
+  [PresentMulmoScriptDef.name]: "/api/mulmo-script",
 };
 
 const ALL_TOOLS: Record<string, ToolDef> = {
@@ -69,6 +71,7 @@ const ALL_TOOLS: Record<string, ToolDef> = {
     [
       TodoDef,
       SchedulerDef,
+      PresentMulmoScriptDef,
       MarkdownDef,
       SpreadsheetDef,
       MindMapDef,

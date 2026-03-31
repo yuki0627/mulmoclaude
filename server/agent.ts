@@ -33,6 +33,7 @@ const MCP_PLUGINS = new Set([
   "present3D",
   "playOthello",
   "manageRoles",
+  "presentMulmoScript",
 ]);
 
 export async function* runAgent(

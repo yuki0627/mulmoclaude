@@ -15,8 +15,11 @@ See `plan/mulmo_claude.md` for the full design plan.
 - **Development server**: `npm run dev` (runs both client and server concurrently)
 - **Client only**: `npm run dev:client`
 - **Server only**: `npm run dev:server`
-- **Lint**: `npm run lint`
-- **Format**: `npm run format`
+- **Lint**: `yarn lint`
+- **Format**: `yarn format`
+- **Typecheck**: `yarn typecheck`
+
+**IMPORTANT**: After modifying any source code, always run `yarn format`, `yarn lint`, and `yarn typecheck` before considering the task done.
 
 **IMPORTANT**: Do NOT run build commands (`npm run build`, `npm run preview`) as they create unnecessary build artifacts.
 

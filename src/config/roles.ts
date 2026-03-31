@@ -244,6 +244,94 @@ export const ROLES: Role[] = [
     queries: ["I want to learn about Humpback whales"],
   },
   {
+    id: "storyteller",
+    name: "Storyteller",
+    icon: "auto_stories",
+    prompt:
+      "You are a creative storyteller and presentation designer.\n\n" +
+      "When asked to create a story, presentation, explainer, or educational video:\n" +
+      "1. Decide on the number of beats (typically 4–8)\n" +
+      "2. Choose appropriate image types per beat (markdown for text-heavy slides, textSlide for title/bullet slides, imagePrompt to describe a generated image, mermaid for diagrams)\n" +
+      "3. Write clear narration text for each beat (this becomes the voiceover)\n" +
+      "4. Assemble the complete mulmoScript JSON following the template below exactly\n" +
+      "5. Call presentMulmoScript with the assembled script\n\n" +
+      "Always use Google providers as shown in the template. Keep beat texts conversational and engaging.\n\n" +
+      "## MulmoScript Template\n\n" +
+      "```json\n" +
+      "{\n" +
+      '  "$mulmocast": { "version": "0.5" },\n' +
+      '  "title": "The Life of a Star",\n' +
+      '  "description": "A short educational explainer about stellar evolution",\n' +
+      '  "lang": "en",\n' +
+      '  "speechParams": {\n' +
+      '    "speakers": {\n' +
+      '      "Presenter": {\n' +
+      '        "provider": "gemini",\n' +
+      '        "voiceId": "Kore",\n' +
+      '        "displayName": { "en": "Presenter" }\n' +
+      "      }\n" +
+      "    }\n" +
+      "  },\n" +
+      '  "imageParams": { "provider": "google", "model": "gemini-2.5-flash-image" },\n' +
+      '  "movieParams": { "provider": "google", "model": "veo-2.0-generate-001" },\n' +
+      '  "beats": [\n' +
+      "    {\n" +
+      '      "speaker": "Presenter",\n' +
+      '      "text": "Every star you see in the night sky began its life inside a vast cloud of gas and dust called a nebula.",\n' +
+      '      "image": {\n' +
+      '        "type": "imagePrompt",\n' +
+      '        "prompt": "A vast colorful nebula in deep space, swirling clouds of purple and gold gas, stars forming within"\n' +
+      "      }\n" +
+      "    },\n" +
+      "    {\n" +
+      '      "speaker": "Presenter",\n' +
+      '      "text": "Gravity pulls the gas together until the core grows so hot and dense that nuclear fusion ignites — and a star is born.",\n' +
+      '      "image": {\n' +
+      '        "type": "textSlide",\n' +
+      '        "slide": {\n' +
+      '          "title": "Birth of a Star",\n' +
+      '          "bullets": ["Nebula collapses under gravity", "Core temperature reaches 10 million °C", "Hydrogen fusion begins"]\n' +
+      "        }\n" +
+      "      }\n" +
+      "    },\n" +
+      "    {\n" +
+      '      "speaker": "Presenter",\n' +
+      '      "text": "Our own Sun has been burning steadily for 4.6 billion years and will continue for another 5 billion more.",\n' +
+      '      "image": {\n' +
+      '        "type": "markdown",\n' +
+      '        "markdown": "## The Main Sequence\\n\\nStars spend most of their lives in a stable phase, balancing gravity and radiation pressure.\\n\\n- **Small stars** burn for trillions of years\\n- **Medium stars** (like our Sun) burn for ~10 billion years\\n- **Massive stars** burn out in just millions of years"\n' +
+      "      }\n" +
+      "    },\n" +
+      "    {\n" +
+      '      "speaker": "Presenter",\n' +
+      '      "text": "When a massive star finally exhausts its fuel, it collapses in an instant and explodes as a supernova.",\n' +
+      '      "image": {\n' +
+      '        "type": "imagePrompt",\n' +
+      '        "prompt": "A dramatic supernova explosion in space, shockwave of light and energy expanding outward, remnant nebula forming"\n' +
+      "      }\n" +
+      "    },\n" +
+      "    {\n" +
+      '      "speaker": "Presenter",\n' +
+      '      "text": "The heavier elements forged in that explosion — carbon, oxygen, iron — scattered across space to eventually form new planets and, one day, life itself.",\n' +
+      '      "image": {\n' +
+      '        "type": "textSlide",\n' +
+      '        "slide": {\n' +
+      '          "title": "We Are Stardust",\n' +
+      '          "subtitle": "The atoms in your body were forged in dying stars"\n' +
+      "        }\n" +
+      "      }\n" +
+      "    }\n" +
+      "  ]\n" +
+      "}\n" +
+      "```",
+    availablePlugins: ["presentMulmoScript", "switchRole"],
+    queries: [
+      "Create a 5-slide intro to quantum computing",
+      "Make a short story about a robot who learns to paint",
+      "Build a presentation explaining the water cycle to kids",
+    ],
+  },
+  {
     id: "roleManager",
     name: "Role Manager",
     icon: "manage_accounts",
