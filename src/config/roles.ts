@@ -255,8 +255,7 @@ export const ROLES: Role[] = [
     availablePlugins: ["manageRoles", "switchRole"],
     queries: [
       "Show my custom roles",
-      "Create a new role for me",
-      "Delete a custom role",
+      "Create a new role for me"
     ],
   },
 ];
