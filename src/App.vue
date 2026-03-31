@@ -188,7 +188,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted } from "vue";
+import { ref, computed, onMounted, onUnmounted } from "vue";
 import { v4 as uuidv4 } from "uuid";
 import { ROLES, type Role } from "./config/roles";
 import { getPlugin } from "./tools";
@@ -472,5 +472,9 @@ onMounted(() => {
   fetchSessions();
   refreshRoles();
   window.addEventListener("roles-updated", refreshRoles);
+});
+
+onUnmounted(() => {
+  window.removeEventListener("roles-updated", refreshRoles);
 });
 </script>
