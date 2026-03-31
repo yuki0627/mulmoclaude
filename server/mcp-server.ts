@@ -136,6 +136,23 @@ async function handleToolCall(
       },
     );
     const result = await res.json();
+
+    // For the list action, push a visual canvas result so the viewer renders
+    if (args.action === "list" && result.success) {
+      await fetch(
+        `${BASE_URL}/api/internal/tool-result?session=${SESSION_ID}`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            toolName: "manageRoles",
+            uuid: `${SESSION_ID}-manageRoles`,
+            ...result,
+          }),
+        },
+      );
+    }
+
     return result.message ?? (result.error ? `Error: ${result.error}` : "Done");
   }
 

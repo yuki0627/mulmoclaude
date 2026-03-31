@@ -9,8 +9,9 @@ export const toolDefinition = {
     properties: {
       action: {
         type: "string",
-        enum: ["create", "update", "delete"],
-        description: "The action to perform",
+        enum: ["create", "update", "delete", "list"],
+        description:
+          "The action to perform. Use 'list' to display all custom roles in the canvas.",
       },
       role: {
         type: "object",

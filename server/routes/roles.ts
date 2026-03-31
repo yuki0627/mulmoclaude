@@ -2,7 +2,7 @@ import { Router, Request, Response } from "express";
 import path from "path";
 import fs from "fs";
 import os from "os";
-import { loadAllRoles } from "../roles.js";
+import { loadAllRoles, loadCustomRoles } from "../roles.js";
 import { BUILTIN_ROLES } from "../../src/config/roles.js";
 import { pushToSession } from "../sessions.js";
 
@@ -36,6 +36,15 @@ export async function executeManageRoles(
     role?: Record<string, unknown>;
     roleId?: string;
   };
+
+  if (action === "list") {
+    const customRoles = loadCustomRoles();
+    return {
+      success: true,
+      message: `${customRoles.length} custom role${customRoles.length !== 1 ? "s" : ""}.`,
+      data: { customRoles },
+    };
+  }
 
   if (action === "delete") {
     const id = roleId;

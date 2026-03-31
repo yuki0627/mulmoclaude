@@ -472,5 +472,6 @@ onMounted(() => {
   fetchHealth();
   fetchSessions();
   refreshRoles();
+  window.addEventListener("roles-updated", refreshRoles);
 });
 </script>
