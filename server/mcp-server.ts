@@ -16,6 +16,7 @@ import { TOOL_DEFINITION as EditHtmlDef } from "@gui-chat-plugin/edit-html";
 import { TOOL_DEFINITION as EditImageDef } from "@gui-chat-plugin/edit-image";
 import { TOOL_DEFINITION as Present3DDef } from "@gui-chat-plugin/present3d";
 import { TOOL_DEFINITION as OthelloDef } from "@gui-chat-plugin/othello";
+import { TOOL_DEFINITION as MusicDef } from "@gui-chat-plugin/music";
 import TodoDef from "../src/plugins/todo/definition.js";
 import SchedulerDef from "../src/plugins/scheduler/definition.js";
 import { toolDefinition as ManageRolesDef } from "../src/plugins/manageRoles/definition.js";
@@ -61,6 +62,7 @@ const TOOL_ENDPOINTS: Record<string, string> = {
   [EditImageDef.name]: "/api/edit-image",
   [Present3DDef.name]: "/api/present3d",
   [OthelloDef.name]: "/api/othello",
+  [MusicDef.name]: "/api/music",
   [ManageRolesDef.name]: "/api/roles/manage",
 };
 
@@ -81,6 +83,7 @@ const ALL_TOOLS: Record<string, ToolDef> = {
       EditImageDef,
       Present3DDef,
       OthelloDef,
+      MusicDef,
     ].map((def) => [def.name, fromPackage(def, TOOL_ENDPOINTS[def.name])]),
   ),
   [ManageRolesDef.name]: {
