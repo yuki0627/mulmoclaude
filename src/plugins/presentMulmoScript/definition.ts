@@ -10,7 +10,7 @@ const toolDefinition: ToolDefinition = {
 Always use Google providers. Required structure:
 
 {
-  "$mulmocast": { "version": "0.5" },
+  "$mulmocast": { "version": "1.1" },
   "title": "The Life of a Star",
   "description": "A short educational explainer about stellar evolution",
   "lang": "en",
@@ -23,8 +23,8 @@ Always use Google providers. Required structure:
       }
     }
   },
-  "imageParams": { "provider": "google", "model": "gemini-2.5-flash-image" },
-  "movieParams": { "provider": "google", "model": "veo-2.0-generate-001" },
+  "imageParams": { "provider": "google", "model": "gemini-3.1-flash-image" },
+  "movieParams": { "provider": "google", "model": "veo-3.1-generate" },
   "beats": [
     {
       "speaker": "Presenter",

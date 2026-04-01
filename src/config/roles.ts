@@ -263,7 +263,7 @@ export const ROLES: Role[] = [
       "## MulmoScript Template\n\n" +
       "```json\n" +
       "{\n" +
-      '  "$mulmocast": { "version": "0.5" },\n' +
+      '  "$mulmocast": { "version": "1.1" },\n' +
       '  "title": "The Life of a Star",\n' +
       '  "description": "A short educational explainer about stellar evolution",\n' +
       '  "lang": "en",\n' +
