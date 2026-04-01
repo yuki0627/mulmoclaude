@@ -259,7 +259,7 @@ function isValidBeat(index: number): boolean {
 }
 
 async function updateBeat(index: number) {
-  const beat = JSON.parse(sourceText[index]) as Beat;
+  const beat: Beat = JSON.parse(sourceText[index]);
   const prevImage = JSON.stringify(effectiveBeat(index).image);
   await fetch("/api/mulmo-script/update-beat", {
     method: "POST",
