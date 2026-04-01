@@ -10,6 +10,7 @@ import {
   setGraphAILogger,
   type MulmoScript,
 } from "mulmocast";
+import type { MulmoBeat } from "@mulmocast/types";
 
 const router = Router();
 
@@ -36,7 +37,7 @@ interface RenderBeatBody {
 interface UpdateBeatBody {
   filePath: string;
   beatIndex: number;
-  beat: unknown;
+  beat: MulmoBeat;
 }
 
 router.post(
@@ -94,7 +95,7 @@ router.post(
       return;
     }
 
-    script.beats[beatIndex] = beat as MulmoScript["beats"][number];
+    script.beats[beatIndex] = beat;
     fs.writeFileSync(absoluteFilePath, JSON.stringify(script, null, 2));
 
     res.json({ ok: true });
