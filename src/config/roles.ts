@@ -279,6 +279,7 @@ export const ROLES: Role[] = [
       "  },\n" +
       '  "imageParams": { "provider": "google", "model": "gemini-2.5-flash-image" },\n' +
       '  "movieParams": { "provider": "google", "model": "veo-2.0-generate-001" },\n' +
+      '  "textSlideParams": { "cssStyles": "body { background-color: white; }" },\n' +
       '  "beats": [\n' +
       "    {\n" +
       '      "speaker": "Presenter",\n' +
