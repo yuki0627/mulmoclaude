@@ -8,6 +8,7 @@ import {
   generateBeatImage,
   getBeatPngImagePath,
   setGraphAILogger,
+  type MulmoScript,
 } from "mulmocast";
 
 const router = Router();
@@ -22,41 +23,48 @@ function slugify(title: string): string {
   );
 }
 
-router.post("/mulmo-script", (req: Request, res: Response) => {
-  const { script, filename } = req.body as {
-    script: Record<string, unknown>;
-    filename?: string;
-  };
+interface SaveMulmoScriptBody {
+  script: MulmoScript;
+  filename?: string;
+}
 
-  if (!script || !Array.isArray(script.beats)) {
-    res.status(400).json({ error: "script with beats array is required" });
-    return;
-  }
+interface RenderBeatBody {
+  filePath: string;
+  beatIndex: number;
+}
 
-  const storiesDir = path.join(workspacePath, "stories");
-  fs.mkdirSync(storiesDir, { recursive: true });
+router.post(
+  "/mulmo-script",
+  (req: Request<object, object, SaveMulmoScriptBody>, res: Response) => {
+    const { script, filename } = req.body;
 
-  const title = (script.title as string) || "untitled";
-  const slug = filename ? filename.replace(/\.json$/, "") : slugify(title);
-  const fname = `${slug}-${Date.now()}.json`;
-  const filePath = path.join(storiesDir, fname);
+    if (!script || !Array.isArray(script.beats)) {
+      res.status(400).json({ error: "script with beats array is required" });
+      return;
+    }
 
-  fs.writeFileSync(filePath, JSON.stringify(script, null, 2));
+    const storiesDir = path.join(workspacePath, "stories");
+    fs.mkdirSync(storiesDir, { recursive: true });
 
-  res.json({
-    data: { script, filePath: `stories/${fname}` },
-    message: `Saved MulmoScript to stories/${fname}`,
-    instructions: "Display the storyboard to the user.",
-  });
-});
+    const title = script.title || "untitled";
+    const slug = filename ? filename.replace(/\.json$/, "") : slugify(title);
+    const fname = `${slug}-${Date.now()}.json`;
+    const filePath = path.join(storiesDir, fname);
+
+    fs.writeFileSync(filePath, JSON.stringify(script, null, 2));
+
+    res.json({
+      data: { script, filePath: `stories/${fname}` },
+      message: `Saved MulmoScript to stories/${fname}`,
+      instructions: "Display the storyboard to the user.",
+    });
+  },
+);
 
 router.post(
   "/mulmo-script/render-beat",
-  async (req: Request, res: Response) => {
-    const { filePath, beatIndex } = req.body as {
-      filePath: string; // relative to workspacePath, e.g. "stories/my-script-123.json"
-      beatIndex: number;
-    };
+  async (req: Request<object, object, RenderBeatBody>, res: Response) => {
+    const { filePath, beatIndex } = req.body;
 
     if (!filePath || beatIndex === undefined) {
       res.status(400).json({ error: "filePath and beatIndex are required" });

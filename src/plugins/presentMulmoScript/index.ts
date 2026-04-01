@@ -1,10 +1,11 @@
 import type { ToolPlugin } from "../../tools/types";
+import type { MulmoScript } from "mulmocast";
 import toolDefinition, { TOOL_NAME } from "./definition";
 import View from "./View.vue";
 import Preview from "./Preview.vue";
 
 export interface MulmoScriptData {
-  script: Record<string, unknown>;
+  script: MulmoScript;
   filePath: string;
 }
 
