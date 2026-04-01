@@ -44,7 +44,7 @@ Always use Google providers. Required structure:
     {
       "speaker": "Presenter",
       "text": "Chart beat — use for data, comparisons, trends.",
-      "image": { "type": "chart", "title": "Chart Title", "chartData": { "type": "bar", "labels": ["A", "B", "C"], "datasets": [{ "label": "Series", "data": [10, 20, 30] }] } }
+      "image": { "type": "chart", "title": "Chart Title", "chartData": { "type": "bar", "data": { "labels": ["A", "B", "C"], "datasets": [{ "label": "Series", "data": [10, 20, 30] }] } } }
     },
     {
       "speaker": "Presenter",
@@ -69,7 +69,7 @@ Beat visual options (choose one per beat):
 - "moviePrompt": "..."  → top-level string field — AI generates a video clip from the prompt
 - "image": { "type": "textSlide", "slide": { "title", "subtitle"?, "bullets"? } }
 - "image": { "type": "markdown", "markdown": "..." }
-- "image": { "type": "chart", "title": "...", "chartData": { "type": "bar"|"line"|"pie"|..., "labels": [...], "datasets": [...] } }  ← PREFER for data/numbers/comparisons
+- "image": { "type": "chart", "title": "...", "chartData": { "type": "bar"|"line"|"pie"|..., "data": { "labels": [...], "datasets": [...] } } }  ← PREFER for data/numbers/comparisons. chartData is a full Chart.js config: labels/datasets go under "data", not at the top level.
 - "image": { "type": "mermaid", "title": "...", "code": { "kind": "text", "text": "..." } }  ← PREFER for flows/diagrams/relationships
 - "image": { "type": "html_tailwind", "html": "...", "script"?: "..." }  ← PREFER for rich layouts, animations, custom visuals
 

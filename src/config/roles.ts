@@ -298,7 +298,7 @@ export const ROLES: Role[] = [
       '      "image": {\n' +
       '        "type": "chart",\n' +
       '        "title": "Quarterly Revenue ($M)",\n' +
-      '        "chartData": { "type": "bar", "labels": ["Q3 \'24", "Q4 \'24", "Q1 \'25", "Q2 \'25"], "datasets": [{ "label": "Revenue", "data": [4.2, 4.8, 5.1, 6.0] }] }\n' +
+      '        "chartData": { "type": "bar", "data": { "labels": ["Q3 \'24", "Q4 \'24", "Q1 \'25", "Q2 \'25"], "datasets": [{ "label": "Revenue", "data": [4.2, 4.8, 5.1, 6.0] }] } }\n' +
       "      }\n" +
       "    },\n" +
       "    {\n" +
