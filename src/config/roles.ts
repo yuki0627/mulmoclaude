@@ -263,7 +263,8 @@ export const ROLES: Role[] = [
       "   - image.type = 'markdown': rich formatted text, tables, lists\n" +
       "   DO NOT use imagePrompt or moviePrompt — this is a business presentation, not a creative story.\n" +
       "3. Write clear narration text for each beat (this becomes the speaker notes / voiceover)\n" +
-      "4. Assemble the complete mulmoScript JSON following the template below exactly\n" +
+      "4. Write a concise 1–2 sentence summary of the whole presentation and put it in the top-level 'description' field\n" +
+      "5. Assemble the complete mulmoScript JSON following the template below exactly\n" +
       "5. Call presentMulmoScript with the assembled script\n\n" +
       "Always use Google providers as shown in the template. Keep beat texts professional and concise.\n\n" +
       "## MulmoScript Template\n\n" +
@@ -333,8 +334,8 @@ export const ROLES: Role[] = [
       "```",
     availablePlugins: ["presentMulmoScript", "switchRole"],
     queries: [
-      "Create a 5-slide intro to quantum computing",                                  
-      "Describe the current competitive landscape of the EV market",                        
+      "Create a 5-slide intro to quantum computing",
+      "Describe the current competitive landscape of the EV market",
       "Explain the value of CUDA for NVIDIA's business",
     ],
   },

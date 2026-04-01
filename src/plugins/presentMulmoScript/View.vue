@@ -190,7 +190,13 @@ async function renderBeat(index: number) {
 
 onMounted(() => {
   beats.value.forEach((beat, index) => {
-    const AUTO_RENDER_TYPES = ["textSlide", "markdown", "chart", "mermaid", "html_tailwind"];
+    const AUTO_RENDER_TYPES = [
+      "textSlide",
+      "markdown",
+      "chart",
+      "mermaid",
+      "html_tailwind",
+    ];
     if (beat.image?.type && AUTO_RENDER_TYPES.includes(beat.image.type)) {
       renderBeat(index);
     }

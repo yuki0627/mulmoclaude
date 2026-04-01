@@ -80,7 +80,7 @@ IMPORTANT: "imagePrompt" and "moviePrompt" are plain string fields on the beat, 
       script: {
         type: "object",
         description:
-          "Complete MulmoScript JSON. Must include $mulmocast, speechParams, imageParams, movieParams, and beats array.",
+          "Complete MulmoScript JSON. Must include $mulmocast, speechParams, imageParams, movieParams, and beats array. Always populate the top-level 'description' field with a concise 1–2 sentence summary of the presentation.",
         additionalProperties: true,
       },
       filename: {
