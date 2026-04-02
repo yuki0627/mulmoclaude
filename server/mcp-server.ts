@@ -23,6 +23,20 @@ import PresentMulmoScriptDef from "../src/plugins/presentMulmoScript/definition.
 import ManageRolesDef from "../src/plugins/manageRoles/definition.js";
 import type { ToolDefinition } from "gui-chat-protocol";
 
+type JsonRpcId = string | number | null;
+
+interface ToolCallParams {
+  name: string;
+  arguments?: Record<string, unknown>;
+}
+
+interface JsonRpcMessage {
+  jsonrpc: string;
+  id?: JsonRpcId;
+  method: string;
+  params?: ToolCallParams;
+}
+
 const SESSION_ID = process.env.SESSION_ID ?? "";
 const PORT = process.env.PORT ?? "3001";
 const PLUGIN_NAMES = (process.env.PLUGIN_NAMES ?? "")
@@ -192,16 +206,14 @@ process.stdin.on("data", (chunk: Buffer) => {
 
   for (const line of lines) {
     if (!line.trim()) continue;
-    let msg: Record<string, unknown>;
+    let msg: JsonRpcMessage;
     try {
       msg = JSON.parse(line);
     } catch {
       continue;
     }
 
-    const id = msg.id;
-    const method = String(msg.method ?? "");
-    const params = msg.params as Record<string, unknown> | undefined;
+    const { id, method, params } = msg;
 
     if (method === "initialize") {
       respond({
@@ -226,9 +238,9 @@ process.stdin.on("data", (chunk: Buffer) => {
         },
       });
     } else if (method === "tools/call") {
-      const name = String(params?.name ?? "");
-      const toolArgs = (params?.arguments ?? {}) as Record<string, unknown>;
-      handleToolCall(name, toolArgs ?? {})
+      const name = params?.name ?? "";
+      const toolArgs = params?.arguments ?? {};
+      handleToolCall(name, toolArgs)
         .then((text) => {
           respond({
             jsonrpc: "2.0",
