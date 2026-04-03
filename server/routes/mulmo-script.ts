@@ -166,6 +166,65 @@ router.get("/mulmo-script/beat-image", async (req: Request, res: Response) => {
   }
 });
 
+router.get(
+  "/mulmo-script/movie-status",
+  async (req: Request, res: Response) => {
+    const filePath =
+      typeof req.query.filePath === "string" ? req.query.filePath : undefined;
+
+    if (!filePath) {
+      res.status(400).json({ error: "filePath is required" });
+      return;
+    }
+
+    const storiesDir = path.resolve(workspacePath, "stories");
+    const absoluteFilePath = path.resolve(workspacePath, filePath);
+    if (!absoluteFilePath.startsWith(storiesDir + path.sep)) {
+      res.status(400).json({ error: "Invalid filePath" });
+      return;
+    }
+    if (!fs.existsSync(absoluteFilePath)) {
+      res.status(404).json({ error: `File not found: ${filePath}` });
+      return;
+    }
+
+    try {
+      setGraphAILogger(false);
+
+      const files = getFileObject({
+        file: absoluteFilePath,
+        basedir: path.dirname(absoluteFilePath),
+        grouped: true,
+      });
+
+      const context = await initializeContextFromFiles(files, true);
+      if (!context) {
+        res.json({ moviePath: null });
+        return;
+      }
+
+      const outputPath = movieFilePath(context);
+      if (!fs.existsSync(outputPath)) {
+        res.json({ moviePath: null });
+        return;
+      }
+
+      const movieMtime = fs.statSync(outputPath).mtimeMs;
+      const sourceMtime = fs.statSync(absoluteFilePath).mtimeMs;
+      if (movieMtime < sourceMtime) {
+        res.json({ moviePath: null });
+        return;
+      }
+
+      const relPath = path.relative(workspacePath, outputPath);
+      res.json({ moviePath: relPath });
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      res.status(500).json({ error: message });
+    }
+  },
+);
+
 router.post(
   "/mulmo-script/render-beat",
   async (req: Request<object, object, RenderBeatBody>, res: Response) => {

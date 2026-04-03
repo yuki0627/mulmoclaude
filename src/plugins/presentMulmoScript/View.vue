@@ -364,7 +364,7 @@ async function loadExistingBeatImage(index: number) {
   }
 }
 
-onMounted(() => {
+onMounted(async () => {
   beats.value.forEach((beat, index) => {
     const AUTO_RENDER_TYPES = [
       "textSlide",
@@ -379,6 +379,18 @@ onMounted(() => {
       loadExistingBeatImage(index);
     }
   });
+
+  // Check if a up-to-date movie already exists on disk
+  if (filePath.value) {
+    try {
+      const params = new URLSearchParams({ filePath: filePath.value });
+      const res = await fetch(`/api/mulmo-script/movie-status?${params}`);
+      const json = await res.json();
+      if (json.moviePath) moviePath.value = json.moviePath;
+    } catch {
+      // ignore
+    }
+  }
 });
 
 async function generateMovie() {
