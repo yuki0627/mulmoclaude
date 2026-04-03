@@ -12,6 +12,8 @@ import {
   movie,
   movieFilePath,
   setGraphAILogger,
+  addSessionProgressCallback,
+  removeSessionProgressCallback,
   type MulmoScript,
 } from "mulmocast";
 import type { MulmoBeat } from "@mulmocast/types";
@@ -302,6 +304,13 @@ router.post(
       return;
     }
 
+    res.setHeader("Content-Type", "text/event-stream");
+    res.setHeader("Cache-Control", "no-cache");
+    res.setHeader("Connection", "keep-alive");
+
+    const send = (data: unknown) =>
+      res.write(`data: ${JSON.stringify(data)}\n\n`);
+
     try {
       setGraphAILogger(false);
 
@@ -313,26 +322,60 @@ router.post(
 
       const context = await initializeContextFromFiles(files, true);
       if (!context) {
-        res.status(500).json({ error: "Failed to initialize mulmo context" });
+        send({ type: "error", message: "Failed to initialize mulmo context" });
+        res.end();
         return;
       }
 
-      const imagesContext = await images(context);
-      const audioContext = await audio(imagesContext);
-      await movie(audioContext);
+      // Build id → beatIndex map for the progress callback
+      const idToIndex = new Map<string, number>();
+      (context.studio.script.beats as MulmoBeat[]).forEach((beat, index) => {
+        const key = beat.id ?? `__index__${index}`;
+        idToIndex.set(key, index);
+      });
 
-      const outputPath = movieFilePath(audioContext);
-      if (!fs.existsSync(outputPath)) {
-        res.status(500).json({ error: "Movie was not generated" });
-        return;
+      const onProgress = (event: {
+        kind: string;
+        sessionType: string;
+        id?: string;
+        inSession: boolean;
+      }) => {
+        if (
+          event.kind === "beat" &&
+          event.sessionType === "image" &&
+          !event.inSession &&
+          event.id !== undefined
+        ) {
+          const beatIndex = idToIndex.get(event.id);
+          if (beatIndex !== undefined) {
+            send({ type: "beat_image_done", beatIndex });
+          }
+        }
+      };
+
+      addSessionProgressCallback(onProgress);
+      try {
+        const imagesContext = await images(context);
+        const audioContext = await audio(imagesContext);
+        await movie(audioContext);
+
+        const outputPath = movieFilePath(audioContext);
+        if (!fs.existsSync(outputPath)) {
+          send({ type: "error", message: "Movie was not generated" });
+          res.end();
+          return;
+        }
+
+        const relPath = path.relative(workspacePath, outputPath);
+        send({ type: "done", moviePath: relPath });
+      } finally {
+        removeSessionProgressCallback(onProgress);
       }
-
-      // Return path relative to workspace for the download endpoint
-      const relPath = path.relative(workspacePath, outputPath);
-      res.json({ moviePath: relPath });
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
-      res.status(500).json({ error: message });
+      send({ type: "error", message });
+    } finally {
+      res.end();
     }
   },
 );
