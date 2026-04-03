@@ -111,6 +111,61 @@ router.post(
   },
 );
 
+router.get("/mulmo-script/beat-image", async (req: Request, res: Response) => {
+  const filePath =
+    typeof req.query.filePath === "string" ? req.query.filePath : undefined;
+  const beatIndex =
+    typeof req.query.beatIndex === "string"
+      ? parseInt(req.query.beatIndex, 10)
+      : undefined;
+
+  if (!filePath || beatIndex === undefined || isNaN(beatIndex)) {
+    res.status(400).json({ error: "filePath and beatIndex are required" });
+    return;
+  }
+
+  const storiesDir = path.resolve(workspacePath, "stories");
+  const absoluteFilePath = path.resolve(workspacePath, filePath);
+  if (!absoluteFilePath.startsWith(storiesDir + path.sep)) {
+    res.status(400).json({ error: "Invalid filePath" });
+    return;
+  }
+  if (!fs.existsSync(absoluteFilePath)) {
+    res.status(404).json({ error: `File not found: ${filePath}` });
+    return;
+  }
+
+  try {
+    setGraphAILogger(false);
+
+    const files = getFileObject({
+      file: absoluteFilePath,
+      basedir: path.dirname(absoluteFilePath),
+      grouped: true,
+    });
+
+    const context = await initializeContextFromFiles(files, true);
+    if (!context) {
+      res.status(500).json({ error: "Failed to initialize mulmo context" });
+      return;
+    }
+
+    const { imagePath } = getBeatPngImagePath(context, beatIndex);
+
+    if (!fs.existsSync(imagePath)) {
+      res.json({ image: null });
+      return;
+    }
+
+    const imageData = fs.readFileSync(imagePath);
+    const base64 = imageData.toString("base64");
+    res.json({ image: `data:image/png;base64,${base64}` });
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    res.status(500).json({ error: message });
+  }
+});
+
 router.post(
   "/mulmo-script/render-beat",
   async (req: Request<object, object, RenderBeatBody>, res: Response) => {

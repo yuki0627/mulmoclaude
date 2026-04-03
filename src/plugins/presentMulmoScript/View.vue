@@ -151,9 +151,30 @@
                 !renderedImages[index] &&
                 renderState[index] !== 'rendering'
               "
-              class="absolute top-1.5 right-1.5 px-2 py-0.5 text-xs rounded border border-blue-400 text-blue-600 bg-white hover:bg-blue-50"
+              class="absolute top-1.5 right-1.5 flex items-center gap-1 px-2 py-0.5 text-xs rounded border border-blue-400 text-blue-600 bg-white hover:bg-blue-50 disabled:opacity-60 disabled:cursor-not-allowed"
+              :disabled="movieGenerating"
               @click="renderBeat(index)"
             >
+              <svg
+                v-if="movieGenerating"
+                class="animate-spin w-3 h-3"
+                viewBox="0 0 24 24"
+                fill="none"
+              >
+                <circle
+                  class="opacity-25"
+                  cx="12"
+                  cy="12"
+                  r="10"
+                  stroke="currentColor"
+                  stroke-width="4"
+                />
+                <path
+                  class="opacity-75"
+                  fill="currentColor"
+                  d="M4 12a8 8 0 018-8v8H4z"
+                />
+              </svg>
               Generate
             </button>
           </div>
@@ -326,6 +347,23 @@ async function renderBeat(index: number) {
   }
 }
 
+async function loadExistingBeatImage(index: number) {
+  try {
+    const params = new URLSearchParams({
+      filePath: filePath.value,
+      beatIndex: String(index),
+    });
+    const res = await fetch(`/api/mulmo-script/beat-image?${params}`);
+    const json = await res.json();
+    if (json.image) {
+      renderedImages[index] = json.image;
+      renderState[index] = "done";
+    }
+  } catch {
+    // silently ignore — image simply hasn't been generated yet
+  }
+}
+
 onMounted(() => {
   beats.value.forEach((beat, index) => {
     const AUTO_RENDER_TYPES = [
@@ -337,6 +375,8 @@ onMounted(() => {
     ];
     if (beat.image?.type && AUTO_RENDER_TYPES.includes(beat.image.type)) {
       renderBeat(index);
+    } else if (beat.imagePrompt) {
+      loadExistingBeatImage(index);
     }
   });
 });
@@ -353,6 +393,12 @@ async function generateMovie() {
     if (!res.ok || json.error)
       throw new Error(json.error ?? "Generation failed");
     moviePath.value = json.moviePath;
+    // Load images generated during movie production
+    beats.value.forEach((beat, index) => {
+      if (beat.imagePrompt && !renderedImages[index]) {
+        renderBeat(index);
+      }
+    });
   } catch (err) {
     alert(err instanceof Error ? err.message : String(err));
   } finally {
