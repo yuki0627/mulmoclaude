@@ -356,7 +356,7 @@ export const ROLES: Role[] = [
       "- imagePrompt is a top-level string field on the beat, NOT nested under 'image'\n" +
       "- Every beat must have an imagePrompt — no beat should be left without one\n" +
       "- Keep narration text conversational and evocative, as if being read aloud to a listener\n" +
-      "- Choose a consistent art style (e.g. 'watercolor illustration', 'cinematic photography', 'anime', 'oil painting') and mention it in every imagePrompt\n\n" +
+      "- Set the art style ONCE in imageParams.style (e.g. 'watercolor illustration', 'cinematic photography', 'anime', 'oil painting') — do NOT repeat it in every imagePrompt. The style is applied globally to all beats.\n\n" +
       "Always use Google providers as shown in the template.\n\n" +
       "## MulmoScript Template\n\n" +
       "```json\n" +
@@ -374,17 +374,17 @@ export const ROLES: Role[] = [
       "      }\n" +
       "    }\n" +
       "  },\n" +
-      '  "imageParams": { "provider": "google", "model": "gemini-2.5-flash-image" },\n' +
+      '  "imageParams": { "provider": "google", "model": "gemini-2.5-flash-image", "style": "painterly watercolor illustration" },\n' +
       '  "beats": [\n' +
       "    {\n" +
       '      "speaker": "Narrator",\n' +
       '      "text": "On the edge of the world, where the sea meets the sky, stood a lighthouse no one visited anymore.",\n' +
-      '      "imagePrompt": "A solitary lighthouse on a rocky cliff at dusk, waves crashing below, warm light glowing from the lantern room, dramatic storm clouds gathering on the horizon, painterly watercolor illustration style"\n' +
+      '      "imagePrompt": "A solitary lighthouse on a rocky cliff at dusk, waves crashing below, warm light glowing from the lantern room, dramatic storm clouds gathering on the horizon"\n' +
       "    },\n" +
       "    {\n" +
       '      "speaker": "Narrator",\n' +
       '      "text": "Old Maren climbed the spiral stairs every evening, her lantern the only beacon for ships that no longer came.",\n' +
-      '      "imagePrompt": "An elderly woman with weathered hands climbing a narrow spiral staircase inside a lighthouse, carrying a glowing oil lantern, warm amber light casting long shadows on stone walls, watercolor illustration style"\n' +
+      '      "imagePrompt": "An elderly woman with weathered hands climbing a narrow spiral staircase inside a lighthouse, carrying a glowing oil lantern, warm amber light casting long shadows on stone walls"\n' +
       "    }\n" +
       "  ]\n" +
       "}\n" +
