@@ -21,6 +21,12 @@
           <span v-if="script.lang">{{ script.lang }}</span>
           <span v-if="filePath" class="truncate">{{ filePath }}</span>
         </div>
+        <button
+          class="mt-2 px-2 py-1 text-xs rounded border border-gray-300 text-gray-500 hover:bg-gray-50 self-start"
+          @click="toggleScriptSource"
+        >
+          {{ scriptSourceOpen ? "Hide Source <>" : "Show Source <>" }}
+        </button>
       </div>
       <div class="ml-4 shrink-0 flex gap-2">
         <!-- Generate / Download Movie -->
@@ -73,6 +79,17 @@
           Download JSON
         </button>
       </div>
+    </div>
+
+    <!-- Source code panel -->
+    <div v-if="scriptSourceOpen" class="border-b border-gray-100 shrink-0">
+      <textarea
+        :value="scriptSourceText"
+        readonly
+        class="w-full text-xs text-gray-600 bg-gray-50 p-3 font-mono resize-none outline-none"
+        rows="16"
+        spellcheck="false"
+      />
     </div>
 
     <!-- Beat list -->
@@ -235,6 +252,12 @@ const sourceText = reactive<Record<number, string>>({});
 const localOverrides = reactive<Record<number, Beat>>({});
 const movieGenerating = ref(false);
 const moviePath = ref<string | null>(null);
+const scriptSourceOpen = ref(false);
+const scriptSourceText = computed(() => JSON.stringify(script.value, null, 2));
+
+function toggleScriptSource() {
+  scriptSourceOpen.value = !scriptSourceOpen.value;
+}
 
 function effectiveBeat(index: number): Beat {
   return localOverrides[index] ?? beats.value[index] ?? {};
