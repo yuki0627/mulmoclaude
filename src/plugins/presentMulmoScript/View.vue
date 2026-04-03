@@ -103,8 +103,16 @@
               :alt="`Beat ${index + 1}`"
               @click="openLightbox(index)"
             />
+            <button
+              v-if="renderedImages[index] && renderState[index] !== 'rendering'"
+              class="absolute top-1.5 right-1.5 flex items-center gap-1 px-2 py-0.5 text-xs rounded border border-gray-400 text-gray-600 bg-white hover:bg-gray-50 disabled:opacity-60 disabled:cursor-not-allowed"
+              :disabled="movieGenerating"
+              @click.stop="regenerateBeat(index)"
+            >
+              ↺
+            </button>
             <div
-              v-else
+              v-else-if="!renderedImages[index]"
               class="w-full aspect-video flex flex-col items-center justify-center gap-1 p-2"
             >
               <template v-if="renderState[index] === 'rendering'">
@@ -416,6 +424,29 @@ async function renderBeat(index: number) {
     if (!res.ok || json.error) {
       throw new Error(json.error ?? "Render failed");
     }
+    renderedImages[index] = json.image;
+    renderState[index] = "done";
+  } catch (err) {
+    renderErrors[index] = err instanceof Error ? err.message : String(err);
+    renderState[index] = "error";
+  }
+}
+
+async function regenerateBeat(index: number) {
+  delete renderedImages[index];
+  renderState[index] = "rendering";
+  try {
+    const res = await fetch("/api/mulmo-script/render-beat", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        filePath: filePath.value,
+        beatIndex: index,
+        force: true,
+      }),
+    });
+    const json = await res.json();
+    if (!res.ok || json.error) throw new Error(json.error ?? "Render failed");
     renderedImages[index] = json.image;
     renderState[index] = "done";
   } catch (err) {

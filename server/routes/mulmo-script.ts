@@ -38,6 +38,7 @@ interface SaveMulmoScriptBody {
 interface RenderBeatBody {
   filePath: string;
   beatIndex: number;
+  force?: boolean;
 }
 
 interface UpdateBeatBody {
@@ -230,7 +231,7 @@ router.get(
 router.post(
   "/mulmo-script/render-beat",
   async (req: Request<object, object, RenderBeatBody>, res: Response) => {
-    const { filePath, beatIndex } = req.body;
+    const { filePath, beatIndex, force } = req.body;
 
     if (!filePath || beatIndex === undefined) {
       res.status(400).json({ error: "filePath and beatIndex are required" });
@@ -263,7 +264,11 @@ router.post(
         return;
       }
 
-      await generateBeatImage({ index: beatIndex, context });
+      await generateBeatImage({
+        index: beatIndex,
+        context,
+        args: force ? { forceImage: true } : undefined,
+      });
 
       const { imagePath } = getBeatPngImagePath(context, beatIndex);
 
