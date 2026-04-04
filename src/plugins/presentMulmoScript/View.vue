@@ -628,6 +628,7 @@ async function renderBeat(index: number) {
     }
     renderedImages[index] = json.image;
     renderState[index] = "done";
+    refreshMissingCharacterImages();
   } catch (err) {
     renderErrors[index] = err instanceof Error ? err.message : String(err);
     renderState[index] = "error";
@@ -767,6 +768,12 @@ async function loadExistingCharacterImage(key: string) {
   }
 }
 
+function refreshMissingCharacterImages() {
+  characterKeys.value
+    .filter((k) => !charImages[k] && charRenderState[k] !== "rendering")
+    .forEach((k) => loadExistingCharacterImage(k));
+}
+
 async function renderCharacter(key: string, force: boolean) {
   charRenderState[key] = "rendering";
   delete charErrors[key];
@@ -869,6 +876,7 @@ async function generateMovie() {
         const event = JSON.parse(line.slice(6));
         if (event.type === "beat_image_done") {
           loadExistingBeatImage(event.beatIndex);
+          refreshMissingCharacterImages();
         } else if (event.type === "beat_audio_done") {
           loadExistingBeatAudio(event.beatIndex);
         } else if (event.type === "done") {
