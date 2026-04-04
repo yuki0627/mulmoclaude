@@ -9,6 +9,8 @@ import {
   getBeatPngImagePath,
   generateBeatAudio,
   getBeatAudioPathOrUrl,
+  generateReferenceImage,
+  getReferenceImagePath,
   images,
   audio,
   movie,
@@ -18,7 +20,7 @@ import {
   removeSessionProgressCallback,
   type MulmoScript,
 } from "mulmocast";
-import type { MulmoBeat } from "@mulmocast/types";
+import type { MulmoBeat, MulmoImagePromptMedia } from "@mulmocast/types";
 
 const router = Router();
 const storiesDir = path.resolve(workspacePath, "stories");
@@ -455,6 +457,108 @@ router.post(
       send({ type: "error", message: errorMessage(err) });
     } finally {
       res.end();
+    }
+  },
+);
+
+interface CharacterImageQuery {
+  filePath?: string;
+  key?: string;
+}
+
+interface RenderCharacterBody {
+  filePath: string;
+  key: string;
+  force?: boolean;
+}
+
+type CharacterImageResponse = { image: string | null } | ErrorResponse;
+
+router.get(
+  "/mulmo-script/character-image",
+  async (
+    req: Request<object, CharacterImageResponse, object, CharacterImageQuery>,
+    res: Response<CharacterImageResponse>,
+  ) => {
+    const { filePath, key } = req.query;
+
+    if (!filePath || !key) {
+      res.status(400).json({ error: "filePath and key are required" });
+      return;
+    }
+
+    const absoluteFilePath = resolveStoryPath(filePath, res);
+    if (!absoluteFilePath) return;
+
+    try {
+      const context = await buildContext(absoluteFilePath);
+      if (!context) {
+        res.status(500).json({ error: "Failed to initialize mulmo context" });
+        return;
+      }
+
+      const imagePath = getReferenceImagePath(context, key, "png");
+      if (!fs.existsSync(imagePath)) {
+        res.json({ image: null });
+        return;
+      }
+
+      res.json({ image: fileToDataUri(imagePath, "image/png") });
+    } catch (err) {
+      res.status(500).json({ error: errorMessage(err) });
+    }
+  },
+);
+
+router.post(
+  "/mulmo-script/render-character",
+  async (
+    req: Request<object, CharacterImageResponse, RenderCharacterBody>,
+    res: Response<CharacterImageResponse>,
+  ) => {
+    const { filePath, key, force } = req.body;
+
+    if (!filePath || !key) {
+      res.status(400).json({ error: "filePath and key are required" });
+      return;
+    }
+
+    const absoluteFilePath = resolveStoryPath(filePath, res);
+    if (!absoluteFilePath) return;
+
+    try {
+      const context = await buildContext(absoluteFilePath, force);
+      if (!context) {
+        res.status(500).json({ error: "Failed to initialize mulmo context" });
+        return;
+      }
+
+      const images = context.studio.script.imageParams?.images ?? {};
+      const imageEntry = images[key];
+      if (!imageEntry || imageEntry.type !== "imagePrompt") {
+        res.status(400).json({ error: `No imagePrompt entry for key: ${key}` });
+        return;
+      }
+
+      const index = Object.keys(images).indexOf(key);
+      const imagePath = getReferenceImagePath(context, key, "png");
+      fs.mkdirSync(path.dirname(imagePath), { recursive: true });
+
+      await generateReferenceImage({
+        context,
+        key,
+        index,
+        image: imageEntry as MulmoImagePromptMedia,
+        force,
+      });
+      if (!fs.existsSync(imagePath)) {
+        res.status(500).json({ error: "Character image was not generated" });
+        return;
+      }
+
+      res.json({ image: fileToDataUri(imagePath, "image/png") });
+    } catch (err) {
+      res.status(500).json({ error: errorMessage(err) });
     }
   },
 );

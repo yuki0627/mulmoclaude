@@ -85,6 +85,102 @@
       />
     </div>
 
+    <!-- Characters section -->
+    <div
+      v-if="characterKeys.length > 0"
+      class="border-b border-gray-100 shrink-0 px-4 py-3"
+    >
+      <div class="flex items-center justify-between mb-2">
+        <span
+          class="text-xs font-semibold text-gray-500 uppercase tracking-wide"
+          >Characters</span
+        >
+        <button
+          class="px-2 py-0.5 text-xs rounded border border-gray-300 text-gray-500 hover:bg-gray-50 disabled:opacity-50"
+          :disabled="
+            movieGenerating ||
+            characterKeys.every((k) => charRenderState[k] === 'rendering')
+          "
+          @click="generateAllCharacters"
+        >
+          Generate All
+        </button>
+      </div>
+      <div class="flex gap-3 flex-wrap">
+        <div
+          v-for="key in characterKeys"
+          :key="key"
+          class="flex flex-col items-center gap-1 w-24"
+        >
+          <!-- Character thumbnail -->
+          <div
+            class="relative w-24 h-24 rounded-lg border border-gray-200 overflow-hidden bg-gray-50 flex items-center justify-center"
+          >
+            <img
+              v-if="charImages[key]"
+              :src="charImages[key]"
+              class="w-full h-full object-cover cursor-zoom-in"
+              :alt="key"
+              @click="openCharacterLightbox(key)"
+            />
+            <template v-else-if="charRenderState[key] === 'rendering'">
+              <svg
+                class="animate-spin w-4 h-4 text-green-400"
+                viewBox="0 0 24 24"
+                fill="none"
+              >
+                <circle
+                  class="opacity-25"
+                  cx="12"
+                  cy="12"
+                  r="10"
+                  stroke="currentColor"
+                  stroke-width="4"
+                />
+                <path
+                  class="opacity-75"
+                  fill="currentColor"
+                  d="M4 12a8 8 0 018-8v8H4z"
+                />
+              </svg>
+            </template>
+            <template v-else-if="charRenderState[key] === 'error'">
+              <span class="text-xs text-red-400 text-center px-1">{{
+                charErrors[key]
+              }}</span>
+            </template>
+            <template v-else>
+              <span
+                class="text-xs text-gray-300 text-center px-1 leading-tight"
+                >{{ characterPrompt(key) }}</span
+              >
+            </template>
+            <!-- Regenerate button -->
+            <button
+              v-if="charImages[key] && charRenderState[key] !== 'rendering'"
+              class="absolute top-0.5 right-0.5 px-1 py-0.5 text-xs rounded border border-gray-400 text-gray-600 bg-white hover:bg-gray-50"
+              @click.stop="renderCharacter(key, true)"
+            >
+              ↺
+            </button>
+            <!-- Generate button -->
+            <button
+              v-else-if="
+                !charImages[key] && charRenderState[key] !== 'rendering'
+              "
+              class="absolute top-0.5 right-0.5 px-1 py-0.5 text-xs rounded border border-blue-400 text-blue-600 bg-white hover:bg-blue-50"
+              @click.stop="renderCharacter(key, false)"
+            >
+              Gen
+            </button>
+          </div>
+          <span class="text-xs text-gray-600 text-center truncate w-full">{{
+            key
+          }}</span>
+        </div>
+      </div>
+    </div>
+
     <!-- Beat list -->
     <div class="flex-1 overflow-y-auto p-2 space-y-1.5">
       <div
@@ -308,6 +404,7 @@
     >
       <div class="flex items-center gap-4" @click.stop>
         <button
+          v-if="!lightbox.isCharacter"
           class="text-white/60 hover:text-white disabled:opacity-20 text-4xl leading-none"
           :disabled="!hasPrev"
           @click="lightboxMove(-1)"
@@ -341,6 +438,7 @@
           </div>
         </div>
         <button
+          v-if="!lightbox.isCharacter"
           class="text-white/60 hover:text-white disabled:opacity-20 text-4xl leading-none"
           :disabled="!hasNext"
           @click="lightboxMove(1)"
@@ -366,11 +464,21 @@ interface Beat {
   image?: { type: string; [key: string]: unknown };
 }
 
+interface ImageEntry {
+  type: string;
+  prompt?: string;
+  [key: string]: unknown;
+}
+
 interface MulmoScript {
   title?: string;
   description?: string;
   lang?: string;
   beats?: Beat[];
+  imageParams?: {
+    images?: Record<string, ImageEntry>;
+    [key: string]: unknown;
+  };
   [key: string]: unknown;
 }
 
@@ -401,9 +509,27 @@ const audioErrors = reactive<Record<number, string>>({});
 const playingAudio = ref<{ index: number; audio: HTMLAudioElement } | null>(
   null,
 );
-const lightbox = ref<{ src: string; text?: string; index: number } | null>(
-  null,
-);
+const lightbox = ref<{
+  src: string;
+  text?: string;
+  index: number;
+  isCharacter?: boolean;
+} | null>(null);
+
+// Character (imageParams.images) state
+type CharRenderState = "idle" | "rendering" | "done" | "error";
+const charRenderState = reactive<Record<string, CharRenderState>>({});
+const charImages = reactive<Record<string, string>>({});
+const charErrors = reactive<Record<string, string>>({});
+
+const characterKeys = computed(() => {
+  const imgs = script.value.imageParams?.images ?? {};
+  return Object.keys(imgs).filter((k) => imgs[k]?.type === "imagePrompt");
+});
+
+function characterPrompt(key: string): string {
+  return (script.value.imageParams?.images?.[key]?.prompt as string) ?? "";
+}
 
 function openLightbox(index: number) {
   if (playingAudio.value) {
@@ -614,6 +740,60 @@ function playAudio(index: number) {
   audio.play();
 }
 
+function openCharacterLightbox(key: string) {
+  if (playingAudio.value) {
+    playingAudio.value.audio.pause();
+    playingAudio.value = null;
+  }
+  lightbox.value = {
+    src: charImages[key],
+    text: key,
+    index: -1,
+    isCharacter: true,
+  };
+}
+
+async function loadExistingCharacterImage(key: string) {
+  try {
+    const params = new URLSearchParams({ filePath: filePath.value, key });
+    const res = await fetch(`/api/mulmo-script/character-image?${params}`);
+    const json = await res.json();
+    if (json.image) {
+      charImages[key] = json.image;
+      charRenderState[key] = "done";
+    }
+  } catch {
+    // silently ignore
+  }
+}
+
+async function renderCharacter(key: string, force: boolean) {
+  charRenderState[key] = "rendering";
+  delete charErrors[key];
+  try {
+    const res = await fetch("/api/mulmo-script/render-character", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ filePath: filePath.value, key, force }),
+    });
+    const json = await res.json();
+    if (!res.ok || json.error) throw new Error(json.error ?? "Render failed");
+    charImages[key] = json.image;
+    charRenderState[key] = "done";
+  } catch (err) {
+    charErrors[key] = err instanceof Error ? err.message : String(err);
+    charRenderState[key] = "error";
+  }
+}
+
+async function generateAllCharacters() {
+  await Promise.all(
+    characterKeys.value
+      .filter((k) => charRenderState[k] !== "rendering")
+      .map((k) => renderCharacter(k, false)),
+  );
+}
+
 async function initializeScript() {
   // Reset per-script state
   Object.keys(renderState).forEach((k) => delete renderState[+k]);
@@ -625,6 +805,9 @@ async function initializeScript() {
   Object.keys(beatAudios).forEach((k) => delete beatAudios[+k]);
   Object.keys(audioState).forEach((k) => delete audioState[+k]);
   Object.keys(audioErrors).forEach((k) => delete audioErrors[+k]);
+  Object.keys(charRenderState).forEach((k) => delete charRenderState[k]);
+  Object.keys(charImages).forEach((k) => delete charImages[k]);
+  Object.keys(charErrors).forEach((k) => delete charErrors[k]);
   moviePath.value = null;
   scriptSourceOpen.value = false;
 
@@ -643,6 +826,8 @@ async function initializeScript() {
     }
     if (beat.text) loadExistingBeatAudio(index);
   });
+
+  characterKeys.value.forEach((key) => loadExistingCharacterImage(key));
 
   if (filePath.value) {
     try {
