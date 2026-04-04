@@ -105,15 +105,8 @@ router.post(
       return;
     }
 
-    const absoluteFilePath = path.resolve(workspacePath, filePath);
-    if (!absoluteFilePath.startsWith(storiesDir + path.sep)) {
-      res.status(400).json({ error: "Invalid filePath" });
-      return;
-    }
-    if (!fs.existsSync(absoluteFilePath)) {
-      res.status(404).json({ error: `File not found: ${filePath}` });
-      return;
-    }
+    const absoluteFilePath = resolveStoryPath(filePath, res);
+    if (!absoluteFilePath) return;
 
     const script: MulmoScript = JSON.parse(
       fs.readFileSync(absoluteFilePath, "utf-8"),
@@ -146,15 +139,8 @@ router.get(
       return;
     }
 
-    const absoluteFilePath = path.resolve(workspacePath, filePath);
-    if (!absoluteFilePath.startsWith(storiesDir + path.sep)) {
-      res.status(400).json({ error: "Invalid filePath" });
-      return;
-    }
-    if (!fs.existsSync(absoluteFilePath)) {
-      res.status(404).json({ error: `File not found: ${filePath}` });
-      return;
-    }
+    const absoluteFilePath = resolveStoryPath(filePath, res);
+    if (!absoluteFilePath) return;
 
     try {
       const context = await buildContext(absoluteFilePath);
@@ -193,15 +179,8 @@ router.get(
       return;
     }
 
-    const absoluteFilePath = path.resolve(workspacePath, filePath);
-    if (!absoluteFilePath.startsWith(storiesDir + path.sep)) {
-      res.status(400).json({ error: "Invalid filePath" });
-      return;
-    }
-    if (!fs.existsSync(absoluteFilePath)) {
-      res.status(404).json({ error: `File not found: ${filePath}` });
-      return;
-    }
+    const absoluteFilePath = resolveStoryPath(filePath, res);
+    if (!absoluteFilePath) return;
 
     try {
       const context = await buildContext(absoluteFilePath);
@@ -372,15 +351,8 @@ router.post(
       return;
     }
 
-    const absoluteFilePath = path.resolve(workspacePath, filePath);
-    if (!absoluteFilePath.startsWith(storiesDir + path.sep)) {
-      res.status(400).json({ error: "Invalid filePath" });
-      return;
-    }
-    if (!fs.existsSync(absoluteFilePath)) {
-      res.status(404).json({ error: `File not found: ${filePath}` });
-      return;
-    }
+    const absoluteFilePath = resolveStoryPath(filePath, res);
+    if (!absoluteFilePath) return;
 
     try {
       const context = await buildContext(absoluteFilePath, force);
@@ -423,15 +395,8 @@ router.post(
       return;
     }
 
-    const absoluteFilePath = path.resolve(workspacePath, filePath);
-    if (!absoluteFilePath.startsWith(storiesDir + path.sep)) {
-      res.status(400).json({ error: "Invalid filePath" });
-      return;
-    }
-    if (!fs.existsSync(absoluteFilePath)) {
-      res.status(404).json({ error: `File not found: ${filePath}` });
-      return;
-    }
+    const absoluteFilePath = resolveStoryPath(filePath, res);
+    if (!absoluteFilePath) return;
 
     res.setHeader("Content-Type", "text/event-stream");
     res.setHeader("Cache-Control", "no-cache");
@@ -509,15 +474,8 @@ router.get("/mulmo-script/download-movie", (req: Request, res: Response) => {
     return;
   }
 
-  const absolutePath = path.resolve(workspacePath, moviePath);
-  if (!absolutePath.startsWith(storiesDir + path.sep)) {
-    res.status(400).json({ error: "Invalid moviePath" });
-    return;
-  }
-  if (!fs.existsSync(absolutePath)) {
-    res.status(404).json({ error: "Movie file not found" });
-    return;
-  }
+  const absolutePath = resolveStoryPath(moviePath, res);
+  if (!absolutePath) return;
 
   res.download(absolutePath);
 });
