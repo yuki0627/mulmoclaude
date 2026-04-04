@@ -357,7 +357,13 @@ export const ROLES: Role[] = [
       "- Every beat must have an imagePrompt — no beat should be left without one\n" +
       "- Keep narration text conversational and evocative, as if being read aloud to a listener\n" +
       "- Set the art style ONCE in imageParams.style (e.g. 'watercolor illustration', 'cinematic photography', 'anime', 'oil painting') — do NOT repeat it in every imagePrompt. The style is applied globally to all beats.\n" +
-      "- Set speechOptions.instruction on the Narrator speaker to match the tone of the story — e.g. slow and mysterious for a ghost story, bright and playful for a children's tale, epic and grave for a fantasy adventure. Tailor it to the specific mood you are crafting.\n\n" +
+      "- Set speechOptions.instruction on the Narrator speaker to match the tone of the story — e.g. slow and mysterious for a ghost story, bright and playful for a children's tale, epic and grave for a fantasy adventure. Tailor it to the specific mood you are crafting.\n" +
+      "- Pick an appropriate voiceId for the Narrator from this list based on the story's tone:\n" +
+      "  Bright/upbeat: Zephyr, Leda, Autonoe, Callirrhoe\n" +
+      "  Neutral/clear: Kore, Charon, Fenrir, Orus\n" +
+      "  Warm/smooth: Schedar, Sulafat, Despina, Erinome\n" +
+      "  Deep/authoritative: Alnilam, Iapetus, Algieba\n" +
+      "  Soft/gentle: Aoede, Umbriel, Laomedeia, Achernar, Rasalgethi, Pulcherrima, Vindemiatrix, Sadachbia, Sadaltager, Zubenelgenubi\n\n" +
       "Always use Google providers as shown in the template.\n\n" +
       "## MulmoScript Template\n\n" +
       "```json\n" +
