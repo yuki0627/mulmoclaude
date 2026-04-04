@@ -472,6 +472,12 @@ interface RenderCharacterBody {
   force?: boolean;
 }
 
+interface UploadCharacterImageBody {
+  filePath: string;
+  key: string;
+  imageData: string; // base64 data URI
+}
+
 type CharacterImageResponse = { image: string | null } | ErrorResponse;
 
 router.get(
@@ -555,6 +561,44 @@ router.post(
         res.status(500).json({ error: "Character image was not generated" });
         return;
       }
+
+      res.json({ image: fileToDataUri(imagePath, "image/png") });
+    } catch (err) {
+      res.status(500).json({ error: errorMessage(err) });
+    }
+  },
+);
+
+router.post(
+  "/mulmo-script/upload-character-image",
+  async (
+    req: Request<object, CharacterImageResponse, UploadCharacterImageBody>,
+    res: Response<CharacterImageResponse>,
+  ) => {
+    const { filePath, key, imageData } = req.body;
+
+    if (!filePath || !key || !imageData) {
+      res
+        .status(400)
+        .json({ error: "filePath, key, and imageData are required" });
+      return;
+    }
+
+    const absoluteFilePath = resolveStoryPath(filePath, res);
+    if (!absoluteFilePath) return;
+
+    try {
+      const context = await buildContext(absoluteFilePath);
+      if (!context) {
+        res.status(500).json({ error: "Failed to initialize mulmo context" });
+        return;
+      }
+
+      const imagePath = getReferenceImagePath(context, key, "png");
+      fs.mkdirSync(path.dirname(imagePath), { recursive: true });
+
+      const base64 = imageData.replace(/^data:image\/\w+;base64,/, "");
+      fs.writeFileSync(imagePath, Buffer.from(base64, "base64"));
 
       res.json({ image: fileToDataUri(imagePath, "image/png") });
     } catch (err) {

@@ -115,7 +115,11 @@
         >
           <!-- Character thumbnail -->
           <div
-            class="relative w-36 h-36 rounded-lg border border-gray-200 overflow-hidden bg-gray-50 flex items-center justify-center"
+            class="relative w-36 h-36 rounded-lg border overflow-hidden bg-gray-50 flex items-center justify-center transition-colors"
+            :class="charDragOver[key] ? 'border-blue-400 bg-blue-50' : 'border-gray-200'"
+            @dragover="onCharDragOver($event, key)"
+            @dragleave="onCharDragLeave(key)"
+            @drop="onCharDrop($event, key)"
           >
             <img
               v-if="charImages[key]"
@@ -156,6 +160,13 @@
                 >{{ characterPrompt(key) }}</span
               >
             </template>
+            <!-- Drop overlay -->
+            <div
+              v-if="charDragOver[key]"
+              class="absolute inset-0 flex items-center justify-center bg-blue-50/80 pointer-events-none"
+            >
+              <span class="text-xs text-blue-500 font-medium">Drop</span>
+            </div>
             <!-- Regenerate button -->
             <button
               v-if="charImages[key] && charRenderState[key] !== 'rendering'"
@@ -558,6 +569,7 @@ type CharRenderState = "idle" | "rendering" | "done" | "error";
 const charRenderState = reactive<Record<string, CharRenderState>>({});
 const charImages = reactive<Record<string, string>>({});
 const charErrors = reactive<Record<string, string>>({});
+const charDragOver = reactive<Record<string, boolean>>({});
 
 const anyBeatRendering = computed(() =>
   Object.values(renderState).some((s) => s === "rendering"),
@@ -780,6 +792,47 @@ function playAudio(index: number) {
     }
   });
   audio.play();
+}
+
+function onCharDragOver(event: DragEvent, key: string) {
+  if (!event.dataTransfer?.types.includes("Files")) return;
+  event.preventDefault();
+  charDragOver[key] = true;
+}
+
+function onCharDragLeave(key: string) {
+  charDragOver[key] = false;
+}
+
+async function onCharDrop(event: DragEvent, key: string) {
+  event.preventDefault();
+  charDragOver[key] = false;
+  const file = event.dataTransfer?.files[0];
+  if (!file || !file.type.startsWith("image/")) return;
+
+  charRenderState[key] = "rendering";
+  delete charErrors[key];
+  try {
+    const imageData = await new Promise<string>((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(reader.result as string);
+      reader.onerror = reject;
+      reader.readAsDataURL(file);
+    });
+
+    const res = await fetch("/api/mulmo-script/upload-character-image", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ filePath: filePath.value, key, imageData }),
+    });
+    const json = await res.json();
+    if (!res.ok || json.error) throw new Error(json.error ?? "Upload failed");
+    charImages[key] = json.image;
+    charRenderState[key] = "done";
+  } catch (err) {
+    charErrors[key] = err instanceof Error ? err.message : String(err);
+    charRenderState[key] = "error";
+  }
 }
 
 function openCharacterLightbox(key: string) {
