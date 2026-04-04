@@ -219,10 +219,15 @@
                 </template>
                 <button
                   v-else-if="beatAudios[index]"
-                  class="text-xs px-2 py-0.5 rounded border border-green-400 text-green-600 hover:bg-green-50"
+                  class="text-xs px-2 py-0.5 rounded border"
+                  :class="
+                    playingAudio?.index === index
+                      ? 'border-red-400 text-red-600 hover:bg-red-50'
+                      : 'border-green-400 text-green-600 hover:bg-green-50'
+                  "
                   @click="playAudio(index)"
                 >
-                  ▶ Play
+                  {{ playingAudio?.index === index ? "■ Stop" : "▶ Play" }}
                 </button>
                 <template v-else-if="audioErrors[index]">
                   <span class="text-xs text-red-400" :title="audioErrors[index]"
@@ -386,6 +391,9 @@ const audioState = reactive<Record<number, "generating" | "done" | "error">>(
   {},
 );
 const audioErrors = reactive<Record<number, string>>({});
+const playingAudio = ref<{ index: number; audio: HTMLAudioElement } | null>(
+  null,
+);
 const lightbox = ref<{ src: string; text?: string; index: number } | null>(
   null,
 );
@@ -567,9 +575,20 @@ async function generateAudio(index: number) {
 }
 
 function playAudio(index: number) {
+  if (playingAudio.value) {
+    playingAudio.value.audio.pause();
+    const wasIndex = playingAudio.value.index;
+    playingAudio.value = null;
+    if (wasIndex === index) return;
+  }
   const src = beatAudios[index];
   if (!src) return;
-  new Audio(src).play();
+  const audio = new Audio(src);
+  playingAudio.value = { index, audio };
+  audio.addEventListener("ended", () => {
+    if (playingAudio.value?.index === index) playingAudio.value = null;
+  });
+  audio.play();
 }
 
 async function initializeScript() {
