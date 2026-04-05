@@ -118,9 +118,20 @@ Plugin location: `src/plugins/wiki/`
 
 ### Phase 3 — Cross-Role Wiki Awareness
 
-Inject a compact summary from `wiki/index.md` into every role's system prompt context so all roles (Tutor, Trip Planner, Brainstorm, etc.) can draw from accumulated personal knowledge.
+Add a one-line wiki hint to all role system prompts so Claude proactively consults the wiki when relevant, without bloating prompts with index content.
 
-Implementation: server reads `workspace/wiki/index.md` at query time and appends it to the system prompt if the file exists and is non-empty. This is ambient — no role needs to opt in.
+**Why not inject index.md?** A mature wiki can reach 100+ pages (5–10 KB of table text). Injecting that into every role's system prompt — including Game, Artist, Musician — wastes tokens, slows responses, and provides no value to roles that never need it.
+
+**Approach**: Two changes to `server/agent.ts`:
+
+1. If `wiki/index.md` exists in the workspace, append a single line to every role's system prompt:
+   ```
+   A personal knowledge wiki is available at wiki/. Read wiki/index.md when the user's request may benefit from prior accumulated research.
+   ```
+
+2. If `wiki/summary.md` exists, append its full contents instead of the one-liner. The Wiki Manager role maintains this file as a compact (≤20 line) human-readable summary of key topics — written specifically for ambient injection.
+
+This keeps all role prompts small. Claude decides on demand whether to consult the wiki. The `wiki/summary.md` file is optional but gives Claude richer ambient context when the wiki owner chooses to maintain it.
 
 ---
 
@@ -132,7 +143,7 @@ Implementation: server reads `workspace/wiki/index.md` at query time and appends
 |---|---|---|
 | Scope | Brief distilled facts always loaded | Deep structured knowledge, loaded on demand |
 | Authored by | Claude (distillation) | Claude (wiki maintenance) |
-| Consumed by | All roles (always in context) | Researcher role + cross-role index summary |
+| Consumed by | All roles (always in context) | Wiki Manager directly; all roles via one-line hint or `wiki/summary.md` |
 | Growth | Intentionally small | Grows unboundedly |
 
 Over time, Claude can distill key insights from the wiki back into `memory.md` as a compact ambient context for all roles.

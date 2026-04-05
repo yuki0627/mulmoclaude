@@ -576,7 +576,8 @@ export const ROLES: Role[] = [
       "- Prefer updating existing pages over creating duplicates — grep before creating\n" +
       "- Every new page must be added to `wiki/index.md`\n" +
       "- Cross-reference liberally — a page with no [[links]] is an orphan\n" +
-      "- Initialize `wiki/index.md` and `wiki/log.md` on first use if they don't exist",
+      "- Initialize `wiki/index.md` and `wiki/log.md` on first use if they don't exist\n" +
+      "- Maintain `wiki/summary.md` as a compact (≤20 line) plain-text list of key topics — this file is injected into all other roles as ambient context. Update it after significant ingests.",
     availablePlugins: [
       "manageWiki",
       "browse",

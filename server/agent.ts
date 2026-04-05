@@ -1,4 +1,5 @@
 import { spawn } from "child_process";
+import { existsSync, readFileSync } from "fs";
 import { writeFile, unlink } from "fs/promises";
 import { tmpdir } from "os";
 import { join } from "path";
@@ -56,6 +57,22 @@ const MCP_PLUGINS = new Set([
   "manageWiki",
 ]);
 
+function buildWikiContext(workspacePath: string): string | null {
+  const summaryPath = join(workspacePath, "wiki", "summary.md");
+  const indexPath = join(workspacePath, "wiki", "index.md");
+
+  if (existsSync(summaryPath)) {
+    const summary = readFileSync(summaryPath, "utf-8").trim();
+    if (summary) return `## Wiki Summary\n\n${summary}`;
+  }
+
+  if (existsSync(indexPath)) {
+    return "A personal knowledge wiki is available in the workspace. Layout: wiki/index.md (page catalog), wiki/pages/<slug>.md (individual pages), wiki/log.md (activity log). Read wiki/index.md first, then read the relevant page from wiki/pages/ when the user's request may benefit from prior accumulated research.";
+  }
+
+  return null;
+}
+
 export async function* runAgent(
   message: string,
   role: Role,
@@ -64,10 +81,12 @@ export async function* runAgent(
   port: number,
   claudeSessionId?: string,
 ): AsyncGenerator<AgentEvent> {
+  const wikiContext = buildWikiContext(workspacePath);
   const systemPrompt = [
     role.prompt,
     `Workspace directory: ${workspacePath}`,
     `Today's date: ${new Date().toISOString().split("T")[0]}`,
+    ...(wikiContext ? [wikiContext] : []),
   ].join("\n\n");
 
   const activePlugins = role.availablePlugins.filter((p) => MCP_PLUGINS.has(p));

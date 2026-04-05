@@ -172,18 +172,28 @@ router.post(
         const resolvedTitle = filePath
           ? path.basename(filePath, ".md")
           : pageName;
+        const found = !!content;
         res.json({
           data: {
             action,
             title: resolvedTitle,
             content,
             pageName: resolvedTitle,
+            error: found ? undefined : `Page not found: ${pageName}`,
           },
-          message: content
+          message: found
             ? `Showing page: ${resolvedTitle}`
             : `Page not found: ${pageName}`,
           title: resolvedTitle,
-          instructions: "The wiki page is now displayed on the canvas.",
+          instructions: found
+            ? "The wiki page is now displayed on the canvas."
+            : `Page not found: wiki/pages/${pageName
+                .toLowerCase()
+                .replace(/\s+/g, "-")
+                .replace(
+                  /[^a-z0-9-]/g,
+                  "",
+                )}.md does not exist. You can create it or check the slug in wiki/index.md.`,
           updating: true,
         });
         return;
@@ -265,7 +275,10 @@ router.post(
               ? "Wiki is healthy"
               : `${issues.length} issue(s) found`,
           title: "Wiki Lint Report",
-          instructions: "The lint report is now displayed on the canvas.",
+          instructions:
+            issues.length === 0
+              ? "Wiki is healthy — no issues found."
+              : `${issues.length} issue(s) found that need fixing:\n${issues.join("\n")}`,
           updating: true,
         });
         return;
