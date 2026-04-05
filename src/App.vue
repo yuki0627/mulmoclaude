@@ -360,11 +360,36 @@ const rightSidebarRef = ref<InstanceType<typeof RightSidebar> | null>(null);
 
 const availableTools = computed(() => currentRole.value.availablePlugins);
 
-const pendingCalls = computed(() =>
-  toolCallHistory.value.filter(
-    (c) => c.result === undefined && c.error === undefined,
-  ),
-);
+const PENDING_MIN_MS = 500;
+const displayTick = ref(0);
+let tickInterval: ReturnType<typeof setInterval> | null = null;
+
+watch(isRunning, (running) => {
+  if (running) {
+    tickInterval = setInterval(() => {
+      displayTick.value++;
+    }, 50);
+  } else {
+    if (tickInterval !== null) {
+      clearInterval(tickInterval);
+      tickInterval = null;
+      // One final tick so the computed clears after the minimum duration
+      setTimeout(() => {
+        displayTick.value++;
+      }, PENDING_MIN_MS);
+    }
+  }
+});
+
+const pendingCalls = computed(() => {
+  void displayTick.value; // reactive dependency on tick
+  const now = Date.now();
+  return toolCallHistory.value.filter(
+    (c) =>
+      (c.result === undefined && c.error === undefined) ||
+      now < c.timestamp + PENDING_MIN_MS,
+  );
+});
 
 const toolDescriptions = computed(() => {
   const map: Record<string, string> = {};
@@ -647,5 +672,6 @@ onMounted(async () => {
 
 onUnmounted(() => {
   window.removeEventListener("roles-updated", refreshRoles);
+  if (tickInterval !== null) clearInterval(tickInterval);
 });
 </script>
