@@ -15,7 +15,40 @@
         </button>
         <h2 class="text-lg font-semibold text-gray-800">{{ title }}</h2>
       </div>
-      <div class="flex gap-1">
+      <div class="flex gap-1 items-center">
+        <template v-if="action === 'page' && content">
+          <button
+            class="px-3 py-1 text-xs rounded-full border transition-colors border-gray-200 text-gray-500 hover:bg-gray-50 disabled:opacity-40 w-16 flex items-center justify-center gap-1"
+            :disabled="pdfDownloading"
+            @click="downloadPdf"
+          >
+            <svg
+              v-if="pdfDownloading"
+              class="animate-spin w-3 h-3 shrink-0"
+              viewBox="0 0 24 24"
+              fill="none"
+            >
+              <circle
+                class="opacity-25"
+                cx="12"
+                cy="12"
+                r="10"
+                stroke="currentColor"
+                stroke-width="4"
+              />
+              <path
+                class="opacity-75"
+                fill="currentColor"
+                d="M4 12a8 8 0 018-8v8H4z"
+              />
+            </svg>
+            <span v-else>↓ PDF</span>
+            <span v-if="pdfDownloading">PDF</span>
+          </button>
+          <span v-if="pdfError" class="text-xs text-red-500" :title="pdfError"
+            >⚠ PDF failed</span
+          >
+        </template>
         <button
           class="px-3 py-1 text-xs rounded-full border transition-colors"
           :class="
@@ -129,6 +162,8 @@ const renderedContent = computed(() => {
 });
 
 const navError = ref<string | null>(null);
+const pdfDownloading = ref(false);
+const pdfError = ref<string | null>(null);
 
 async function callApi(body: Record<string, unknown>) {
   navError.value = null;
@@ -165,6 +200,40 @@ function navigate(newAction: string) {
 
 function navigatePage(pageName: string) {
   callApi({ action: "page", pageName });
+}
+
+async function downloadPdf() {
+  pdfError.value = null;
+  pdfDownloading.value = true;
+  let response: Response;
+  try {
+    response = await fetch("/api/pdf/markdown", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        markdown: content.value,
+        filename: `${title.value}.pdf`,
+      }),
+    });
+  } catch (err) {
+    pdfError.value = err instanceof Error ? err.message : String(err);
+    pdfDownloading.value = false;
+    return;
+  }
+  if (!response.ok) {
+    const text = await response.text().catch(() => "");
+    pdfError.value = `PDF error ${response.status}: ${text}`;
+    pdfDownloading.value = false;
+    return;
+  }
+  const blob = await response.blob();
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = `${title.value}.pdf`;
+  a.click();
+  URL.revokeObjectURL(url);
+  pdfDownloading.value = false;
 }
 
 function handleContentClick(e: MouseEvent) {

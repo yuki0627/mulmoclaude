@@ -596,7 +596,6 @@ const lightbox = ref<{
   index: number;
   isCharacter?: boolean;
 } | null>(null);
-
 // Character (imageParams.images) state
 type CharRenderState = "idle" | "rendering" | "done" | "error";
 const charRenderState = reactive<Record<string, CharRenderState>>({});
