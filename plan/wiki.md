@@ -118,20 +118,25 @@ Plugin location: `src/plugins/wiki/`
 
 ### Phase 3 — Cross-Role Wiki Awareness
 
-Add a one-line wiki hint to all role system prompts so Claude proactively consults the wiki when relevant, without bloating prompts with index content.
+Add a compact wiki hint to all role system prompts so Claude proactively consults and contributes to the wiki when relevant, without bloating prompts with index content.
 
 **Why not inject index.md?** A mature wiki can reach 100+ pages (5–10 KB of table text). Injecting that into every role's system prompt — including Game, Artist, Musician — wastes tokens, slows responses, and provides no value to roles that never need it.
 
-**Approach**: Two changes to `server/agent.ts`:
+**Approach**: `server/agent.ts` appends a wiki context block to every role's system prompt when the wiki exists:
 
-1. If `wiki/index.md` exists in the workspace, append a single line to every role's system prompt:
-   ```
-   A personal knowledge wiki is available at wiki/. Read wiki/index.md when the user's request may benefit from prior accumulated research.
-   ```
+1. **Read hint** (always, if `wiki/index.md` exists): one sentence describing the layout so Claude can navigate to `wiki/pages/<slug>.md` correctly.
 
-2. If `wiki/summary.md` exists, append its full contents instead of the one-liner. The Wiki Manager role maintains this file as a compact (≤20 line) human-readable summary of key topics — written specifically for ambient injection.
+2. **Write hint** (always, if `wiki/SCHEMA.md` exists): one sentence pointing to `wiki/SCHEMA.md` so any role can self-serve the conventions (page format, index update rule, log rule) before writing. This is the "schema" layer from Karpathy's design.
 
-This keeps all role prompts small. Claude decides on demand whether to consult the wiki. The `wiki/summary.md` file is optional but gives Claude richer ambient context when the wiki owner chooses to maintain it.
+3. **Summary** (if `wiki/summary.md` exists): the file's full contents replace the read hint, giving richer ambient context. The Wiki Manager maintains this as a compact (≤20 line) key-topics list.
+
+**`wiki/SCHEMA.md`**: Created and owned by the Wiki Manager on first ingest. Covers:
+- Page format (YAML frontmatter + `[[wiki links]]`)
+- Slug naming convention
+- Index table format and update rule
+- Log append rule
+
+This lets any role contribute a well-formed page — e.g. the Tutor learns something worth keeping and writes it correctly — without carrying the full Wiki Manager system prompt.
 
 ---
 

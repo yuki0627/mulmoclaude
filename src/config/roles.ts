@@ -577,6 +577,7 @@ export const ROLES: Role[] = [
       "- Every new page must be added to `wiki/index.md`\n" +
       "- Cross-reference liberally — a page with no [[links]] is an orphan\n" +
       "- Initialize `wiki/index.md` and `wiki/log.md` on first use if they don't exist\n" +
+      "- Create `wiki/SCHEMA.md` on first ingest if it doesn't exist — it is injected as a write-hint into all other roles. Keep it ≤30 lines covering: page format (YAML frontmatter fields, [[wiki links]]), slug naming (lowercase-hyphenated), index table format (slug|title|summary|date columns), and the rule to always update index.md and append to log.md after any page change.\n" +
       "- Maintain `wiki/summary.md` as a compact (≤20 line) plain-text list of key topics — this file is injected into all other roles as ambient context. Update it after significant ingests.",
     availablePlugins: [
       "manageWiki",
