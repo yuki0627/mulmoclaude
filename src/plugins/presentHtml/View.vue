@@ -34,7 +34,9 @@ import { computed, ref } from "vue";
 import type { ToolResultComplete } from "gui-chat-protocol/vue";
 import type { PresentHtmlData } from "./index";
 
-const props = defineProps<{ selectedResult: ToolResultComplete<PresentHtmlData> }>();
+const props = defineProps<{
+  selectedResult: ToolResultComplete<PresentHtmlData>;
+}>();
 
 const data = computed(() => props.selectedResult.data);
 const html = computed(() => data.value?.html ?? "");
