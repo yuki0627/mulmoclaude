@@ -11,8 +11,6 @@ import { TOOL_DEFINITION as GenerateImageDef } from "@mulmochat-plugin/generate-
 import { TOOL_DEFINITION as QuizDef } from "@mulmochat-plugin/quiz";
 import { TOOL_DEFINITION as FormDef } from "@mulmochat-plugin/form";
 import { TOOL_DEFINITION as CanvasDef } from "@gui-chat-plugin/canvas";
-import { TOOL_DEFINITION as GenerateHtmlDef } from "@gui-chat-plugin/generate-html";
-import { TOOL_DEFINITION as EditHtmlDef } from "@gui-chat-plugin/edit-html";
 import { TOOL_DEFINITION as EditImageDef } from "@gui-chat-plugin/edit-image";
 import { TOOL_DEFINITION as Present3DDef } from "@gui-chat-plugin/present3d";
 import { TOOL_DEFINITION as OthelloDef } from "@gui-chat-plugin/othello";
@@ -22,6 +20,7 @@ import SchedulerDef from "../src/plugins/scheduler/definition.js";
 import PresentMulmoScriptDef from "../src/plugins/presentMulmoScript/definition.js";
 import ManageRolesDef from "../src/plugins/manageRoles/definition.js";
 import WikiDef from "../src/plugins/wiki/definition.js";
+import PresentHtmlDef from "../src/plugins/presentHtml/definition.js";
 import type { ToolDefinition } from "gui-chat-protocol";
 
 type JsonRpcId = string | number | null;
@@ -76,8 +75,7 @@ const TOOL_ENDPOINTS: Record<string, string> = {
   [QuizDef.name]: "/api/quiz",
   [FormDef.name]: "/api/form",
   [CanvasDef.name]: "/api/canvas",
-  [GenerateHtmlDef.name]: "/api/generate-html",
-  [EditHtmlDef.name]: "/api/edit-html",
+  [PresentHtmlDef.name]: "/api/present-html",
   [EditImageDef.name]: "/api/edit-image",
   [Present3DDef.name]: "/api/present3d",
   [OthelloDef.name]: "/api/othello",
@@ -100,8 +98,7 @@ const ALL_TOOLS: Record<string, ToolDef> = {
       QuizDef,
       FormDef,
       CanvasDef,
-      GenerateHtmlDef,
-      EditHtmlDef,
+      PresentHtmlDef,
       EditImageDef,
       Present3DDef,
       OthelloDef,

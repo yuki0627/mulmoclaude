@@ -30,6 +30,7 @@ export const ROLES: Role[] = [
       "manageWiki",
       "presentDocument",
       "createMindMap",
+      "presentHtml",
       "switchRole",
     ],
     queries: [
@@ -47,7 +48,10 @@ export const ROLES: Role[] = [
     icon: "business_center",
     prompt:
       "You are a professional office assistant. Create and edit documents, spreadsheets, and presentations. Read existing files in the workspace for context.\n\n" +
-      "For multi-slide presentations, use presentMulmoScript. Follow the template and rules in helps/business.md exactly.",
+      "For multi-slide presentations, use presentMulmoScript. Follow the template and rules in helps/business.md exactly.\n\n" +
+      "Use presentHtml for rich interactive output such as dashboards, reports with live controls, or data visualizations. Recommended libraries (load via CDN):\n" +
+      "- **UI / layout**: Tailwind CSS — https://cdn.tailwindcss.com\n" +
+      "- **Data visualization**: D3.js — https://cdnjs.cloudflare.com/ajax/libs/d3/7.8.5/d3.min.js",
     availablePlugins: [
       "presentDocument",
       "presentSpreadsheet",
@@ -55,12 +59,15 @@ export const ROLES: Role[] = [
       "presentMulmoScript",
       "createMindMap",
       "generateImage",
+      "presentHtml",
       "switchRole",
     ],
     queries: [
       "Show me the discount cash flow analysis of monthly income of $10,000 for two years. Make it possible to change the discount rate and monthly income.",
       "Write a one-page business report on the pros and cons of remote work.",
       "Create a 5-slide presentation on the current state of AI in business.",
+      "Fetch AAPL's revenue and net profit for the last several quarters and visualize the trends using D3.js.",
+      "Fetch NVDA's latest financial data and present it as a modern financial infographic with a left-to-right Sankey diagram using D3.js.",
     ],
   },
   {
@@ -115,18 +122,22 @@ export const ROLES: Role[] = [
     name: "Artist",
     icon: "palette",
     prompt:
-      "You are a creative visual artist assistant. Help users generate and edit images, and work on visual compositions on the canvas. Use generateImage to create new images from descriptions, editImage to modify existing images, and openCanvas to set up a visual workspace.",
+      "You are a creative visual artist assistant. Help users generate and edit images, work on visual compositions on the canvas, and create interactive generative art.\n\n" +
+      "Use generateImage to create new images from descriptions, editImage to modify existing images, and openCanvas to set up a visual workspace.\n\n" +
+      'Use presentHtml for interactive and generative art — p5.js is an excellent choice for sketches, animations, particle systems, and algorithmic visuals. Load it via CDN: <script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.9.4/p5.min.js"></script>. Always make the canvas fill the full viewport (createCanvas(windowWidth, windowHeight)) and call windowResized() to handle resize.',
     availablePlugins: [
       "generateImage",
       "editImage",
       "openCanvas",
       "present3D",
+      "presentHtml",
       "switchRole",
     ],
     queries: [
       "Open canvas",
       "Turn this drawing into Ghibli style image",
       "Generate an image of a big fat cat",
+      "Simulate 100 fish boids using p5.js — they should flock together but avoid the mouse cursor",
     ],
   },
   {
@@ -134,13 +145,18 @@ export const ROLES: Role[] = [
     name: "Game",
     icon: "sports_esports",
     prompt:
-      "You are a game companion. Play Othello/Reversi with the user. " +
-      "When starting a new game, ask the user if they want to go first or second, then call playOthello with action='new_game' and firstPlayer='user' or firstPlayer='computer' accordingly. " +
-      "Make your own moves as the computer player, and display the board after every action.",
-    availablePlugins: ["playOthello", "switchRole"],
+      "You are a game companion. You can play Othello/Reversi with the user, and you can also build browser games using presentHtml.\n\n" +
+      "When playing Othello: ask the user if they want to go first or second, then call playOthello with action='new_game' and firstPlayer='user' or firstPlayer='computer' accordingly. Make your own moves as the computer player, and display the board after every action.\n\n" +
+      "When building games with presentHtml, choose the right library for the job:\n" +
+      "- **2D games**: Phaser 3 (via CDN: https://cdnjs.cloudflare.com/ajax/libs/phaser/3.60.0/phaser.min.js) — great for platformers, arcade games, tile-based games, and sprite animation. Scale the game to fill the full window using Phaser's Scale Manager (mode: Phaser.Scale.RESIZE).\n" +
+      "- **3D games**: Three.js (via CDN: https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js) — great for 3D environments, first-person views, and 3D physics scenes. Always make the renderer fill the full viewport and handle window resize.\n\n" +
+      "Always produce a complete, self-contained HTML page with all logic inline.",
+    availablePlugins: ["playOthello", "presentHtml", "switchRole"],
     queries: [
       "Let's play Othello. I'll go first.",
       "Let's play Othello. You'll go first",
+      "Build a 2D side-scrolling platformer game with Phaser where I collect coins and avoid enemies",
+      "Build a 3D first-person maze game with Three.js where I navigate through a dungeon",
     ],
   },
   {

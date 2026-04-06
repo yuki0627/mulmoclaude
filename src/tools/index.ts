@@ -8,8 +8,6 @@ import GenerateImagePlugin from "@mulmochat-plugin/generate-image/vue";
 import QuizPlugin from "@mulmochat-plugin/quiz/vue";
 import FormPlugin from "@mulmochat-plugin/form/vue";
 import CanvasPlugin from "@gui-chat-plugin/canvas/vue";
-import GenerateHtmlPlugin from "@gui-chat-plugin/generate-html/vue";
-import EditHtmlPlugin from "@gui-chat-plugin/edit-html/vue";
 import EditImagePlugin from "@gui-chat-plugin/edit-image/vue";
 import MusicPlugin from "@gui-chat-plugin/music/vue";
 import OthelloPlugin from "@gui-chat-plugin/othello/vue";
@@ -21,6 +19,7 @@ import schedulerPlugin from "../plugins/scheduler/index";
 import manageRolesPlugin from "../plugins/manageRoles/index";
 import wikiPlugin from "../plugins/wiki/index";
 import presentMulmoScriptPlugin from "../plugins/presentMulmoScript/index";
+import presentHtmlPlugin from "../plugins/presentHtml/index";
 
 const plugins: Record<string, PluginEntry> = {
   "text-response": {
@@ -39,8 +38,7 @@ const plugins: Record<string, PluginEntry> = {
   putQuestions: QuizPlugin.plugin,
   presentForm: FormPlugin.plugin,
   openCanvas: CanvasPlugin.plugin,
-  generateHtml: GenerateHtmlPlugin.plugin,
-  editHtml: EditHtmlPlugin.plugin,
+  presentHtml: presentHtmlPlugin,
   editImage: EditImagePlugin.plugin,
   showMusic: MusicPlugin.plugin,
   playOthello: OthelloPlugin.plugin,
