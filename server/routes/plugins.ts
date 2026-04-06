@@ -66,12 +66,13 @@ async function fillImagePlaceholders(markdown: string): Promise<string> {
 interface PresentDocumentBody {
   title: string;
   markdown: string;
+  filenameHint?: string;
 }
 
 interface PresentDocumentResponse {
   message: string;
   title: string;
-  data: { markdown: string };
+  data: { markdown: string; filenameHint?: string };
 }
 
 router.post(
@@ -80,12 +81,12 @@ router.post(
     req: Request<object, unknown, PresentDocumentBody>,
     res: Response<PresentDocumentResponse>,
   ) => {
-    const { title, markdown } = req.body;
+    const { title, markdown, filenameHint } = req.body;
     const filledMarkdown = await fillImagePlaceholders(markdown);
     res.json({
       message: `Document "${title}" is ready.`,
       title,
-      data: { markdown: filledMarkdown },
+      data: { markdown: filledMarkdown, filenameHint },
     });
   },
 );

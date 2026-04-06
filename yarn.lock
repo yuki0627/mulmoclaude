@@ -468,10 +468,10 @@
   dependencies:
     gui-chat-protocol "^0.0.3"
 
-"@gui-chat-plugin/markdown@^0.0.3":
-  version "0.0.3"
-  resolved "https://registry.yarnpkg.com/@gui-chat-plugin/markdown/-/markdown-0.0.3.tgz#ad8c0ae985608deadf888aeb4dba6896591735fb"
-  integrity sha512-mZai/dkjSgUeMVK7UfB4bGeFZOA9vGza0QUZiJtxYbGdRMPHmgjOcIQNLp7U1e29Aa+sbtUFx7Y+iCgqegL/aQ==
+"@gui-chat-plugin/markdown@0.1.0":
+  version "0.1.0"
+  resolved "https://registry.yarnpkg.com/@gui-chat-plugin/markdown/-/markdown-0.1.0.tgz#23e129168ab25e20922cc1fd4a02000d18e41fd3"
+  integrity sha512-pHgx2Hj9oij+nPLtrVbmdcP0XnyHKKS8+7ww18RZYHbQDW3Slg7MHIAPzHC0KtO3Z4dO90hT+NNkuZGzVWWhTw==
   dependencies:
     gui-chat-protocol "^0.0.4"
     marked "^17.0.5"
