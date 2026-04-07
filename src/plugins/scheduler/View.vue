@@ -2,16 +2,66 @@
   <div class="h-full bg-white flex flex-col">
     <!-- Header -->
     <div
-      class="flex items-center justify-between px-6 py-4 border-b border-gray-100"
+      class="flex items-center justify-between px-6 py-3 border-b border-gray-100"
     >
-      <h2 class="text-lg font-semibold text-gray-800">Scheduler</h2>
-      <span class="text-sm text-gray-500"
-        >{{ items.length }} item{{ items.length !== 1 ? "s" : "" }}</span
-      >
+      <div class="flex items-center gap-3">
+        <h2 class="text-lg font-semibold text-gray-800">Scheduler</h2>
+        <span class="text-sm text-gray-500"
+          >{{ items.length }} item{{ items.length !== 1 ? "s" : "" }}</span
+        >
+      </div>
+      <div class="flex items-center gap-2">
+        <!-- Navigation (calendar modes only) -->
+        <template v-if="viewMode !== 'list'">
+          <button
+            class="px-2 py-1 text-sm text-gray-500 hover:text-gray-800 hover:bg-gray-100 rounded"
+            title="Previous"
+            @click="goPrev"
+          >
+            <span class="material-icons text-sm">chevron_left</span>
+          </button>
+          <button
+            class="px-2 py-1 text-xs text-gray-600 hover:bg-gray-100 rounded"
+            title="Go to today"
+            @click="goToday"
+          >
+            Today
+          </button>
+          <button
+            class="px-2 py-1 text-sm text-gray-500 hover:text-gray-800 hover:bg-gray-100 rounded"
+            title="Next"
+            @click="goNext"
+          >
+            <span class="material-icons text-sm">chevron_right</span>
+          </button>
+          <span class="text-sm text-gray-600 min-w-[140px] text-center">{{
+            headerLabel
+          }}</span>
+        </template>
+        <!-- View mode toggle -->
+        <div
+          class="flex border border-gray-300 rounded overflow-hidden text-xs"
+        >
+          <button
+            v-for="mode in VIEW_MODES"
+            :key="mode.key"
+            class="px-2.5 py-1"
+            :class="
+              viewMode === mode.key
+                ? 'bg-blue-500 text-white'
+                : 'bg-white text-gray-600 hover:bg-gray-50'
+            "
+            :title="mode.label"
+            @click="viewMode = mode.key"
+          >
+            <span class="material-icons text-sm">{{ mode.icon }}</span>
+          </button>
+        </div>
+      </div>
     </div>
 
-    <!-- Item list -->
-    <div class="flex-1 overflow-y-auto min-h-0">
+    <!-- List view -->
+    <div v-if="viewMode === 'list'" class="flex-1 overflow-y-auto min-h-0">
       <div
         v-if="items.length === 0"
         class="flex items-center justify-center h-full text-gray-400"
@@ -58,6 +108,162 @@
           </button>
         </li>
       </ul>
+    </div>
+
+    <!-- Week view -->
+    <div v-else-if="viewMode === 'week'" class="flex-1 overflow-y-auto min-h-0">
+      <div class="grid grid-cols-7 border-b border-gray-200">
+        <div
+          v-for="day in weekDays"
+          :key="day.toISOString()"
+          class="border-r last:border-r-0 border-gray-200 min-h-[200px] flex flex-col"
+        >
+          <!-- Day header -->
+          <div
+            class="px-2 py-1.5 text-center border-b border-gray-100 sticky top-0 bg-white"
+            :class="isToday(day) ? 'bg-blue-50' : ''"
+          >
+            <div class="text-xs text-gray-400">{{ dayLabel(day) }}</div>
+            <div
+              class="text-sm font-medium"
+              :class="
+                isToday(day)
+                  ? 'text-blue-600 bg-blue-500 text-white w-6 h-6 rounded-full flex items-center justify-center mx-auto'
+                  : 'text-gray-700'
+              "
+            >
+              {{ day.getDate() }}
+            </div>
+          </div>
+          <!-- Day items -->
+          <div class="flex-1 p-1 space-y-0.5">
+            <div
+              v-for="item in itemsForDay(day)"
+              :key="item.id"
+              class="text-xs px-1.5 py-0.5 rounded cursor-pointer truncate"
+              :class="
+                selectedId === item.id
+                  ? 'bg-blue-500 text-white'
+                  : 'bg-blue-100 text-blue-800 hover:bg-blue-200'
+              "
+              :title="item.title"
+              @click="selectItem(item)"
+            >
+              <span v-if="itemTime(item)" class="font-medium"
+                >{{ itemTime(item) }} </span
+              >{{ item.title }}
+            </div>
+          </div>
+        </div>
+      </div>
+      <!-- Unscheduled -->
+      <div
+        v-if="unscheduledItems.length > 0"
+        class="p-3 border-t border-gray-200"
+      >
+        <div class="text-xs text-gray-400 mb-1.5">Unscheduled</div>
+        <div class="flex flex-wrap gap-1">
+          <div
+            v-for="item in unscheduledItems"
+            :key="item.id"
+            class="text-xs px-2 py-1 rounded cursor-pointer"
+            :class="
+              selectedId === item.id
+                ? 'bg-blue-500 text-white'
+                : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+            "
+            @click="selectItem(item)"
+          >
+            {{ item.title }}
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Month view -->
+    <div v-else class="flex-1 overflow-y-auto min-h-0">
+      <!-- Weekday headers -->
+      <div
+        class="grid grid-cols-7 border-b border-gray-200 sticky top-0 bg-white z-10"
+      >
+        <div
+          v-for="label in WEEKDAY_LABELS"
+          :key="label"
+          class="text-xs text-center text-gray-400 py-1.5 border-r last:border-r-0 border-gray-100"
+        >
+          {{ label }}
+        </div>
+      </div>
+      <!-- Month grid -->
+      <div
+        v-for="(week, wi) in monthGrid"
+        :key="wi"
+        class="grid grid-cols-7 border-b border-gray-100"
+      >
+        <div
+          v-for="day in week"
+          :key="day.toISOString()"
+          class="border-r last:border-r-0 border-gray-100 min-h-[80px] p-1 flex flex-col"
+          :class="isToday(day) ? 'bg-blue-50/50' : ''"
+        >
+          <div
+            class="text-xs mb-0.5"
+            :class="
+              isCurrentMonth(day)
+                ? isToday(day)
+                  ? 'text-blue-600 font-bold'
+                  : 'text-gray-700'
+                : 'text-gray-300'
+            "
+          >
+            {{ day.getDate() }}
+          </div>
+          <div class="space-y-0.5 flex-1">
+            <div
+              v-for="item in itemsForDay(day).slice(0, MAX_MONTH_ITEMS)"
+              :key="item.id"
+              class="text-[10px] leading-tight px-1 py-0.5 rounded cursor-pointer truncate"
+              :class="
+                selectedId === item.id
+                  ? 'bg-blue-500 text-white'
+                  : 'bg-blue-100 text-blue-800 hover:bg-blue-200'
+              "
+              :title="item.title"
+              @click="selectItem(item)"
+            >
+              {{ item.title }}
+            </div>
+            <div
+              v-if="itemsForDay(day).length > MAX_MONTH_ITEMS"
+              class="text-[10px] text-gray-400 px-1"
+            >
+              +{{ itemsForDay(day).length - MAX_MONTH_ITEMS }} more
+            </div>
+          </div>
+        </div>
+      </div>
+      <!-- Unscheduled -->
+      <div
+        v-if="unscheduledItems.length > 0"
+        class="p-3 border-t border-gray-200"
+      >
+        <div class="text-xs text-gray-400 mb-1.5">Unscheduled</div>
+        <div class="flex flex-wrap gap-1">
+          <div
+            v-for="item in unscheduledItems"
+            :key="item.id"
+            class="text-xs px-2 py-1 rounded cursor-pointer"
+            :class="
+              selectedId === item.id
+                ? 'bg-blue-500 text-white'
+                : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+            "
+            @click="selectItem(item)"
+          >
+            {{ item.title }}
+          </div>
+        </div>
+      </div>
     </div>
 
     <!-- Item YAML editor -->
@@ -136,10 +342,152 @@ const emit = defineEmits<{ updateResult: [result: ToolResultComplete] }>();
 
 const items = computed(() => props.selectedResult.data?.items ?? []);
 
+// ── View mode ──────────────────────────────────────────────────────────────
+
+type ViewMode = "list" | "week" | "month";
+
+const VIEW_MODES: { key: ViewMode; label: string; icon: string }[] = [
+  { key: "list", label: "List", icon: "view_list" },
+  { key: "week", label: "Week", icon: "view_week" },
+  { key: "month", label: "Month", icon: "calendar_month" },
+];
+
+const WEEKDAY_LABELS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
+const MAX_MONTH_ITEMS = 3;
+
+const viewMode = ref<ViewMode>("list");
+const currentDate = ref(new Date());
+
+// ── Calendar utilities ─────────────────────────────────────────────────────
+
+function startOfWeek(date: Date): Date {
+  const d = new Date(date);
+  const day = d.getDay();
+  const diff = day === 0 ? -6 : 1 - day; // Monday start
+  d.setDate(d.getDate() + diff);
+  d.setHours(0, 0, 0, 0);
+  return d;
+}
+
+function getWeekDays(date: Date): Date[] {
+  const start = startOfWeek(date);
+  return Array.from({ length: 7 }, (_, i) => {
+    const d = new Date(start);
+    d.setDate(start.getDate() + i);
+    return d;
+  });
+}
+
+function getMonthGrid(year: number, month: number): Date[][] {
+  const firstDay = new Date(year, month, 1);
+  const start = startOfWeek(firstDay);
+  const weeks: Date[][] = [];
+  const WEEK_COUNT = 6;
+  for (let w = 0; w < WEEK_COUNT; w++) {
+    const week: Date[] = [];
+    for (let d = 0; d < 7; d++) {
+      const date = new Date(start);
+      date.setDate(start.getDate() + w * 7 + d);
+      week.push(date);
+    }
+    weeks.push(week);
+  }
+  return weeks;
+}
+
+function isToday(date: Date): boolean {
+  const today = new Date();
+  return isSameDay(date, today);
+}
+
+function isSameDay(a: Date, b: Date): boolean {
+  return (
+    a.getFullYear() === b.getFullYear() &&
+    a.getMonth() === b.getMonth() &&
+    a.getDate() === b.getDate()
+  );
+}
+
+function isCurrentMonth(date: Date): boolean {
+  return (
+    date.getMonth() === currentDate.value.getMonth() &&
+    date.getFullYear() === currentDate.value.getFullYear()
+  );
+}
+
+function toDateString(date: Date): string {
+  const y = date.getFullYear();
+  const m = String(date.getMonth() + 1).padStart(2, "0");
+  const d = String(date.getDate()).padStart(2, "0");
+  return `${y}-${m}-${d}`;
+}
+
+function itemsForDay(day: Date): ScheduledItem[] {
+  const ds = toDateString(day);
+  return items.value.filter((item) => String(item.props.date) === ds);
+}
+
+const unscheduledItems = computed(() =>
+  items.value.filter((item) => !item.props.date),
+);
+
+function itemTime(item: ScheduledItem): string {
+  const t = item.props.time;
+  return typeof t === "string" ? t : "";
+}
+
+function dayLabel(date: Date): string {
+  return WEEKDAY_LABELS[date.getDay() === 0 ? 6 : date.getDay() - 1];
+}
+
+// ── Navigation ─────────────────────────────────────────────────────────────
+
+const weekDays = computed(() => getWeekDays(currentDate.value));
+
+const monthGrid = computed(() =>
+  getMonthGrid(currentDate.value.getFullYear(), currentDate.value.getMonth()),
+);
+
+const headerLabel = computed(() => {
+  if (viewMode.value === "week") {
+    const days = weekDays.value;
+    const fmt = (d: Date) =>
+      d.toLocaleDateString(undefined, { month: "short", day: "numeric" });
+    return `${fmt(days[0])} – ${fmt(days[6])}, ${days[0].getFullYear()}`;
+  }
+  return currentDate.value.toLocaleDateString(undefined, {
+    month: "long",
+    year: "numeric",
+  });
+});
+
+function goToday() {
+  currentDate.value = new Date();
+}
+
+function goPrev() {
+  const d = new Date(currentDate.value);
+  if (viewMode.value === "week") {
+    d.setDate(d.getDate() - 7);
+  } else {
+    d.setMonth(d.getMonth() - 1);
+  }
+  currentDate.value = d;
+}
+
+function goNext() {
+  const d = new Date(currentDate.value);
+  if (viewMode.value === "week") {
+    d.setDate(d.getDate() + 7);
+  } else {
+    d.setMonth(d.getMonth() + 1);
+  }
+  currentDate.value = d;
+}
+
 // ── YAML helpers ────────────────────────────────────────────────────────────
 
 function yamlStringValue(v: string): string {
-  // Quote if the value contains special characters or could be misread
   const needsQuotes =
     v === "" ||
     /[:#\[\]{},&*?|<>=!%@`]/.test(v) ||
@@ -217,7 +565,6 @@ function selectItem(item: ScheduledItem) {
   yamlError.value = "";
 }
 
-// Re-serialize if the underlying data changes while the editor is open
 watch(
   () => props.selectedResult.data,
   () => {
