@@ -31,6 +31,8 @@ export const ROLES: Role[] = [
       "presentDocument",
       "createMindMap",
       "presentHtml",
+      "readXPost",
+      "searchX",
       "switchRole",
     ],
     queries: [

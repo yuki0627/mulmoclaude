@@ -5,6 +5,7 @@ import { tmpdir } from "os";
 import { join } from "path";
 import type { Role } from "../src/config/roles.js";
 import { loadAllRoles } from "./roles.js";
+import { mcpTools, isMcpToolEnabled } from "./mcp-tools/index.js";
 
 export type AgentEvent =
   | { type: "status"; message: string }
@@ -116,7 +117,18 @@ export async function* runAgent(
   const memoryContext = buildMemoryContext(workspacePath);
   const wikiContext = buildWikiContext(workspacePath);
 
-  const pluginPromptSections = Object.entries(pluginPrompts ?? {}).map(
+  const mcpToolPrompts = Object.fromEntries(
+    mcpTools
+      .filter(
+        (t) =>
+          t.prompt &&
+          role.availablePlugins.includes(t.definition.name) &&
+          isMcpToolEnabled(t),
+      )
+      .map((t) => [t.definition.name, t.prompt as string]),
+  );
+  const mergedPluginPrompts = { ...mcpToolPrompts, ...pluginPrompts };
+  const pluginPromptSections = Object.entries(mergedPluginPrompts).map(
     ([name, prompt]) => `### ${name}\n\n${prompt}`,
   );
 
@@ -131,7 +143,11 @@ export async function* runAgent(
       : []),
   ].join("\n\n");
 
-  const activePlugins = role.availablePlugins.filter((p) => MCP_PLUGINS.has(p));
+  const enabledMcpToolNames = new Set(
+    mcpTools.filter(isMcpToolEnabled).map((t) => t.definition.name),
+  );
+  const knownTools = new Set([...MCP_PLUGINS, ...enabledMcpToolNames]);
+  const activePlugins = role.availablePlugins.filter((p) => knownTools.has(p));
 
   // Write temp MCP config if there are plugins to expose
   const mcpConfigPath = join(tmpdir(), `mulmoclaude-mcp-${sessionId}.json`);

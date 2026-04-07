@@ -22,6 +22,7 @@ import ManageRolesDef from "../src/plugins/manageRoles/definition.js";
 import WikiDef from "../src/plugins/wiki/definition.js";
 import PresentHtmlDef from "../src/plugins/presentHtml/definition.js";
 import type { ToolDefinition } from "gui-chat-protocol";
+import { mcpTools, isMcpToolEnabled } from "./mcp-tools/index.js";
 
 type JsonRpcId = string | number | null;
 
@@ -85,7 +86,20 @@ const TOOL_ENDPOINTS: Record<string, string> = {
   [WikiDef.name]: "/api/wiki",
 };
 
+// Pure MCP tools (no GUI) — auto-registered from server/mcp-tools/
+const mcpToolDefs: Record<string, ToolDef> = Object.fromEntries(
+  mcpTools.filter(isMcpToolEnabled).map((t) => [
+    t.definition.name,
+    {
+      name: t.definition.name,
+      description: t.definition.description,
+      inputSchema: t.definition.inputSchema,
+    },
+  ]),
+);
+
 const ALL_TOOLS: Record<string, ToolDef> = {
+  ...mcpToolDefs,
   ...Object.fromEntries(
     [
       TodoDef,
@@ -172,6 +186,24 @@ async function handleToolCall(
     }
 
     return result.message ?? (result.error ? `Error: ${result.error}` : "Done");
+  }
+
+  // Pure MCP tools — call via /api/mcp-tools/:tool, return text directly (no frontend push)
+  const mcpTool = mcpTools.find((t) => t.definition.name === name);
+  if (mcpTool) {
+    const res = await fetch(
+      `${BASE_URL}/api/mcp-tools/${name}?session=${SESSION_ID}`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(args),
+      },
+    );
+    const json = await res.json();
+    if (!res.ok) return `Error: ${json.error ?? res.status}`;
+    return typeof json.result === "string"
+      ? json.result
+      : JSON.stringify(json.result);
   }
 
   const tool = tools.find((t) => t.name === name);

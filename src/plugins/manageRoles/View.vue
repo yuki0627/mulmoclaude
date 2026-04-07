@@ -102,16 +102,30 @@
             <div class="grid grid-cols-2 gap-x-4 gap-y-1">
               <label
                 v-for="plugin in availablePlugins"
-                :key="plugin"
-                class="flex items-center gap-2 text-sm text-gray-700 cursor-pointer"
+                :key="plugin.name"
+                class="flex items-center gap-2 text-sm cursor-pointer"
+                :class="
+                  plugin.enabled
+                    ? 'text-gray-700'
+                    : 'text-gray-400 cursor-not-allowed'
+                "
+                :title="
+                  plugin.enabled
+                    ? ''
+                    : `Requires ${plugin.requiredEnv.join(', ')} in .env`
+                "
               >
                 <input
                   type="checkbox"
-                  :value="plugin"
+                  :value="plugin.name"
                   v-model="editForm.selectedPlugins"
-                  class="cursor-pointer"
+                  :disabled="!plugin.enabled"
+                  class="cursor-pointer disabled:cursor-not-allowed"
                 />
-                {{ plugin }}
+                {{ plugin.name }}
+                <span v-if="!plugin.enabled" class="text-xs text-gray-400"
+                  >(missing {{ plugin.requiredEnv.join(", ") }})</span
+                >
               </label>
             </div>
           </div>
@@ -164,14 +178,36 @@
 </template>
 
 <script setup lang="ts">
-import { computed, ref } from "vue";
+import { computed, ref, onMounted } from "vue";
 import type { ToolResultComplete } from "gui-chat-protocol/vue";
 import type { CustomRole, ManageRolesData } from "./index";
 import { getAllPluginNames } from "../../tools/index";
 
+interface PluginEntry {
+  name: string;
+  enabled: boolean;
+  requiredEnv: string[];
+}
+
 // Plugins the user can assign — exclude internal/auto-managed ones
 const EXCLUDED = new Set(["text-response", "switchRole"]);
-const availablePlugins = getAllPluginNames().filter((p) => !EXCLUDED.has(p));
+const guiPlugins: PluginEntry[] = getAllPluginNames()
+  .filter((p) => !EXCLUDED.has(p))
+  .map((name) => ({ name, enabled: true, requiredEnv: [] }));
+
+const availablePlugins = ref<PluginEntry[]>(guiPlugins);
+
+onMounted(async () => {
+  try {
+    const res = await fetch("/api/mcp-tools");
+    if (res.ok) {
+      const mcpTools: PluginEntry[] = await res.json();
+      availablePlugins.value = [...guiPlugins, ...mcpTools];
+    }
+  } catch {
+    // silently fall back to GUI plugins only
+  }
+});
 
 const props = defineProps<{
   selectedResult: ToolResultComplete<ManageRolesData>;
