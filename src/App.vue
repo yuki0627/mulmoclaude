@@ -92,7 +92,9 @@
       <div
         v-else
         ref="chatListRef"
-        class="flex-1 min-h-0 overflow-y-auto p-2 space-y-2 bg-gray-100"
+        class="flex-1 min-h-0 overflow-y-auto p-2 space-y-2 bg-gray-100 outline-none"
+        tabindex="0"
+        @mousedown="activePane = 'sidebar'"
       >
         <div
           v-for="result in toolResults"
@@ -195,7 +197,13 @@
     </div>
 
     <!-- Canvas -->
-    <div class="flex-1 overflow-hidden bg-white text-gray-900 min-w-0">
+    <div
+      ref="canvasRef"
+      class="flex-1 overflow-hidden bg-white text-gray-900 min-w-0 outline-none"
+      tabindex="0"
+      @mousedown="activePane = 'main'"
+      @keydown="handleCanvasKeydown"
+    >
       <component
         v-if="
           selectedResult && getPlugin(selectedResult.toolName)?.viewComponent
@@ -328,12 +336,14 @@ const isRunning = ref(false);
 const statusMessage = ref("");
 const toolResults = ref<ToolResultComplete[]>([]);
 const selectedResultUuid = ref<string | null>(null);
+const activePane = ref<"sidebar" | "main">("sidebar");
 
 const showHistory = ref(false);
 const sessions = ref<SessionSummary[]>([]);
 const geminiAvailable = ref(true);
 
 const chatListRef = ref<HTMLDivElement | null>(null);
+const canvasRef = ref<HTMLDivElement | null>(null);
 const textareaRef = ref<HTMLTextAreaElement | null>(null);
 
 function scrollChatToBottom() {
@@ -405,6 +415,65 @@ const selectedResult = computed(
   () =>
     toolResults.value.find((r) => r.uuid === selectedResultUuid.value) ?? null,
 );
+
+const SCROLL_AMOUNT = 60;
+
+function findScrollableChild(container: HTMLElement): HTMLElement | null {
+  const children = container.querySelectorAll("*");
+  for (const el of children) {
+    const html = el as HTMLElement;
+    if (html.scrollHeight > html.clientHeight) {
+      const style = getComputedStyle(html);
+      if (
+        style.overflowY === "auto" ||
+        style.overflowY === "scroll" ||
+        style.overflow === "auto" ||
+        style.overflow === "scroll"
+      ) {
+        return html;
+      }
+    }
+  }
+  return null;
+}
+
+function handleCanvasKeydown(e: KeyboardEvent) {
+  if (e.key !== "ArrowUp" && e.key !== "ArrowDown") return;
+  if (
+    e.target instanceof HTMLInputElement ||
+    e.target instanceof HTMLTextAreaElement
+  ) {
+    return;
+  }
+  if (!canvasRef.value) return;
+  const scrollable = findScrollableChild(canvasRef.value);
+  if (!scrollable) return;
+  e.preventDefault();
+  const delta = e.key === "ArrowDown" ? SCROLL_AMOUNT : -SCROLL_AMOUNT;
+  scrollable.scrollBy({ top: delta, behavior: "smooth" });
+}
+
+function handleKeyNavigation(e: KeyboardEvent) {
+  if (activePane.value !== "sidebar") return;
+  if (
+    e.target instanceof HTMLInputElement ||
+    e.target instanceof HTMLTextAreaElement
+  ) {
+    return;
+  }
+  if (e.key !== "ArrowUp" && e.key !== "ArrowDown") return;
+  e.preventDefault();
+  const results = toolResults.value;
+  if (results.length === 0) return;
+  const currentIndex = results.findIndex(
+    (r) => r.uuid === selectedResultUuid.value,
+  );
+  const nextIndex =
+    e.key === "ArrowUp"
+      ? Math.max(0, currentIndex - 1)
+      : Math.min(results.length - 1, currentIndex + 1);
+  selectedResultUuid.value = results[nextIndex].uuid;
+}
 
 const showQueries = computed(
   () =>
@@ -672,6 +741,7 @@ onMounted(async () => {
   fetchHealth();
   refreshRoles();
   window.addEventListener("roles-updated", refreshRoles);
+  window.addEventListener("keydown", handleKeyNavigation);
 
   const allSessions = await fetchSessions();
   const lastSessionId = localStorage.getItem("lastSessionId");
@@ -684,6 +754,7 @@ onMounted(async () => {
 
 onUnmounted(() => {
   window.removeEventListener("roles-updated", refreshRoles);
+  window.removeEventListener("keydown", handleKeyNavigation);
   if (tickInterval !== null) clearInterval(tickInterval);
 });
 </script>
