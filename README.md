@@ -91,6 +91,38 @@ Claude uses its built-in file tools (`read`, `write`, `glob`, `grep`) to navigat
 
 Over time the wiki grows into a personal knowledge base that any role can consult, making Claude progressively more useful the more you use it.
 
+## Optional: X (Twitter) MCP Tools
+
+MulmoClaude includes optional MCP tools for reading and searching posts on X (Twitter) via the official X API v2.
+
+| Tool | What it does |
+|---|---|
+| `readXPost` | Fetches a single post by URL or tweet ID |
+| `searchX` | Searches recent posts by keyword or query |
+
+These tools are **disabled by default** and require an X API Bearer Token to activate.
+
+### Setup
+
+1. Go to [console.x.com](https://console.x.com) and sign in with your X account
+2. Create a new app — a Bearer Token is generated automatically
+3. Copy the Bearer Token and add it to your `.env`:
+   ```
+   X_BEARER_TOKEN=your_bearer_token_here
+   ```
+4. Add credits to your account at [console.x.com](https://console.x.com) (required to make API calls)
+5. Restart the dev server — the tools activate automatically
+
+### Usage
+
+These tools are **only available in custom roles**. The built-in roles do not include them by default (except General). To use them in your own role:
+
+1. Switch to the **Role Manager** role
+2. Ask Claude to create a custom role, or edit an existing one
+3. In the plugin checklist, enable `readXPost` and/or `searchX`
+
+Once configured, you can paste any `x.com` or `twitter.com` URL into the chat and Claude will fetch and read it automatically.
+
 ## Workspace
 
 All data is stored as plain files in the workspace directory:
