@@ -35,7 +35,7 @@ export function buildMcpConfig(params: McpConfigParams): object {
   const { sessionId, port, activePlugins, roleIds, useDocker = false } = params;
   const projectRoot = process.cwd();
   const command = useDocker
-    ? "/app/node_modules/.bin/tsx"
+    ? "tsx"
     : join(projectRoot, "node_modules/.bin/tsx");
   const mcpServerPath = useDocker
     ? "/app/server/mcp-server.ts"
@@ -50,7 +50,12 @@ export function buildMcpConfig(params: McpConfigParams): object {
           PORT: String(port),
           PLUGIN_NAMES: activePlugins.join(","),
           ROLE_IDS: roleIds.join(","),
-          ...(useDocker ? { MCP_HOST: "host.docker.internal" } : {}),
+          ...(useDocker
+            ? {
+                MCP_HOST: "host.docker.internal",
+                NODE_PATH: "/app/node_modules",
+              }
+            : {}),
         },
       },
     },
