@@ -83,15 +83,9 @@ export async function* runAgent(
           "run",
           "--rm",
           "-v",
-          `${toDockerPath(projectRoot)}/node_modules:/app/node_modules:ro`,
-          "-v",
-          `${toDockerPath(projectRoot)}/server:/app/server:ro`,
-          "-v",
-          `${toDockerPath(projectRoot)}/src:/app/src:ro`,
-          "-v",
           `${toDockerPath(workspacePath)}:/workspace`,
           "-v",
-          `${toDockerPath(homedir())}/.claude:/root/.claude`,
+          `${toDockerPath(homedir())}/.claude:/home/claude/.claude`,
           ...extraHosts,
           "mulmoclaude-sandbox",
           "claude",
@@ -104,41 +98,44 @@ export async function* runAgent(
         stdio: ["ignore", "pipe", "pipe"],
       });
 
-  let stderrOutput = "";
-  proc.stderr.on("data", (chunk: Buffer) => {
-    stderrOutput += chunk.toString();
-  });
+  try {
+    let stderrOutput = "";
+    proc.stderr.on("data", (chunk: Buffer) => {
+      stderrOutput += chunk.toString();
+    });
 
-  let buffer = "";
-  for await (const chunk of proc.stdout) {
-    buffer += chunk.toString();
-    const lines = buffer.split("\n");
-    buffer = lines.pop() ?? "";
+    let buffer = "";
+    for await (const chunk of proc.stdout) {
+      buffer += chunk.toString();
+      const lines = buffer.split("\n");
+      buffer = lines.pop() ?? "";
 
-    for (const line of lines) {
-      if (!line.trim()) continue;
-      let event: RawStreamEvent;
-      try {
-        event = JSON.parse(line);
-      } catch {
-        continue;
-      }
-      for (const agentEvent of parseStreamEvent(event)) {
-        yield agentEvent;
+      for (const line of lines) {
+        if (!line.trim()) continue;
+        let event: RawStreamEvent;
+        try {
+          event = JSON.parse(line);
+        } catch {
+          continue;
+        }
+        for (const agentEvent of parseStreamEvent(event)) {
+          yield agentEvent;
+        }
       }
     }
-  }
 
-  const exitCode = await new Promise<number>((resolve) =>
-    proc.on("close", resolve),
-  );
+    const exitCode = await new Promise<number>((resolve) =>
+      proc.on("close", resolve),
+    );
 
-  if (hasMcp) unlink(mcpConfigHostPath).catch(() => {});
-
-  if (exitCode !== 0) {
-    yield {
-      type: "error",
-      message: stderrOutput || `claude exited with code ${exitCode}`,
-    };
+    if (exitCode !== 0) {
+      yield {
+        type: "error",
+        message: stderrOutput || `claude exited with code ${exitCode}`,
+      };
+    }
+  } finally {
+    if (!proc.killed) proc.kill();
+    if (hasMcp) unlink(mcpConfigHostPath).catch(() => {});
   }
 }
