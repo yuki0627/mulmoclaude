@@ -1,7 +1,7 @@
 <template>
   <div
     ref="containerRef"
-    class="h-full overflow-y-auto bg-gray-50 p-4 space-y-4"
+    class="h-full overflow-y-auto bg-gray-50 p-4 space-y-3"
   >
     <div
       v-if="toolResults.length === 0"
@@ -13,16 +13,15 @@
       v-for="result in toolResults"
       :key="result.uuid"
       :ref="(el) => setItemRef(result.uuid, el as HTMLElement | null)"
-      class="bg-white rounded-lg border flex flex-col overflow-hidden transition-colors"
+      class="bg-white rounded-lg border transition-colors"
       :class="
         result.uuid === selectedResultUuid
           ? 'border-blue-400 ring-2 ring-blue-200'
           : 'border-gray-200'
       "
-      :style="{ height: ITEM_HEIGHT }"
     >
       <button
-        class="flex items-center gap-2 px-3 py-2 border-b border-gray-100 text-left hover:bg-gray-50 shrink-0"
+        class="w-full flex items-center gap-2 px-3 py-2 border-b border-gray-100 text-left hover:bg-gray-50"
         :title="result.title || result.toolName"
         @click="emit('select', result.uuid)"
       >
@@ -36,7 +35,17 @@
           result.toolName
         }}</span>
       </button>
-      <div class="flex-1 min-h-0 overflow-hidden">
+      <!-- text-response: render the message directly so the card sizes
+           naturally to its text content -->
+      <div
+        v-if="isTextResponse(result)"
+        class="px-4 py-3 text-sm text-gray-800 whitespace-pre-wrap break-words"
+      >
+        {{ messageText(result) }}
+      </div>
+      <!-- Other plugins: use the viewComponent with a fixed height so
+           plugins that rely on h-full render properly -->
+      <div v-else :style="{ height: PLUGIN_HEIGHT }">
         <component
           :is="getPlugin(result.toolName)?.viewComponent"
           v-if="getPlugin(result.toolName)?.viewComponent"
@@ -46,7 +55,7 @@
         />
         <pre
           v-else
-          class="text-xs text-gray-500 whitespace-pre-wrap p-4 overflow-auto h-full"
+          class="h-full overflow-auto p-4 text-xs text-gray-500 whitespace-pre-wrap"
           >{{ JSON.stringify(result, null, 2) }}</pre
         >
       </div>
@@ -59,10 +68,11 @@ import { ref, watch, nextTick } from "vue";
 import { getPlugin } from "../tools";
 import type { ToolResultComplete } from "gui-chat-protocol/vue";
 
-// Each card is a fixed slice of viewport height. Plugin viewComponents
-// rely on a defined parent height (most use h-full internally), so a
-// fixed-height card is what lets them render naturally.
-const ITEM_HEIGHT = "min(70vh, 720px)";
+// Most plugin viewComponents use h-full internally, so a defined parent
+// height is required for them to render. text-response is special-cased
+// above because it has no such requirement and short messages would
+// otherwise leave large empty space.
+const PLUGIN_HEIGHT = "min(60vh, 560px)";
 
 const props = defineProps<{
   toolResults: ToolResultComplete[];
@@ -81,6 +91,24 @@ const itemRefs = new Map<string, HTMLElement>();
 function setItemRef(uuid: string, el: HTMLElement | null): void {
   if (el) itemRefs.set(uuid, el);
   else itemRefs.delete(uuid);
+}
+
+function isTextResponse(result: ToolResultComplete): boolean {
+  return result.toolName === "text-response";
+}
+
+function messageText(result: ToolResultComplete): string {
+  if (typeof result.message === "string") return result.message;
+  const data = result.data;
+  if (
+    typeof data === "object" &&
+    data !== null &&
+    "text" in data &&
+    typeof (data as { text: unknown }).text === "string"
+  ) {
+    return (data as { text: string }).text;
+  }
+  return "";
 }
 
 function iconFor(toolName: string): string {

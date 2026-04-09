@@ -44,18 +44,10 @@
           Loading...
         </div>
         <template v-else-if="content">
-          <!-- Markdown -->
-          <div
-            v-if="isMarkdown && content.kind === 'text'"
-            class="h-full overflow-auto"
-          >
-            <TextResponseView
-              :selected-result="markdownResult(content.content)"
-            />
-          </div>
-          <!-- Text -->
+          <!-- Text (including .md — rendered as plain text to avoid
+               XSS risk from prompt-injected HTML in workspace files) -->
           <pre
-            v-else-if="content.kind === 'text'"
+            v-if="content.kind === 'text'"
             class="p-4 text-xs whitespace-pre-wrap font-mono text-gray-800"
             >{{ content.content }}</pre
           >
@@ -90,9 +82,6 @@
 <script setup lang="ts">
 import { ref, computed, watch, onMounted } from "vue";
 import FileTree, { type TreeNode } from "./FileTree.vue";
-import TextResponseView from "../plugins/textResponse/View.vue";
-import type { ToolResultComplete } from "gui-chat-protocol/vue";
-import type { TextResponseData } from "@gui-chat-plugin/text-response";
 
 const STORAGE_KEY = "files_selected_path";
 const RECENT_THRESHOLD_MS = 60 * 1000;
@@ -127,11 +116,6 @@ const content = ref<FileContent | null>(null);
 const contentLoading = ref(false);
 const contentError = ref<string | null>(null);
 
-const isMarkdown = computed(() => {
-  const p = selectedPath.value ?? "";
-  return p.endsWith(".md") || p.endsWith(".markdown");
-});
-
 const recentPaths = computed(() => {
   const set = new Set<string>();
   const now = Date.now();
@@ -148,17 +132,6 @@ const recentPaths = computed(() => {
   if (tree.value) visit(tree.value);
   return set;
 });
-
-function markdownResult(text: string): ToolResultComplete<TextResponseData> {
-  return {
-    uuid: "files-preview",
-    toolName: "text-response",
-    message: text,
-    title: selectedPath.value ?? "",
-    // role: "user" hides the PDF download button in TextResponseView
-    data: { text, role: "user", transportKind: "text-rest" },
-  };
-}
 
 function rawUrl(filePath: string): string {
   return `/api/files/raw?path=${encodeURIComponent(filePath)}`;

@@ -92,16 +92,28 @@ function classify(filename: string): ContentKind {
   return "binary";
 }
 
+// Realpath of the workspace, computed once at module load. Using the
+// realpath defeats symlink-based escapes — `path.resolve` + `startsWith`
+// alone is insufficient because a symlink inside the workspace could
+// point at `/etc/passwd` and still pass the prefix check.
+const workspaceReal = fs.realpathSync(workspacePath);
+
 function resolveSafe(relPath: string): string | null {
   const normalized = path.normalize(relPath || "");
-  const resolved = path.resolve(workspacePath, normalized);
+  const resolved = path.resolve(workspaceReal, normalized);
+  let resolvedReal: string;
+  try {
+    resolvedReal = fs.realpathSync(resolved);
+  } catch {
+    return null;
+  }
   if (
-    resolved !== workspacePath &&
-    !resolved.startsWith(workspacePath + path.sep)
+    resolvedReal !== workspaceReal &&
+    !resolvedReal.startsWith(workspaceReal + path.sep)
   ) {
     return null;
   }
-  return resolved;
+  return resolvedReal;
 }
 
 function readDirSafe(absPath: string): fs.Dirent[] {
@@ -159,7 +171,7 @@ router.get(
   "/files/tree",
   (_req: Request, res: Response<TreeNode | ErrorResponse>) => {
     try {
-      const tree = buildTree(workspacePath, "");
+      const tree = buildTree(workspaceReal, "");
       res.json(tree);
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);

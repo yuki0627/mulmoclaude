@@ -40,7 +40,7 @@ State held as `canvasViewMode: "single" \| "stack" \| "files"` in `App.vue`, per
 
 ### Stack Mode Layout
 
-```
+```text
 ┌─ Canvas ─────────────────────────────────┐
 │                          [single|stack|files] │  ← floating toggle, top-right
 │ ┌─ Header: "You" (text-response) ──┐    │
@@ -68,7 +68,7 @@ State held as `canvasViewMode: "single" \| "stack" \| "files"` in `App.vue`, per
 
 Two-pane split inside the canvas:
 
-```
+```text
 ┌─ Canvas ─────────────────────────────────┐
 │                          [single|stack|files] │
 │ ┌─ Tree ────┐ ┌─ Content ────────────┐  │
@@ -108,16 +108,26 @@ Two-pane split inside the canvas:
 
 #### Path safety (server)
 
-All file routes MUST resolve the requested path inside `workspacePath` and reject anything outside:
+All file routes MUST resolve the requested path inside `workspacePath` and reject anything outside. Both endpoints must use **realpath-based** containment checks to defeat symlink escapes — `path.resolve` + `startsWith` alone is not enough because a symlink inside the workspace could point at `/etc/passwd`:
 
 ```typescript
-const resolved = path.resolve(workspacePath, requestedPath);
-if (!resolved.startsWith(workspacePath + path.sep) && resolved !== workspacePath) {
+const workspaceReal = fs.realpathSync(workspacePath);
+const resolved = path.resolve(workspaceReal, requestedPath);
+let resolvedReal: string;
+try {
+  resolvedReal = fs.realpathSync(resolved);
+} catch {
+  return res.status(404).json({ error: "Not found" });
+}
+if (
+  resolvedReal !== workspaceReal &&
+  !resolvedReal.startsWith(workspaceReal + path.sep)
+) {
   return res.status(400).json({ error: "Path outside workspace" });
 }
 ```
 
-No symlink following outside the workspace.
+Tree building also skips any symlinked directory entries entirely as defense-in-depth.
 
 ## Implementation Plan
 
