@@ -59,12 +59,16 @@
               sandbox=""
               title="HTML preview"
             />
-            <!-- JSON: pretty-printed, or raw if parse fails -->
+            <!-- JSON: pretty-printed with simple syntax coloring. Fall
+                 back to raw content if the file is malformed. -->
             <pre
               v-else-if="isJson"
               class="p-4 text-xs whitespace-pre-wrap font-mono text-gray-800"
-              >{{ prettyJson(content.content) }}</pre
-            >
+            ><span
+              v-for="(tok, i) in jsonTokens"
+              :key="i"
+              :class="JSON_TOKEN_CLASS[tok.type]"
+            >{{ tok.value }}</span></pre>
             <!-- Plain text fallback -->
             <pre
               v-else
@@ -160,6 +164,81 @@ function prettyJson(raw: string): string {
     return raw;
   }
 }
+
+type JsonTokenType =
+  | "key"
+  | "string"
+  | "number"
+  | "keyword"
+  | "punct"
+  | "whitespace";
+
+interface JsonToken {
+  type: JsonTokenType;
+  value: string;
+}
+
+const JSON_TOKEN_CLASS: Record<JsonTokenType, string> = {
+  key: "text-blue-700",
+  string: "text-green-700",
+  number: "text-orange-600",
+  keyword: "text-purple-700",
+  punct: "text-gray-500",
+  whitespace: "",
+};
+
+// Regex splits a JSON document into recognisable tokens. Strings are
+// matched before numbers/keywords so escaped quotes inside strings
+// stay together. Anything that doesn't match (syntax errors, stray
+// chars) is emitted as a "punct" token so the user still sees it.
+const JSON_TOKEN_RE =
+  /("(?:[^"\\]|\\.)*")|(\btrue\b|\bfalse\b|\bnull\b)|(-?\d+(?:\.\d+)?(?:[eE][+-]?\d+)?)|(\s+)|([{}[\]:,])/g;
+
+function tokenizeJson(raw: string): JsonToken[] {
+  const tokens: JsonToken[] = [];
+  JSON_TOKEN_RE.lastIndex = 0;
+  let lastIndex = 0;
+  let match: RegExpExecArray | null = JSON_TOKEN_RE.exec(raw);
+  while (match !== null) {
+    if (match.index > lastIndex) {
+      tokens.push({ type: "punct", value: raw.slice(lastIndex, match.index) });
+    }
+    if (match[1] !== undefined)
+      tokens.push({ type: "string", value: match[1] });
+    else if (match[2] !== undefined)
+      tokens.push({ type: "keyword", value: match[2] });
+    else if (match[3] !== undefined)
+      tokens.push({ type: "number", value: match[3] });
+    else if (match[4] !== undefined)
+      tokens.push({ type: "whitespace", value: match[4] });
+    else if (match[5] !== undefined)
+      tokens.push({ type: "punct", value: match[5] });
+    lastIndex = JSON_TOKEN_RE.lastIndex;
+    match = JSON_TOKEN_RE.exec(raw);
+  }
+  if (lastIndex < raw.length) {
+    tokens.push({ type: "punct", value: raw.slice(lastIndex) });
+  }
+  // A string that precedes ":" (skipping whitespace) is an object key.
+  for (let i = 0; i < tokens.length; i++) {
+    if (tokens[i].type !== "string") continue;
+    let j = i + 1;
+    while (j < tokens.length && tokens[j].type === "whitespace") j++;
+    if (
+      j < tokens.length &&
+      tokens[j].type === "punct" &&
+      tokens[j].value === ":"
+    ) {
+      tokens[i] = { type: "key", value: tokens[i].value };
+    }
+  }
+  return tokens;
+}
+
+const jsonTokens = computed(() => {
+  if (!content.value || content.value.kind !== "text") return [];
+  return tokenizeJson(prettyJson(content.value.content));
+});
 
 function markdownResult(text: string): ToolResultComplete<TextResponseData> {
   return {
