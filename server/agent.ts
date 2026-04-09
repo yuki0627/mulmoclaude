@@ -1,7 +1,8 @@
 import { spawn } from "child_process";
-import { writeFile, unlink } from "fs/promises";
-import { tmpdir } from "os";
+import { mkdir, writeFile, unlink } from "fs/promises";
+import { homedir, tmpdir } from "os";
 import { join } from "path";
+import { isDockerAvailable } from "./docker.js";
 import type { Role } from "../src/config/roles.js";
 import { loadAllRoles } from "./roles.js";
 import { buildSystemPrompt } from "./agent/prompt.js";
@@ -32,8 +33,22 @@ export async function* runAgent(
   });
 
   const activePlugins = getActivePlugins(role);
-  const mcpConfigPath = join(tmpdir(), `mulmoclaude-mcp-${sessionId}.json`);
   const hasMcp = activePlugins.length > 0;
+  const useDocker = await isDockerAvailable();
+
+  // Compute MCP config paths — host path for writing/cleanup,
+  // arg path for what gets passed to the claude CLI (container path if docker).
+  let mcpConfigHostPath: string;
+  let mcpConfigArgPath: string;
+  if (useDocker) {
+    const mcpConfigDir = join(workspacePath, ".mulmoclaude");
+    await mkdir(mcpConfigDir, { recursive: true });
+    mcpConfigHostPath = join(mcpConfigDir, `mcp-${sessionId}.json`);
+    mcpConfigArgPath = `/workspace/.mulmoclaude/mcp-${sessionId}.json`;
+  } else {
+    mcpConfigHostPath = join(tmpdir(), `mulmoclaude-mcp-${sessionId}.json`);
+    mcpConfigArgPath = mcpConfigHostPath;
+  }
 
   if (hasMcp) {
     const mcpConfig = buildMcpConfig({
@@ -41,8 +56,9 @@ export async function* runAgent(
       port,
       activePlugins,
       roleIds: loadAllRoles().map((r) => r.id),
+      useDocker,
     });
-    await writeFile(mcpConfigPath, JSON.stringify(mcpConfig, null, 2));
+    await writeFile(mcpConfigHostPath, JSON.stringify(mcpConfig, null, 2));
   }
 
   const args = buildCliArgs({
@@ -50,13 +66,43 @@ export async function* runAgent(
     activePlugins,
     claudeSessionId,
     message,
-    mcpConfigPath: hasMcp ? mcpConfigPath : undefined,
+    mcpConfigPath: hasMcp ? mcpConfigArgPath : undefined,
   });
 
-  const proc = spawn("claude", args, {
-    cwd: workspacePath,
-    stdio: ["ignore", "pipe", "pipe"],
-  });
+  const projectRoot = process.cwd();
+  const toDockerPath = (p: string) => p.replace(/\\/g, "/");
+  const extraHosts: string[] =
+    process.platform === "linux"
+      ? ["--add-host", "host.docker.internal:host-gateway"]
+      : [];
+
+  const proc = useDocker
+    ? spawn(
+        "docker",
+        [
+          "run",
+          "--rm",
+          "-v",
+          `${toDockerPath(projectRoot)}/node_modules:/app/node_modules:ro`,
+          "-v",
+          `${toDockerPath(projectRoot)}/server:/app/server:ro`,
+          "-v",
+          `${toDockerPath(projectRoot)}/src:/app/src:ro`,
+          "-v",
+          `${toDockerPath(workspacePath)}:/workspace`,
+          "-v",
+          `${toDockerPath(homedir())}/.claude:/root/.claude`,
+          ...extraHosts,
+          "mulmoclaude-sandbox",
+          "claude",
+          ...args,
+        ],
+        { stdio: ["ignore", "pipe", "pipe"] },
+      )
+    : spawn("claude", args, {
+        cwd: workspacePath,
+        stdio: ["ignore", "pipe", "pipe"],
+      });
 
   let stderrOutput = "";
   proc.stderr.on("data", (chunk: Buffer) => {
@@ -87,7 +133,7 @@ export async function* runAgent(
     proc.on("close", resolve),
   );
 
-  if (hasMcp) unlink(mcpConfigPath).catch(() => {});
+  if (hasMcp) unlink(mcpConfigHostPath).catch(() => {});
 
   if (exitCode !== 0) {
     yield {

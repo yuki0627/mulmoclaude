@@ -16,7 +16,8 @@
     "typecheck:server": "tsc -p server/tsconfig.json --noEmit",
     "build:client": "vite build",
     "build": "vite build && tsc -p server/tsconfig.json --noEmit",
-    "test": "tsx --test ./test/*/test_*.ts"
+    "test": "tsx --test ./test/*/test_*.ts",
+    "sandbox:login": "docker run --rm -it -v ~/.claude:/root/.claude mulmoclaude-sandbox claude login"
   },
   "resolutions": {
     "tar": "7.5.13"

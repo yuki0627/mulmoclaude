@@ -28,20 +28,34 @@ export interface McpConfigParams {
   port: number;
   activePlugins: string[];
   roleIds: string[];
+  useDocker?: boolean;
 }
 
 export function buildMcpConfig(params: McpConfigParams): object {
-  const { sessionId, port, activePlugins, roleIds } = params;
+  const { sessionId, port, activePlugins, roleIds, useDocker = false } = params;
+  const projectRoot = process.cwd();
+  const command = useDocker
+    ? "tsx"
+    : join(projectRoot, "node_modules/.bin/tsx");
+  const mcpServerPath = useDocker
+    ? "/app/server/mcp-server.ts"
+    : join(projectRoot, "server/mcp-server.ts");
   return {
     mcpServers: {
       mulmoclaude: {
-        command: join(process.cwd(), "node_modules/.bin/tsx"),
-        args: [join(process.cwd(), "server/mcp-server.ts")],
+        command,
+        args: [mcpServerPath],
         env: {
           SESSION_ID: sessionId,
           PORT: String(port),
           PLUGIN_NAMES: activePlugins.join(","),
           ROLE_IDS: roleIds.join(","),
+          ...(useDocker
+            ? {
+                MCP_HOST: "host.docker.internal",
+                NODE_PATH: "/app/node_modules",
+              }
+            : {}),
         },
       },
     },

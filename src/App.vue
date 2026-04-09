@@ -51,6 +51,35 @@
         </select>
       </div>
 
+      <!-- Sandbox warning -->
+      <div
+        v-if="!sandboxEnabled && !sandboxWarningDismissed"
+        class="mx-4 mb-2 rounded border border-orange-400 bg-orange-50 p-3 text-xs text-orange-700"
+      >
+        <div class="flex items-start justify-between gap-2">
+          <div>
+            <span class="material-icons text-xs align-middle mr-1"
+              >warning</span
+            >
+            <strong>No sandbox:</strong> Claude can access all files on your
+            machine. Install
+            <a
+              href="https://www.docker.com/products/docker-desktop/"
+              target="_blank"
+              class="underline"
+              >Docker Desktop</a
+            >
+            to enable filesystem isolation.
+          </div>
+          <button
+            class="shrink-0 text-orange-400 hover:text-orange-700"
+            @click="sandboxWarningDismissed = true"
+          >
+            <span class="material-icons text-sm">close</span>
+          </button>
+        </div>
+      </div>
+
       <!-- Gemini API key warning -->
       <div
         v-if="!geminiAvailable && needsGemini(currentRoleId)"
@@ -341,6 +370,8 @@ const activePane = ref<"sidebar" | "main">("sidebar");
 const showHistory = ref(false);
 const sessions = ref<SessionSummary[]>([]);
 const geminiAvailable = ref(true);
+const sandboxEnabled = ref(true);
+const sandboxWarningDismissed = ref(false);
 
 const chatListRef = ref<HTMLDivElement | null>(null);
 const canvasRef = ref<HTMLDivElement | null>(null);
@@ -567,8 +598,10 @@ async function refreshRoles() {
 async function fetchHealth() {
   try {
     const res = await fetch("/api/health");
+    if (!res.ok) throw new Error("health check failed");
     const data = await res.json();
     geminiAvailable.value = !!data.geminiAvailable;
+    sandboxEnabled.value = !!data.sandboxEnabled;
   } catch {
     geminiAvailable.value = false;
   }

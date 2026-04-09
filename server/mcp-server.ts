@@ -31,7 +31,8 @@ const PLUGIN_NAMES = (process.env.PLUGIN_NAMES ?? "")
   .split(",")
   .filter(Boolean);
 const ROLE_IDS = (process.env.ROLE_IDS ?? "").split(",").filter(Boolean);
-const BASE_URL = `http://localhost:${PORT}`;
+const MCP_HOST = process.env.MCP_HOST ?? "localhost";
+const BASE_URL = `http://${MCP_HOST}:${PORT}`;
 
 interface ToolDef {
   name: string;

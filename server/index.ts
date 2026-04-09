@@ -16,11 +16,14 @@ import wikiRoutes from "./routes/wiki.js";
 import pdfRoutes from "./routes/pdf.js";
 import { mcpToolsRouter } from "./mcp-tools/index.js";
 import { initWorkspace } from "./workspace.js";
+import { isDockerAvailable, ensureSandboxImage } from "./docker.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 initWorkspace();
+
+let sandboxEnabled = false;
 
 const app = express();
 const PORT = Number(process.env.PORT) || 3001;
@@ -30,7 +33,11 @@ app.use(cors());
 app.use(express.json({ limit: "50mb" }));
 
 app.get("/api/health", (_req: Request, res: Response) => {
-  res.json({ status: "OK", geminiAvailable: !!process.env.GEMINI_API_KEY });
+  res.json({
+    status: "OK",
+    geminiAvailable: !!process.env.GEMINI_API_KEY,
+    sandboxEnabled,
+  });
 });
 
 app.use("/api", agentRoutes);
@@ -58,6 +65,25 @@ app.use((err: Error, _req: Request, res: Response, __next: NextFunction) => {
   res.status(500).json({ error: "Internal Server Error" });
 });
 
-app.listen(PORT, "0.0.0.0", () => {
-  console.log(`Server running on port ${PORT}`);
-});
+(async () => {
+  if (process.env.DISABLE_SANDBOX === "1") {
+    console.log(
+      "[sandbox] DISABLE_SANDBOX=1 — running unrestricted (debug mode)",
+    );
+  } else {
+    sandboxEnabled = await isDockerAvailable();
+    if (sandboxEnabled) {
+      console.log(
+        "[sandbox] Docker available — building sandbox image if needed",
+      );
+      await ensureSandboxImage();
+      console.log("[sandbox] Sandbox ready");
+    } else {
+      console.log("[sandbox] Docker not found — claude will run unrestricted");
+    }
+  }
+
+  app.listen(PORT, "0.0.0.0", () => {
+    console.log(`Server running on port ${PORT}`);
+  });
+})();
