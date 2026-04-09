@@ -11,7 +11,7 @@ export async function isDockerAvailable(): Promise<boolean> {
   if (process.env.DISABLE_SANDBOX === "1") return false;
   if (_dockerEnabled !== null) return _dockerEnabled;
   try {
-    await execFileAsync("docker", ["info"], { timeout: 5000 });
+    await execFileAsync("docker", ["ps", "-q"], { timeout: 5000 });
     _dockerEnabled = true;
   } catch {
     _dockerEnabled = false;
@@ -28,7 +28,7 @@ export async function ensureSandboxImage(): Promise<void> {
     );
     await execFileAsync(
       "docker",
-      ["build", "-t", IMAGE_NAME, "-f", "Dockerfile.sandbox", "."],
+      ["build", "-t", IMAGE_NAME, "-f", "Dockerfile.sandbox", "--load", "."],
       { cwd: process.cwd() },
     );
     console.log("[sandbox] Sandbox image built.");

@@ -69,13 +69,13 @@ export async function* runAgent(
     mcpConfigPath: hasMcp ? mcpConfigArgPath : undefined,
   });
 
-  const projectRoot = process.cwd();
   const toDockerPath = (p: string) => p.replace(/\\/g, "/");
   const extraHosts: string[] =
     process.platform === "linux"
       ? ["--add-host", "host.docker.internal:host-gateway"]
       : [];
 
+  const projectRoot = process.cwd();
   const proc = useDocker
     ? spawn(
         "docker",
@@ -104,41 +104,44 @@ export async function* runAgent(
         stdio: ["ignore", "pipe", "pipe"],
       });
 
-  let stderrOutput = "";
-  proc.stderr.on("data", (chunk: Buffer) => {
-    stderrOutput += chunk.toString();
-  });
+  try {
+    let stderrOutput = "";
+    proc.stderr.on("data", (chunk: Buffer) => {
+      stderrOutput += chunk.toString();
+    });
 
-  let buffer = "";
-  for await (const chunk of proc.stdout) {
-    buffer += chunk.toString();
-    const lines = buffer.split("\n");
-    buffer = lines.pop() ?? "";
+    let buffer = "";
+    for await (const chunk of proc.stdout) {
+      buffer += chunk.toString();
+      const lines = buffer.split("\n");
+      buffer = lines.pop() ?? "";
 
-    for (const line of lines) {
-      if (!line.trim()) continue;
-      let event: RawStreamEvent;
-      try {
-        event = JSON.parse(line);
-      } catch {
-        continue;
-      }
-      for (const agentEvent of parseStreamEvent(event)) {
-        yield agentEvent;
+      for (const line of lines) {
+        if (!line.trim()) continue;
+        let event: RawStreamEvent;
+        try {
+          event = JSON.parse(line);
+        } catch {
+          continue;
+        }
+        for (const agentEvent of parseStreamEvent(event)) {
+          yield agentEvent;
+        }
       }
     }
-  }
 
-  const exitCode = await new Promise<number>((resolve) =>
-    proc.on("close", resolve),
-  );
+    const exitCode = await new Promise<number>((resolve) =>
+      proc.on("close", resolve),
+    );
 
-  if (hasMcp) unlink(mcpConfigHostPath).catch(() => {});
-
-  if (exitCode !== 0) {
-    yield {
-      type: "error",
-      message: stderrOutput || `claude exited with code ${exitCode}`,
-    };
+    if (exitCode !== 0) {
+      yield {
+        type: "error",
+        message: stderrOutput || `claude exited with code ${exitCode}`,
+      };
+    }
+  } finally {
+    if (!proc.killed) proc.kill();
+    if (hasMcp) unlink(mcpConfigHostPath).catch(() => {});
   }
 }

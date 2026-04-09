@@ -6,7 +6,7 @@
   "author": "snakajima",
   "license": "AGPL-3.0-only",
   "scripts": {
-    "dev": "concurrently \"npm run server\" \"vite\"",
+    "dev": "concurrently -n server,client -k \"npm run server\" \"sleep 2 && vite\"",
     "dev:client": "vite",
     "dev:server": "tsx server/index.ts",
     "server": "tsx server/index.ts",

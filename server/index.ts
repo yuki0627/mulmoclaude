@@ -1,6 +1,7 @@
 import "dotenv/config";
 import express, { Request, Response, NextFunction } from "express";
 import cors from "cors";
+import net from "net";
 import path from "path";
 import { fileURLToPath } from "url";
 import agentRoutes from "./routes/agent.js";
@@ -65,21 +66,50 @@ app.use((err: Error, _req: Request, res: Response, __next: NextFunction) => {
   res.status(500).json({ error: "Internal Server Error" });
 });
 
+function isPortFree(port: number): Promise<boolean> {
+  return new Promise((resolve) => {
+    const server = net.createServer();
+    server.once("error", () => resolve(false));
+    server.once("listening", () => {
+      server.close(() => resolve(true));
+    });
+    server.listen(port, "0.0.0.0");
+  });
+}
+
 (async () => {
+  const portFree = await isPortFree(PORT);
+  if (!portFree) {
+    console.error(
+      `[error] Port ${PORT} is already in use. Stop the other process and try again.`,
+    );
+    process.exit(1);
+  }
+
   if (process.env.DISABLE_SANDBOX === "1") {
     console.log(
       "[sandbox] DISABLE_SANDBOX=1 — running unrestricted (debug mode)",
     );
   } else {
-    sandboxEnabled = await isDockerAvailable();
-    if (sandboxEnabled) {
-      console.log(
-        "[sandbox] Docker available — building sandbox image if needed",
+    try {
+      sandboxEnabled = await isDockerAvailable();
+      if (sandboxEnabled) {
+        console.log(
+          "[sandbox] Docker available — building sandbox image if needed",
+        );
+        await ensureSandboxImage();
+        console.log("[sandbox] Sandbox ready");
+      } else {
+        console.log(
+          "[sandbox] Docker not found — claude will run unrestricted",
+        );
+      }
+    } catch (err) {
+      console.error(
+        "[sandbox] Failed to set up sandbox, running unrestricted:",
+        err,
       );
-      await ensureSandboxImage();
-      console.log("[sandbox] Sandbox ready");
-    } else {
-      console.log("[sandbox] Docker not found — claude will run unrestricted");
+      sandboxEnabled = false;
     }
   }
 
