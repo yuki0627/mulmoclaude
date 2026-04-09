@@ -401,6 +401,7 @@ const toolCallHistory = ref<ToolCallHistoryItem[]>([]);
 const rightSidebarRef = ref<InstanceType<typeof RightSidebar> | null>(null);
 
 const disabledMcpTools = ref(new Set<string>());
+const mcpToolDescriptions = ref<Record<string, string>>({});
 
 const availableTools = computed(() =>
   currentRole.value.availablePlugins.filter(
@@ -442,7 +443,9 @@ const pendingCalls = computed(() => {
 const toolDescriptions = computed(() => {
   const map: Record<string, string> = {};
   for (const name of currentRole.value.availablePlugins) {
-    const desc = getPlugin(name)?.toolDefinition.description;
+    const desc =
+      getPlugin(name)?.toolDefinition.description ??
+      mcpToolDescriptions.value[name];
     if (desc) map[name] = desc;
   }
   return map;
@@ -617,9 +620,13 @@ async function fetchMcpToolsStatus() {
   try {
     const res = await fetch("/api/mcp-tools");
     if (!res.ok) return;
-    const tools: { name: string; enabled: boolean }[] = await res.json();
+    const tools: { name: string; enabled: boolean; prompt?: string }[] =
+      await res.json();
     disabledMcpTools.value = new Set(
       tools.filter((t) => !t.enabled).map((t) => t.name),
+    );
+    mcpToolDescriptions.value = Object.fromEntries(
+      tools.filter((t) => t.prompt).map((t) => [t.name, t.prompt as string]),
     );
   } catch {
     // ignore — all tools remain visible if the fetch fails
