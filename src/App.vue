@@ -224,7 +224,7 @@
           :class="
             result.uuid === selectedResultUuid ? 'ring-2 ring-blue-500' : ''
           "
-          @click="selectedResultUuid = result.uuid"
+          @click="onSidebarItemClick(result.uuid)"
         >
           <component
             :is="getPlugin(result.toolName)?.previewComponent"
@@ -859,6 +859,18 @@ function handleUpdateResult(updatedResult: ToolResultComplete) {
   const index = results.findIndex((r) => r.uuid === updatedResult.uuid);
   if (index !== -1) {
     Object.assign(results[index], updatedResult);
+  }
+}
+
+// When the user clicks an item in the sidebar while the canvas is
+// showing the file explorer, the previously-selected file would
+// otherwise stay on screen and the click would have no visible
+// effect. Auto-switch back to single mode so the clicked item
+// actually shows up in the canvas.
+function onSidebarItemClick(uuid: string) {
+  selectedResultUuid.value = uuid;
+  if (canvasViewMode.value === "files") {
+    setCanvasViewMode("single");
   }
 }
 
