@@ -17,7 +17,12 @@ export default [
   sonarjs.configs.recommended,
   ...tseslint.configs.recommended,
   {
-    files: ["**/utils/html_render.ts", "src/utils/dom.ts"],
+    files: [
+      "**/utils/html_render.ts",
+      "src/utils/dom.ts",
+      "src/utils/clickOutside.ts",
+      "src/composables/**/*.ts",
+    ],
     languageOptions: {
       globals: {
         ...globals.browser,

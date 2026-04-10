@@ -490,6 +490,7 @@ import {
 import { formatDate } from "./utils/format";
 import { findScrollableChild } from "./utils/dom";
 import { usePendingCalls } from "./composables/usePendingCalls";
+import { useClickOutside } from "./composables/useClickOutside";
 
 // --- Per-session state ---
 const sessionMap = reactive(new Map<string, ActiveSession>());
@@ -1102,35 +1103,21 @@ async function sendMessage(text?: string) {
   }
 }
 
-function handleClickOutsideHistory(e: MouseEvent) {
-  if (!showHistory.value) return;
-  const target = e.target as Node;
-  const insideButton = historyButtonRef.value?.contains(target) ?? false;
-  const insidePopup = historyPopupRef.value?.contains(target) ?? false;
-  if (!insideButton && !insidePopup) {
-    showHistory.value = false;
-  }
-}
-
-function handleClickOutsideLock(e: MouseEvent) {
-  if (!showLockPopup.value) return;
-  const target = e.target as Node;
-  const insideButton = lockButtonRef.value?.contains(target) ?? false;
-  const insidePopup = lockPopupRef.value?.contains(target) ?? false;
-  if (!insideButton && !insidePopup) {
-    showLockPopup.value = false;
-  }
-}
-
-function handleClickOutsideRoleDropdown(e: MouseEvent) {
-  if (!showRoleDropdown.value) return;
-  const target = e.target as Node;
-  const insideButton = roleButtonRef.value?.contains(target) ?? false;
-  const insideDropdown = roleDropdownRef.value?.contains(target) ?? false;
-  if (!insideButton && !insideDropdown) {
-    showRoleDropdown.value = false;
-  }
-}
+const { handler: handleClickOutsideHistory } = useClickOutside({
+  isOpen: showHistory,
+  buttonRef: historyButtonRef,
+  popupRef: historyPopupRef,
+});
+const { handler: handleClickOutsideLock } = useClickOutside({
+  isOpen: showLockPopup,
+  buttonRef: lockButtonRef,
+  popupRef: lockPopupRef,
+});
+const { handler: handleClickOutsideRoleDropdown } = useClickOutside({
+  isOpen: showRoleDropdown,
+  buttonRef: roleButtonRef,
+  popupRef: roleDropdownRef,
+});
 
 onMounted(async () => {
   // Listeners first so the UI responds to interactions even if the
