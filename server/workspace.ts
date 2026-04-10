@@ -9,6 +9,9 @@ const TEMPLATES_DIR = path.join(__dirname, "helps");
 
 export const workspacePath = path.join(os.homedir(), "mulmoclaude");
 
+// Must exist before downstream modules call realpathSync(workspacePath) at their own module-load time.
+fs.mkdirSync(workspacePath, { recursive: true });
+
 const SUBDIRS = [
   "chat",
   "todos",
@@ -21,7 +24,6 @@ const SUBDIRS = [
 
 export function initWorkspace(): string {
   // Create directory structure if needed
-  fs.mkdirSync(workspacePath, { recursive: true });
   for (const dir of SUBDIRS) {
     fs.mkdirSync(path.join(workspacePath, dir), { recursive: true });
   }
