@@ -35,13 +35,13 @@
           result.toolName
         }}</span>
       </button>
-      <!-- text-response: render the message directly so the card sizes
-           naturally to its text content -->
-      <div
-        v-if="isTextResponse(result)"
-        class="px-4 py-3 text-sm text-gray-800 whitespace-pre-wrap break-words"
-      >
-        {{ messageText(result) }}
+      <!-- text-response: render the message as Markdown so headings,
+           lists, code blocks etc. look the same as in single view.
+           TextResponseOriginalView is the underlying renderer from
+           @gui-chat-plugin/text-response — using it directly skips the
+           PDF-download wrapper and keeps the card at natural height. -->
+      <div v-if="isTextResponse(result)" class="px-4 py-3 text-sm">
+        <TextResponseOriginalView :selected-result="result" />
       </div>
       <!-- Document-like plugins: let the content flow at its natural
            height by overriding the plugin's internal h-full / overflow
@@ -87,6 +87,8 @@
 import { ref, watch, nextTick, onUnmounted } from "vue";
 import { getPlugin } from "../tools";
 import type { ToolResultComplete } from "gui-chat-protocol/vue";
+import { View as TextResponseOriginalView } from "@gui-chat-plugin/text-response/vue";
+import type { TextResponseData } from "@gui-chat-plugin/text-response";
 
 // Most plugin viewComponents use h-full internally, so a defined parent
 // height is required for them to render. text-response and the
@@ -170,22 +172,14 @@ function resizeOneIframe(iframe: HTMLIFrameElement): void {
   }
 }
 
-function isTextResponse(result: ToolResultComplete): boolean {
-  return result.toolName === "text-response";
-}
-
-function messageText(result: ToolResultComplete): string {
-  if (typeof result.message === "string") return result.message;
+function isTextResponse(
+  result: ToolResultComplete,
+): result is ToolResultComplete<TextResponseData> {
+  if (result.toolName !== "text-response") return false;
   const data = result.data;
-  if (
-    typeof data === "object" &&
-    data !== null &&
-    "text" in data &&
-    typeof (data as { text: unknown }).text === "string"
-  ) {
-    return (data as { text: string }).text;
-  }
-  return "";
+  if (typeof data !== "object" || data === null) return false;
+  if (!("text" in data)) return false;
+  return typeof data.text === "string";
 }
 
 function iconFor(toolName: string): string {
