@@ -205,7 +205,7 @@
         <div
           v-if="showRoleDropdown"
           ref="roleDropdownRef"
-          class="absolute left-4 right-4 top-full z-50 mt-1 bg-white border border-gray-200 rounded-lg shadow-lg overflow-hidden"
+          class="absolute left-4 right-4 top-full z-50 bg-white border border-gray-200 rounded-lg shadow-lg overflow-hidden"
         >
           <button
             v-for="role in roles"
@@ -243,7 +243,12 @@
           >
             <span
               class="material-icons text-base"
-              :class="tabColor(tabSessions[i - 1])"
+              :class="[
+                tabColor(tabSessions[i - 1]),
+                sessionMap.get(tabSessions[i - 1].id)?.isRunning
+                  ? 'animate-spin [animation-duration:3s]'
+                  : '',
+              ]"
               >{{ roleIcon(tabSessions[i - 1].roleId) }}</span
             >
           </button>
