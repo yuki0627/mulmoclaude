@@ -202,18 +202,19 @@ function iconFor(toolName: string): string {
 // a `select` for whichever card currently occupies the top, so the
 // sidebar selection always tracks what's on screen.
 //
-// Two flags coordinate the feedback loop:
+// Coordination between scroll and selection:
 //   - `suppressScrollSync` is set while the component programmatically
 //     scrolls (sidebar click → scrollIntoView, auto-scroll on new
 //     result) so the spy doesn't fire on its own scroll.
-//   - `selectionFromScrollSpy` is set right before the spy emits a
-//     `select`, so the watch on `selectedResultUuid` knows the change
-//     came from the user scrolling and skips the scrollIntoView (which
-//     would otherwise jerk the view to the start of the next card).
+//   - `scrollSpyEmittedUuid` holds the exact uuid the spy most
+//     recently emitted. The watch on `selectedResultUuid` only skips
+//     its scrollIntoView when the incoming uuid matches, so a
+//     sidebar click that arrives right after a spy emit still gets
+//     its normal scroll behaviour.
 let suppressScrollSync = false;
 let suppressScrollTimeout: ReturnType<typeof setTimeout> | null = null;
 let scrollSpyRafId: number | null = null;
-let selectionFromScrollSpy = false;
+let scrollSpyEmittedUuid: string | null = null;
 
 function beginSuppressScrollSync(): void {
   suppressScrollSync = true;
@@ -224,17 +225,27 @@ function beginSuppressScrollSync(): void {
   }, SCROLL_SPY_SUPPRESS_MS);
 }
 
+function readPaddingTop(el: HTMLElement): number {
+  const value = parseFloat(getComputedStyle(el).paddingTop);
+  return Number.isFinite(value) ? value : 0;
+}
+
 // Walk items in order and return the last one whose top edge is at or
-// above the container's visible top. Iterating in DOM order lets us
-// break early once an item is below the line.
+// above the padded content top of the container. Accounting for the
+// container's padding-top means the handoff happens at the visual
+// start of the cards rather than the invisible border of the
+// container itself. Iterating in DOM order lets us break early once
+// an item is below the line.
 function computeActiveUuidFromScroll(): string | null {
   if (!containerRef.value) return null;
-  const containerTop = containerRef.value.getBoundingClientRect().top;
+  const container = containerRef.value;
+  const paddedTop =
+    container.getBoundingClientRect().top + readPaddingTop(container);
   let activeUuid: string | null = null;
   for (const result of props.toolResults) {
     const el = itemRefs.get(result.uuid);
     if (!el) continue;
-    if (el.getBoundingClientRect().top <= containerTop) {
+    if (el.getBoundingClientRect().top <= paddedTop) {
       activeUuid = result.uuid;
     } else {
       break;
@@ -251,24 +262,26 @@ function onContainerScroll(): void {
     if (suppressScrollSync) return;
     const activeUuid = computeActiveUuidFromScroll();
     if (activeUuid && activeUuid !== props.selectedResultUuid) {
-      selectionFromScrollSpy = true;
+      scrollSpyEmittedUuid = activeUuid;
       emit("select", activeUuid);
     }
   });
 }
 
 // Scroll the selected card to the top whenever the external selection
-// changes (sidebar click, initial load). Skip the scroll when the
-// change was initiated by the spy itself — the viewport is already in
-// the right place, and scrolling again would jerk to the next card.
+// changes (sidebar click, initial load). Skip the scroll only when the
+// incoming uuid matches the one we just emitted from the spy — that
+// means the viewport is already in the right place. Any other change
+// (sidebar click, new result) still gets its normal scrollIntoView.
 watch(
   () => props.selectedResultUuid,
   (uuid) => {
     if (!uuid) return;
-    if (selectionFromScrollSpy) {
-      selectionFromScrollSpy = false;
+    if (scrollSpyEmittedUuid === uuid) {
+      scrollSpyEmittedUuid = null;
       return;
     }
+    scrollSpyEmittedUuid = null;
     nextTick(() => {
       const el = itemRefs.get(uuid);
       if (!el) return;
