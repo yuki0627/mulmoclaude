@@ -1,7 +1,7 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
-import { roleIcon, roleName } from "../../src/utils/role.js";
-import type { Role } from "../../src/config/roles";
+import { roleIcon, roleName } from "../../../src/utils/role/icon.js";
+import type { Role } from "../../../src/config/roles";
 
 const roles: Role[] = [
   {

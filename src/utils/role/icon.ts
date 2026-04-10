@@ -2,7 +2,7 @@
 // Taking the role list as a parameter (instead of reading a Vue ref)
 // keeps these dependency-free and unit-testable.
 
-import type { Role } from "../config/roles";
+import type { Role } from "../../config/roles";
 
 // Material Icon names use lowercase letters and underscores only.
 // Custom roles may have stored an emoji or other freeform value in

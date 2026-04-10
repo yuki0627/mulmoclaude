@@ -19,7 +19,7 @@
 </template>
 
 <script setup lang="ts">
-import type { CanvasViewMode } from "../utils/canvasViewMode";
+import type { CanvasViewMode } from "../utils/canvas/viewMode";
 
 interface ModeOption {
   key: CanvasViewMode;

@@ -1,7 +1,7 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
-import { mergeRoles } from "../../src/utils/roleMerge.js";
-import type { Role } from "../../src/config/roles";
+import { mergeRoles } from "../../../src/utils/role/merge.js";
+import type { Role } from "../../../src/config/roles";
 
 function role(id: string, name = id): Role {
   return {

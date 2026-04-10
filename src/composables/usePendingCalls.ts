@@ -7,7 +7,10 @@
 
 import { computed, ref, watch, type ComputedRef, type Ref } from "vue";
 import type { ToolCallHistoryItem } from "../components/RightSidebar.vue";
-import { isCallStillPending, PENDING_MIN_MS } from "../utils/pendingCalls";
+import {
+  isCallStillPending,
+  PENDING_MIN_MS,
+} from "../utils/tools/pendingCalls";
 
 interface UsePendingCallsOptions {
   isRunning: ComputedRef<boolean> | Ref<boolean>;

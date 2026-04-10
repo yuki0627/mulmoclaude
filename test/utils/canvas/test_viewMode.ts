@@ -4,7 +4,7 @@ import {
   parseStoredViewMode,
   viewModeForShortcutKey,
   VIEW_MODE_STORAGE_KEY,
-} from "../../src/utils/canvasViewMode.js";
+} from "../../../src/utils/canvas/viewMode.js";
 
 describe("parseStoredViewMode", () => {
   it("returns the stored value when it is one of the known modes", () => {

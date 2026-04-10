@@ -10,7 +10,7 @@ import {
   availableToolsFor,
   toolDescriptionsFor,
   type ToolDefinitionMetadata,
-} from "../utils/mcpTools";
+} from "../utils/tools/mcp";
 
 interface UseMcpToolsOptions {
   currentRole: ComputedRef<Role>;

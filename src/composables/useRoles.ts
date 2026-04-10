@@ -5,7 +5,7 @@
 
 import { computed, ref, type ComputedRef, type Ref } from "vue";
 import { ROLES, type Role } from "../config/roles";
-import { mergeRoles } from "../utils/roleMerge";
+import { mergeRoles } from "../utils/role/merge";
 
 export function useRoles(): {
   roles: Ref<Role[]>;

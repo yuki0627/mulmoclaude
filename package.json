@@ -16,7 +16,7 @@
     "typecheck:server": "tsc -p server/tsconfig.json --noEmit",
     "build:client": "vite build",
     "build": "vite build && tsc -p server/tsconfig.json --noEmit",
-    "test": "tsx --test ./test/*/test_*.ts",
+    "test": "tsx --test ./test/*/test_*.ts ./test/*/*/test_*.ts",
     "sandbox:remove": "docker rmi mulmoclaude-sandbox",
     "sandbox:login": "docker run --rm -it -v ~/.claude:/root/.claude mulmoclaude-sandbox claude login"
   },

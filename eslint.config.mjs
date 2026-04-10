@@ -19,8 +19,7 @@ export default [
   {
     files: [
       "**/utils/html_render.ts",
-      "src/utils/dom.ts",
-      "src/utils/clickOutside.ts",
+      "src/utils/dom/**/*.ts",
       "src/composables/**/*.ts",
     ],
     languageOptions: {

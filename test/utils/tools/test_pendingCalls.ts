@@ -3,8 +3,8 @@ import assert from "node:assert/strict";
 import {
   isCallStillPending,
   PENDING_MIN_MS,
-} from "../../src/utils/pendingCalls.js";
-import type { ToolCallHistoryItem } from "../../src/components/RightSidebar.vue";
+} from "../../../src/utils/tools/pendingCalls.js";
+import type { ToolCallHistoryItem } from "../../../src/components/RightSidebar.vue";
 
 function call(over: Partial<ToolCallHistoryItem>): ToolCallHistoryItem {
   return {

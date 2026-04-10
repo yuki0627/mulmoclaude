@@ -11,7 +11,7 @@ import {
   VIEW_MODE_STORAGE_KEY,
   parseStoredViewMode,
   viewModeForShortcutKey,
-} from "../utils/canvasViewMode";
+} from "../utils/canvas/viewMode";
 
 interface UseCanvasViewModeOptions {
   // Watched so the file tree can be refreshed when the agent run

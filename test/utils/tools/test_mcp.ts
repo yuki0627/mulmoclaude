@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import {
   availableToolsFor,
   toolDescriptionsFor,
-} from "../../src/utils/mcpTools.js";
+} from "../../../src/utils/tools/mcp.js";
 
 describe("availableToolsFor", () => {
   it("returns the role's plugins unchanged when nothing is disabled", () => {

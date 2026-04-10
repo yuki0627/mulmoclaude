@@ -5,7 +5,7 @@
 // pattern.
 
 import type { Ref } from "vue";
-import { isClickOutside } from "../utils/clickOutside";
+import { isClickOutside } from "../utils/dom/clickOutside";
 
 interface UseClickOutsideOptions {
   isOpen: Ref<boolean>;

@@ -1,6 +1,6 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
-import { findScrollableChild } from "../../src/utils/dom.js";
+import { findScrollableChild } from "../../../src/utils/dom/scrollable.js";
 
 // findScrollableChild touches DOM APIs (querySelectorAll, scrollHeight,
 // clientHeight, getComputedStyle). Rather than spin up jsdom, we mock

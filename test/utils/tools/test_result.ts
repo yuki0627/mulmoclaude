@@ -4,7 +4,7 @@ import {
   isUserTextResponse,
   extractImageData,
   makeTextResult,
-} from "../../src/utils/toolResult.js";
+} from "../../../src/utils/tools/result.js";
 import type { ToolResultComplete } from "gui-chat-protocol/vue";
 
 function makeResult(over: Partial<ToolResultComplete>): ToolResultComplete {

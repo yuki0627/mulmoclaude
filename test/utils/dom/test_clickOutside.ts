@@ -1,6 +1,6 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
-import { isClickOutside } from "../../src/utils/clickOutside.js";
+import { isClickOutside } from "../../../src/utils/dom/clickOutside.js";
 
 // Minimal Element-shaped fakes. The function only needs `contains`.
 function fakeEl(name: string, descendants: Node[] = []): HTMLElement {

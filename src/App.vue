@@ -479,13 +479,13 @@ import {
   isUserTextResponse,
   extractImageData,
   makeTextResult,
-} from "./utils/toolResult";
+} from "./utils/tools/result";
 import {
   roleIcon as roleIconLookup,
   roleName as roleNameLookup,
-} from "./utils/role";
-import { formatDate } from "./utils/format";
-import { findScrollableChild } from "./utils/dom";
+} from "./utils/role/icon";
+import { formatDate } from "./utils/format/date";
+import { findScrollableChild } from "./utils/dom/scrollable";
 import { usePendingCalls } from "./composables/usePendingCalls";
 import { useClickOutside } from "./composables/useClickOutside";
 import { useCanvasViewMode } from "./composables/useCanvasViewMode";
