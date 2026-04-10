@@ -118,7 +118,7 @@ Must change `/root/.claude` → `/home/node/.claude` (or wherever the non-root h
    WORKDIR /home/node/mulmoclaude
    ```
 
-2. **`server/agent.ts`** — three changes:
+2. **`server/agent.ts`** — four changes:
    - Mount the workspace at `/home/node/mulmoclaude` instead of `/workspace`:
      ```ts
      `${toDockerPath(workspacePath)}:/home/node/mulmoclaude`,
@@ -132,9 +132,15 @@ Must change `/root/.claude` → `/home/node/.claude` (or wherever the non-root h
      `${toDockerPath(homedir())}/.claude:/home/node/.claude:ro`,
      "--user", `${process.getuid?.() ?? 1000}:${process.getgid?.() ?? 1000}`,
      ```
+   - Set `HOME` explicitly so `claude` can find its credentials regardless of effective UID:
+     ```ts
+     "-e", "HOME=/home/node",
+     ```
+     **Why this is required**: `--user UID:GID` passes the host UID (e.g. 501 on macOS), which has no entry in the container's `/etc/passwd`. Without a passwd entry the shell never sets `HOME`, so `claude` cannot locate `~/.claude` and hangs waiting for auth (with stdin closed, it never completes).
+
    Note: `process.getuid()` is not available on Windows; guard accordingly.
 
-3. **`server/docker.ts`** — add `--cap-drop ALL` to further harden (optional but recommended):
+3. **`server/agent.ts`** — add `--cap-drop ALL` to further harden:
    ```ts
    "--cap-drop", "ALL",
    ```
@@ -149,7 +155,7 @@ Must change `/root/.claude` → `/home/node/.claude` (or wherever the non-root h
 | `/home/node/mulmoclaude` | `workspacePath` | rw |
 | `/home/node/.claude` | `~/.claude` | ro |
 
-4. **Rebuild the sandbox image** — since `Dockerfile.sandbox` changes, `ensureSandboxImage()` will not detect the stale image automatically. Users need to `docker rmi mulmoclaude-sandbox` to force a rebuild, or the build step should check image labels/digests.
+4. **Automatic image rebuild** — `ensureSandboxImage()` in `server/docker.ts` detects stale images automatically. At build time it embeds a SHA-256 hash of `Dockerfile.sandbox` as an image label (`mulmoclaude.dockerfile.sha256`). On every server start it compares the label against the current file hash and rebuilds if they differ, streaming `docker build` output to the server console in real time. Users never need to run `docker rmi` manually.
 
 ### macOS Note
 
