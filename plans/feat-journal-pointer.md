@@ -131,7 +131,7 @@ Answer: the pointer is a **path**, not data. The `Read` tool always returns the 
    - Pass `decoratedMessage` to `runAgent` instead of `message`
    - **Important**: ensure the `appendFile` to jsonl uses the ORIGINAL `message`, not the decorated one. The jsonl is the user-facing chat log and must stay clean.
 
-3. **Unit test `test/agent/test_prompt.ts`**
+3. **Unit test `test/agent/test_agent_prompt.ts`**
    - `prependJournalPointer` with `_index.md` present → contains the pointer + original message at the end
    - `prependJournalPointer` with `_index.md` absent → returns the original message unchanged
    - `prependJournalPointer` with empty-string message → pointer wraps empty string, still valid
@@ -147,8 +147,8 @@ Answer: the pointer is a **path**, not data. The `Read` tool always returns the 
 
 ## Test plan (automated only)
 
-```
-test/agent/test_prompt.ts — add describe block for prependJournalPointer
+```text
+test/agent/test_agent_prompt.ts — add describe block for prependJournalPointer
   - returns original message when summaries/_index.md does not exist
   - prepends journal-context block when summaries/_index.md exists
   - preserves original message verbatim at end of decorated output

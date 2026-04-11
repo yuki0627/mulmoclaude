@@ -207,6 +207,16 @@ describe("prependJournalPointer", () => {
     );
   });
 
+  it("preserves a trailing newline in the original message", () => {
+    writeJournalIndex();
+    const message = "What did I do last week with the video plugin?\n";
+    const result = prependJournalPointer(message, workspace);
+    assert.ok(
+      result.endsWith(`\n${message}`),
+      "decorated message should preserve a trailing newline in the original message",
+    );
+  });
+
   it("handles an empty message without crashing", () => {
     writeJournalIndex();
     const result = prependJournalPointer("", workspace);
