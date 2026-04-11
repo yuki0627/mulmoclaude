@@ -170,7 +170,6 @@ router.post(
         (err) => {
           // Should not actually happen — maybeRunJournal swallows
           // its own errors — but belt-and-suspenders.
-          // eslint-disable-next-line no-console
           console.warn("[journal] unexpected error in background:", err);
         },
       );
