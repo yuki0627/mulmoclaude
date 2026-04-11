@@ -166,7 +166,7 @@
                 >
                   Unread
                 </span>
-                <span v-else>{{ formatDate(session.startedAt) }}</span>
+                <span v-else>{{ formatDate(session.updatedAt) }}</span>
               </span>
             </div>
             <p
@@ -617,7 +617,10 @@ const selectedResult = computed(
 // to surface the first user message as a preview for live sessions
 // that haven't been persisted to disk yet.
 // Merged list for the history pane: live sessions in `sessionMap`
-// merged with server-only sessions, sorted newest-first by startedAt.
+// merged with server-only sessions, sorted newest-first by
+// `updatedAt` (most recently touched floats to the top). `updatedAt`
+// is bumped in `sendMessage` for live sessions and taken from the
+// jsonl file mtime for server-only sessions.
 const mergedSessions = computed((): SessionSummary[] => {
   const liveIds = new Set(sessionMap.keys());
   const liveSummaries: SessionSummary[] = [...sessionMap.values()].map((s) => {
@@ -626,13 +629,17 @@ const mergedSessions = computed((): SessionSummary[] => {
       id: s.id,
       roleId: s.roleId,
       startedAt: s.startedAt,
+      updatedAt: s.updatedAt,
       preview: firstUserMsg?.message ?? "",
     };
   });
   const serverOnly = sessions.value.filter((s) => !liveIds.has(s.id));
-  return [...liveSummaries, ...serverOnly].sort(
-    (a, b) => new Date(b.startedAt).getTime() - new Date(a.startedAt).getTime(),
-  );
+  return [...liveSummaries, ...serverOnly].sort((a, b) => {
+    const byUpdated =
+      new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime();
+    if (byUpdated !== 0) return byUpdated;
+    return new Date(b.startedAt).getTime() - new Date(a.startedAt).getTime();
+  });
 });
 
 const tabSessions = computed(() => mergedSessions.value.slice(0, 6));
@@ -790,9 +797,11 @@ function toggleRightSidebar() {
 }
 
 function createNewSession(roleId?: string): ActiveSession {
-  // Remove the latest session if it's empty (no messages exchanged)
+  // Remove the latest session if it's empty (no messages exchanged).
+  // "Latest" here means most-recently-touched, matching the sort
+  // order the user sees in the sidebar.
   const latest = [...sessionMap.values()].sort(
-    (a, b) => new Date(b.startedAt).getTime() - new Date(a.startedAt).getTime(),
+    (a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime(),
   )[0];
   if (latest && latest.toolResults.length === 0) {
     sessionMap.delete(latest.id);
@@ -800,6 +809,7 @@ function createNewSession(roleId?: string): ActiveSession {
 
   const id = uuidv4();
   const rId = roleId ?? currentRoleId.value;
+  const now = new Date().toISOString();
   const session: ActiveSession = {
     id,
     roleId: rId,
@@ -810,7 +820,8 @@ function createNewSession(roleId?: string): ActiveSession {
     selectedResultUuid: null,
     hasUnread: false,
     abortController: markRaw(new AbortController()),
-    startedAt: new Date().toISOString(),
+    startedAt: now,
+    updatedAt: now,
   };
   sessionMap.set(id, session);
   currentSessionId.value = id;
@@ -887,9 +898,14 @@ async function loadSession(id: string) {
   const resolvedSelectedUuid =
     lastTool?.uuid ?? toolResultsList[toolResultsList.length - 1]?.uuid ?? null;
 
-  const originalStartedAt =
-    sessions.value.find((s) => s.id === id)?.startedAt ??
-    new Date().toISOString();
+  const serverSummary = sessions.value.find((s) => s.id === id);
+  const nowIso = new Date().toISOString();
+  const originalStartedAt = serverSummary?.startedAt ?? nowIso;
+  // Prefer the server's mtime-derived updatedAt so the loaded
+  // session keeps its place in the most-recently-touched sort;
+  // fall back to startedAt or now if the server summary is absent.
+  const originalUpdatedAt =
+    serverSummary?.updatedAt ?? originalStartedAt ?? nowIso;
 
   sessionMap.set(id, {
     id,
@@ -902,6 +918,7 @@ async function loadSession(id: string) {
     hasUnread: false,
     abortController: markRaw(new AbortController()),
     startedAt: originalStartedAt,
+    updatedAt: originalUpdatedAt,
   });
   currentSessionId.value = id;
   currentRoleId.value = roleId;
@@ -919,6 +936,11 @@ async function sendMessage(text?: string) {
 
   session.isRunning = true;
   session.statusMessage = "Thinking...";
+  // Bump updatedAt so the session floats to the top of the
+  // "most recently touched" sort in the sidebar as soon as the
+  // user submits a message. The server's jsonl mtime will match
+  // on the next fetchSessions() after the run ends.
+  session.updatedAt = new Date().toISOString();
   session.toolResults.push(makeTextResult(message, "user"));
   const runStartIndex = session.toolResults.length;
 
