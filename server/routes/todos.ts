@@ -1,5 +1,6 @@
 import { Router, Request, Response } from "express";
 import path from "path";
+import { randomBytes } from "crypto";
 import { workspacePath } from "../workspace.js";
 import { loadJsonFile, saveJsonFile } from "../utils/file.js";
 
@@ -76,7 +77,7 @@ router.post(
           return;
         }
         const item: TodoItem = {
-          id: `todo_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
+          id: `todo_${Date.now()}_${randomBytes(3).toString("hex")}`,
           text,
           ...(note !== undefined && { note }),
           completed: false,
