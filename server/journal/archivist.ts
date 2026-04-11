@@ -1,0 +1,412 @@
+// Thin wrapper around the Claude Code CLI used as the journal's
+// summarizer. The default `runClaudeCli` spawns `claude -p` as a
+// subprocess so summarization draws from the user's subscription
+// quota rather than the API key budget.
+//
+// The rest of the journal module receives a `Summarize` function
+// via dependency injection — tests supply a deterministic fake, the
+// production path supplies `runClaudeCli`.
+
+import { spawn } from "node:child_process";
+
+// (systemPrompt, userPrompt) → raw model output as a string.
+// The daily/optimization passes parse JSON out of the string
+// themselves; this layer stays transport-only.
+export type Summarize = (
+  systemPrompt: string,
+  userPrompt: string,
+) => Promise<string>;
+
+// Wall-clock cap per CLI invocation. 5 minutes is comfortably above
+// the worst-case summarization run we've seen and still short enough
+// that a wedged subprocess doesn't tie up resources forever.
+const CLI_TIMEOUT_MS = 5 * 60 * 1000;
+
+// Sentinel we throw on ENOENT so maybeRunJournal can disable the
+// feature for the rest of the server lifetime instead of retrying
+// on every session-end.
+export class ClaudeCliNotFoundError extends Error {
+  constructor() {
+    super("[journal] `claude` CLI is not available on PATH — journal disabled");
+    this.name = "ClaudeCliNotFoundError";
+  }
+}
+
+export class ClaudeCliFailedError extends Error {
+  readonly exitCode: number | null;
+  readonly stderr: string;
+  constructor(exitCode: number | null, stderr: string) {
+    super(
+      `[journal] \`claude\` CLI exited ${exitCode ?? "(killed)"}: ${stderr.slice(
+        0,
+        500,
+      )}`,
+    );
+    this.name = "ClaudeCliFailedError";
+    this.exitCode = exitCode;
+    this.stderr = stderr;
+  }
+}
+
+// Default summarizer. Spawns `claude -p` and pipes the combined
+// system + user prompt to stdin so we don't hit shell-argv limits
+// for large day excerpts.
+export const runClaudeCli: Summarize = async (systemPrompt, userPrompt) => {
+  return new Promise((resolve, reject) => {
+    const child = spawn("claude", ["-p", "--output-format", "text"], {
+      stdio: ["pipe", "pipe", "pipe"],
+    });
+
+    let stdout = "";
+    let stderr = "";
+    let timedOut = false;
+    let settled = false;
+
+    const timeout = setTimeout(() => {
+      timedOut = true;
+      child.kill("SIGKILL");
+    }, CLI_TIMEOUT_MS);
+
+    child.stdout.on("data", (d: Buffer) => {
+      stdout += d.toString();
+    });
+    child.stderr.on("data", (d: Buffer) => {
+      stderr += d.toString();
+    });
+
+    child.on("error", (err: Error & { code?: string }) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timeout);
+      if (err.code === "ENOENT") {
+        reject(new ClaudeCliNotFoundError());
+      } else {
+        reject(err);
+      }
+    });
+
+    child.on("close", (code) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timeout);
+      if (timedOut) {
+        reject(
+          new ClaudeCliFailedError(
+            null,
+            `timed out after ${CLI_TIMEOUT_MS}ms\n${stderr}`,
+          ),
+        );
+        return;
+      }
+      if (code === 0) {
+        resolve(stdout);
+      } else {
+        reject(new ClaudeCliFailedError(code, stderr));
+      }
+    });
+
+    // Write everything in one shot, then close stdin so the CLI
+    // knows input is complete.
+    child.stdin.write(`${systemPrompt}\n\n---\n\n${userPrompt}`);
+    child.stdin.end();
+  });
+};
+
+// --- Daily archivist contract ---------------------------------------
+
+export interface SessionEventExcerpt {
+  source: string; // "user" | "assistant" | "tool" | ...
+  type: string; // "text" | "tool_result" | ...
+  // One-line human-readable rendering of the event, already
+  // truncated to a sane length by the caller.
+  content: string;
+}
+
+export interface SessionExcerpt {
+  sessionId: string;
+  roleId: string;
+  events: SessionEventExcerpt[];
+}
+
+export interface ExistingTopicSnapshot {
+  slug: string;
+  content: string;
+}
+
+export interface DailyArchivistInput {
+  date: string; // YYYY-MM-DD
+  existingDailySummary: string | null;
+  existingTopicSummaries: ExistingTopicSnapshot[];
+  sessionExcerpts: SessionExcerpt[];
+}
+
+export type TopicUpdateAction = "create" | "append" | "rewrite";
+
+export interface TopicUpdate {
+  slug: string;
+  action: TopicUpdateAction;
+  content: string;
+}
+
+export interface DailyArchivistOutput {
+  dailySummaryMarkdown: string;
+  topicUpdates: TopicUpdate[];
+}
+
+// System prompt for the daily pass. Written long-form because the
+// model does a much better job with explicit rules and an example
+// than with a terse instruction.
+export const DAILY_SYSTEM_PROMPT = `You are the journal archivist for a personal MulmoClaude workspace.
+Your job: given raw session excerpts for a single day, produce
+(1) a daily summary and (2) updates to long-running topic notes.
+
+OUTPUT FORMAT
+You must emit a single JSON object wrapped in a \`\`\`json code fence.
+Schema:
+{
+  "dailySummaryMarkdown": "...",
+  "topicUpdates": [
+    { "slug": "kebab-case-slug", "action": "create" | "append" | "rewrite", "content": "..." }
+  ]
+}
+No prose outside the fence. No extra keys.
+
+DAILY SUMMARY RULES
+- Write in the same language as the source sessions. Japanese stays Japanese. English stays English.
+- Start with a top-level \`# <date>\` heading using the date passed in.
+- Use short bullet sections per theme or per session, not a prose wall.
+- If an existing daily summary was provided, treat it as a prior draft to REWRITE, not append to — your output replaces it entirely.
+- Be terse. Facts and decisions only, no filler.
+
+TOPIC UPDATE RULES
+- Prefer the existing topic list. Only invent a new slug if nothing fits.
+- Slugs are lowercase kebab-case ASCII (e.g. "video-generation"). No spaces, no unicode.
+- Use \`append\` for incremental facts: your content will be concatenated to the existing topic file after a blank line.
+- Use \`create\` only when the slug is new.
+- Use \`rewrite\` sparingly — only when the existing topic has become incoherent and needs a full replacement.
+- If a session has no clear topical hook, emit zero topic updates rather than forcing one.
+
+LANGUAGE
+- Match the language of the source sessions. Always.`;
+
+// Build the user-side prompt for one day's worth of content.
+// Pure string construction — safe to unit test if we ever want to.
+export function buildDailyUserPrompt(input: DailyArchivistInput): string {
+  const parts: string[] = [];
+  parts.push(`DATE: ${input.date}`);
+  parts.push("");
+
+  if (input.existingDailySummary !== null) {
+    parts.push("EXISTING DAILY SUMMARY (replace this with your new version):");
+    parts.push("```md");
+    parts.push(input.existingDailySummary);
+    parts.push("```");
+    parts.push("");
+  }
+
+  parts.push("EXISTING TOPICS:");
+  if (input.existingTopicSummaries.length === 0) {
+    parts.push("(none yet)");
+  } else {
+    for (const t of input.existingTopicSummaries) {
+      parts.push(`- ${t.slug}`);
+    }
+  }
+  parts.push("");
+
+  parts.push("SESSION EXCERPTS:");
+  for (const s of input.sessionExcerpts) {
+    parts.push(`### session ${s.sessionId} (role: ${s.roleId})`);
+    for (const e of s.events) {
+      parts.push(`- [${e.source}/${e.type}] ${e.content}`);
+    }
+    parts.push("");
+  }
+
+  parts.push("Produce the JSON described in the system prompt now.");
+  return parts.join("\n");
+}
+
+// --- Optimization archivist contract --------------------------------
+
+export interface OptimizationTopicSnapshot {
+  slug: string;
+  // First ~500 chars of the topic file, enough for the model to
+  // judge similarity without blowing up prompt size.
+  headContent: string;
+}
+
+export interface OptimizationInput {
+  topics: OptimizationTopicSnapshot[];
+}
+
+export interface TopicMerge {
+  from: string[];
+  into: string;
+  newContent: string;
+}
+
+export interface OptimizationOutput {
+  merges: TopicMerge[];
+  archives: string[];
+}
+
+export const OPTIMIZATION_SYSTEM_PROMPT = `You are the journal optimizer for a personal MulmoClaude workspace.
+Your job: review the current topic list and decide which topics should be merged together and which should be archived.
+
+OUTPUT FORMAT
+A single JSON object wrapped in a \`\`\`json code fence:
+{
+  "merges": [
+    { "from": ["slug-a", "slug-b"], "into": "merged-slug", "newContent": "..." }
+  ],
+  "archives": ["stale-slug"]
+}
+No prose outside the fence.
+
+MERGE RULES
+- Only merge topics that are clearly duplicates or near-duplicates (e.g. "video-gen" and "video-generation").
+- "into" may be one of the "from" slugs (keeping an existing file) or a brand-new slug (creating a new file).
+- "newContent" is the full replacement body for the target file, in markdown.
+- Be conservative: if in doubt, leave things alone.
+
+ARCHIVE RULES
+- Archive only topics that look stale AND uninteresting. Err on the side of keeping things.
+- Do not archive a topic you also listed in a merge's "from" — the merge already moves it.
+
+LANGUAGE
+- Match the language of the source content for "newContent".
+- If no changes are needed, return \`{ "merges": [], "archives": [] }\`. That is a valid and expected outcome.`;
+
+export function buildOptimizationUserPrompt(input: OptimizationInput): string {
+  const parts: string[] = [];
+  parts.push("CURRENT TOPICS:");
+  for (const t of input.topics) {
+    parts.push(`### ${t.slug}`);
+    parts.push("```md");
+    parts.push(t.headContent);
+    parts.push("```");
+    parts.push("");
+  }
+  parts.push("Produce the JSON described in the system prompt now.");
+  return parts.join("\n");
+}
+
+// --- JSON extraction ------------------------------------------------
+
+// Tolerant JSON extractor: prefers a ```json fenced block; falls back
+// to scanning for the first balanced `{ ... }` block. Returns `null`
+// on failure so callers can log-and-skip instead of crash.
+//
+// The fenced-block path is written with indexOf rather than a regex
+// to avoid sonarjs/slow-regex; the balanced-brace path uses a single
+// pass with character-level state tracking.
+export function extractJsonObject(raw: string): unknown | null {
+  // 1. Fenced block — locate with indexOf, no regex backtracking risk.
+  const fencedBody = findFencedJsonBody(raw);
+  if (fencedBody !== null) {
+    try {
+      return JSON.parse(fencedBody);
+    } catch {
+      // fall through to scan
+    }
+  }
+  // 2. First balanced `{...}` block
+  const start = raw.indexOf("{");
+  if (start === -1) return null;
+  let depth = 0;
+  let inString = false;
+  let escape = false;
+  for (let i = start; i < raw.length; i++) {
+    const ch = raw[i];
+    if (escape) {
+      escape = false;
+      continue;
+    }
+    if (ch === "\\") {
+      escape = true;
+      continue;
+    }
+    if (ch === '"') {
+      inString = !inString;
+      continue;
+    }
+    if (inString) continue;
+    if (ch === "{") depth++;
+    else if (ch === "}") {
+      depth--;
+      if (depth === 0) {
+        try {
+          return JSON.parse(raw.slice(start, i + 1));
+        } catch {
+          return null;
+        }
+      }
+    }
+  }
+  return null;
+}
+
+// Pull the body out of a ```json ... ``` fenced block using indexOf
+// only — no regex so we don't need to worry about backtracking.
+// Returns null if no complete fence pair is present.
+function findFencedJsonBody(raw: string): string | null {
+  const OPEN = "```json";
+  const CLOSE = "```";
+  const openIdx = raw.indexOf(OPEN);
+  if (openIdx === -1) return null;
+  // Body starts after the first newline following the opener so we
+  // skip any trailing whitespace on the opening line.
+  const afterOpen = openIdx + OPEN.length;
+  const bodyStart = raw.indexOf("\n", afterOpen);
+  if (bodyStart === -1) return null;
+  const closeIdx = raw.indexOf(CLOSE, bodyStart + 1);
+  if (closeIdx === -1) return null;
+  // Strip the newline immediately before the closing fence if
+  // present so JSON.parse doesn't see a trailing blank.
+  const bodyEnd = raw[closeIdx - 1] === "\n" ? closeIdx - 1 : closeIdx;
+  return raw.slice(bodyStart + 1, bodyEnd);
+}
+
+// Type guards used by callers to validate parsed output. Written as
+// guards rather than `as` casts per project conventions.
+export function isDailyArchivistOutput(
+  value: unknown,
+): value is DailyArchivistOutput {
+  if (typeof value !== "object" || value === null) return false;
+  const v = value as Record<string, unknown>;
+  if (typeof v.dailySummaryMarkdown !== "string") return false;
+  if (!Array.isArray(v.topicUpdates)) return false;
+  return v.topicUpdates.every(isTopicUpdate);
+}
+
+function isTopicUpdate(value: unknown): value is TopicUpdate {
+  if (typeof value !== "object" || value === null) return false;
+  const v = value as Record<string, unknown>;
+  if (typeof v.slug !== "string") return false;
+  if (typeof v.content !== "string") return false;
+  return (
+    v.action === "create" || v.action === "append" || v.action === "rewrite"
+  );
+}
+
+export function isOptimizationOutput(
+  value: unknown,
+): value is OptimizationOutput {
+  if (typeof value !== "object" || value === null) return false;
+  const v = value as Record<string, unknown>;
+  if (!Array.isArray(v.merges)) return false;
+  if (!Array.isArray(v.archives)) return false;
+  if (!v.merges.every(isTopicMerge)) return false;
+  return v.archives.every((a: unknown) => typeof a === "string");
+}
+
+function isTopicMerge(value: unknown): value is TopicMerge {
+  if (typeof value !== "object" || value === null) return false;
+  const v = value as Record<string, unknown>;
+  if (!Array.isArray(v.from)) return false;
+  if (!v.from.every((f: unknown) => typeof f === "string")) return false;
+  if (typeof v.into !== "string") return false;
+  if (typeof v.newContent !== "string") return false;
+  return true;
+}
