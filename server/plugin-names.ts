@@ -10,7 +10,7 @@ import PresentMulmoScriptDef from "../src/plugins/presentMulmoScript/definition.
 import ManageRolesDef from "../src/plugins/manageRoles/definition.js";
 import WikiDef from "../src/plugins/wiki/definition.js";
 import PresentHtmlDef from "../src/plugins/presentHtml/definition.js";
-import { TOOL_DEFINITION as MarkdownDef } from "@gui-chat-plugin/markdown";
+import MarkdownDef from "../src/plugins/markdown/definition.js";
 import { TOOL_DEFINITION as SpreadsheetDef } from "@gui-chat-plugin/spreadsheet";
 import { TOOL_DEFINITION as MindMapDef } from "@gui-chat-plugin/mindmap";
 import { TOOL_DEFINITION as GenerateImageDef } from "@mulmochat-plugin/generate-image";

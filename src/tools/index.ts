@@ -1,7 +1,7 @@
 import type { PluginEntry } from "./types";
 import TextResponsePlugin from "@gui-chat-plugin/text-response/vue";
 import TextResponseView from "../plugins/textResponse/View.vue";
-import MarkdownPlugin from "@gui-chat-plugin/markdown/vue";
+import markdownPlugin from "../plugins/markdown/index";
 import SpreadsheetPlugin from "@gui-chat-plugin/spreadsheet/vue";
 import MindMapPlugin from "@gui-chat-plugin/mindmap/vue";
 import GenerateImagePlugin from "@mulmochat-plugin/generate-image/vue";
@@ -30,7 +30,7 @@ const plugins: Record<string, PluginEntry> = {
   manageRoles: manageRolesPlugin,
   manageWiki: wikiPlugin,
   presentMulmoScript: presentMulmoScriptPlugin,
-  presentDocument: MarkdownPlugin.plugin,
+  presentDocument: markdownPlugin,
   presentSpreadsheet: SpreadsheetPlugin.plugin,
   createMindMap: MindMapPlugin.plugin,
   generateImage: GenerateImagePlugin.plugin,
