@@ -740,13 +740,6 @@
   dependencies:
     gui-chat-protocol "^0.0.4"
 
-"@mulmochat-plugin/generate-image@0.3.3":
-  version "0.3.3"
-  resolved "https://registry.yarnpkg.com/@mulmochat-plugin/generate-image/-/generate-image-0.3.3.tgz#db8b35989e86e639e5c8ee35fcab052b86963e0a"
-  integrity sha512-Ww8V6sZXSgYQ+BOlruS6Z7w3OGDw8aMYV5Xdl8l7nnHZHd4BxXVgE1bH7emAI6iNx8+rhgs8VfWWBmFx5FdEQw==
-  dependencies:
-    gui-chat-protocol "^0.0.4"
-
 "@mulmochat-plugin/quiz@0.3.3":
   version "0.3.3"
   resolved "https://registry.yarnpkg.com/@mulmochat-plugin/quiz/-/quiz-0.3.3.tgz#9ea58000a29d30d6ab56d355be6c3b6508e3d498"

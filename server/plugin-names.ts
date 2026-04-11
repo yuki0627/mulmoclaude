@@ -13,7 +13,7 @@ import PresentHtmlDef from "../src/plugins/presentHtml/definition.js";
 import MarkdownDef from "../src/plugins/markdown/definition.js";
 import SpreadsheetDef from "../src/plugins/spreadsheet/definition.js";
 import { TOOL_DEFINITION as MindMapDef } from "@gui-chat-plugin/mindmap";
-import { TOOL_DEFINITION as GenerateImageDef } from "@mulmochat-plugin/generate-image";
+import GenerateImageDef from "../src/plugins/generateImage/definition.js";
 import { TOOL_DEFINITION as QuizDef } from "@mulmochat-plugin/quiz";
 import { TOOL_DEFINITION as FormDef } from "@mulmochat-plugin/form";
 import CanvasDef from "../src/plugins/canvas/definition.js";

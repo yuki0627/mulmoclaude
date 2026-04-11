@@ -4,7 +4,7 @@ import TextResponseView from "../plugins/textResponse/View.vue";
 import markdownPlugin from "../plugins/markdown/index";
 import spreadsheetPlugin from "../plugins/spreadsheet/index";
 import MindMapPlugin from "@gui-chat-plugin/mindmap/vue";
-import GenerateImagePlugin from "@mulmochat-plugin/generate-image/vue";
+import generateImagePlugin from "../plugins/generateImage/index";
 import QuizPlugin from "@mulmochat-plugin/quiz/vue";
 import FormPlugin from "@mulmochat-plugin/form/vue";
 import canvasPlugin from "../plugins/canvas/index";
@@ -33,7 +33,7 @@ const plugins: Record<string, PluginEntry> = {
   presentDocument: markdownPlugin,
   presentSpreadsheet: spreadsheetPlugin,
   createMindMap: MindMapPlugin.plugin,
-  generateImage: GenerateImagePlugin.plugin,
+  generateImage: generateImagePlugin,
   putQuestions: QuizPlugin.plugin,
   presentForm: FormPlugin.plugin,
   openCanvas: canvasPlugin,

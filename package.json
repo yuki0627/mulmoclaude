@@ -37,7 +37,6 @@
     "@gui-chat-plugin/weather": "^0.0.2",
     "@mulmocast/types": "^2.6.6",
     "@mulmochat-plugin/form": "0.3.2",
-    "@mulmochat-plugin/generate-image": "0.3.3",
     "@mulmochat-plugin/quiz": "0.3.3",
     "@mulmochat-plugin/ui-image": "^0.3.0",
     "cors": "^2.8.6",
