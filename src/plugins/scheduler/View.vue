@@ -342,7 +342,7 @@ const emit = defineEmits<{ updateResult: [result: ToolResultComplete] }>();
 
 const items = ref<ScheduledItem[]>(props.selectedResult.data?.items ?? []);
 
-onMounted(async () => {
+async function fetchItems() {
   try {
     const res = await fetch("/api/scheduler");
     if (res.ok) {
@@ -352,7 +352,18 @@ onMounted(async () => {
   } catch {
     // Fall back to prop data
   }
-});
+}
+
+onMounted(fetchItems);
+
+watch(
+  () => props.selectedResult.data?.items,
+  (newItems) => {
+    if (newItems) {
+      items.value = newItems;
+    }
+  },
+);
 
 // ── View mode ──────────────────────────────────────────────────────────────
 
@@ -597,13 +608,13 @@ async function applyItemEdit() {
     yamlError.value = "Could not parse YAML — ensure 'title' is present";
     return;
   }
-  await callApi({
+  const ok = await callApi({
     action: "update",
     id: selectedId.value,
     title: parsed.title,
     props: parsed.props,
   });
-  selectedId.value = null;
+  if (ok) selectedId.value = null;
 }
 
 // ── JSON source editor ───────────────────────────────────────────────────────
@@ -616,14 +627,14 @@ const editorText = ref(toJson(items.value));
 const parseError = ref("");
 const isModified = computed(() => editorText.value !== toJson(items.value));
 
-async function callApi(body: Record<string, unknown>) {
+async function callApi(body: Record<string, unknown>): Promise<boolean> {
   try {
     const response = await fetch("/api/scheduler", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(body),
     });
-    if (!response.ok) return;
+    if (!response.ok) return false;
     const result = await response.json();
     items.value = result.data?.items ?? [];
     emit("updateResult", {
@@ -631,8 +642,9 @@ async function callApi(body: Record<string, unknown>) {
       ...result,
       uuid: props.selectedResult.uuid,
     });
+    return true;
   } catch {
-    // Network error — keep current state
+    return false;
   }
 }
 
