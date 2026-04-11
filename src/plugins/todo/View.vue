@@ -153,7 +153,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, ref, watch } from "vue";
+import { computed, ref, watch, onMounted } from "vue";
 import type { ToolResultComplete } from "gui-chat-protocol/vue";
 import type { TodoData, TodoItem } from "./index";
 import {
@@ -168,7 +168,37 @@ const props = defineProps<{
 }>();
 const emit = defineEmits<{ updateResult: [result: ToolResultComplete] }>();
 
-const items = computed(() => props.selectedResult.data?.items ?? []);
+const items = ref<TodoItem[]>(props.selectedResult.data?.items ?? []);
+
+let fetchAbort: AbortController | null = null;
+
+async function fetchItems() {
+  fetchAbort?.abort();
+  const controller = new AbortController();
+  fetchAbort = controller;
+  try {
+    const res = await fetch("/api/todos", { signal: controller.signal });
+    if (controller.signal.aborted) return;
+    if (res.ok) {
+      const json: { data: { items: TodoItem[] } } = await res.json();
+      items.value = json.data?.items ?? [];
+    }
+  } catch {
+    // Fall back to prop data (already set)
+  }
+}
+
+onMounted(fetchItems);
+
+watch(
+  () => props.selectedResult.data?.items,
+  (newItems) => {
+    if (newItems) {
+      items.value = newItems;
+      fetchItems();
+    }
+  },
+);
 const completedCount = computed(
   () => items.value.filter((i) => i.completed).length,
 );
@@ -328,21 +358,18 @@ function selectItem(item: TodoItem) {
   yamlError.value = "";
 }
 
-watch(
-  () => props.selectedResult.data,
-  () => {
-    if (selectedId.value) {
-      const item = items.value.find((i) => i.id === selectedId.value);
-      if (item) {
-        yamlText.value = serializeYaml(item);
-        selectedOriginalText.value = item.text;
-        selectedOriginalLabels.value = [...(item.labels ?? [])];
-      } else {
-        selectedId.value = null;
-      }
+watch(items, () => {
+  if (selectedId.value) {
+    const item = items.value.find((i) => i.id === selectedId.value);
+    if (item) {
+      yamlText.value = serializeYaml(item);
+      selectedOriginalText.value = item.text;
+      selectedOriginalLabels.value = [...(item.labels ?? [])];
+    } else {
+      selectedId.value = null;
     }
-  },
-);
+  }
+});
 
 async function applyItemEdit() {
   yamlError.value = "";
@@ -352,12 +379,13 @@ async function applyItemEdit() {
     return;
   }
   // 1. text / note go through `update` (label-agnostic on the server).
-  await callApi({
+  const ok = await callApi({
     action: "update",
     text: selectedOriginalText.value,
     newText: parsed.text,
     note: parsed.note,
   });
+  if (!ok) return;
   // 2. labels are diffed against the prior state and applied as
   //    `add_label` / `remove_label` calls. `update` deliberately
   //    does not touch labels — this keeps each LLM action
@@ -386,18 +414,25 @@ async function applyItemEdit() {
 
 // ── API ───────────────────────────────────────────────────────────────────────
 
-async function callApi(body: Record<string, unknown>) {
-  const response = await fetch("/api/todos", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(body),
-  });
-  const result = await response.json();
-  emit("updateResult", {
-    ...props.selectedResult,
-    ...result,
-    uuid: props.selectedResult.uuid,
-  });
+async function callApi(body: Record<string, unknown>): Promise<boolean> {
+  try {
+    const response = await fetch("/api/todos", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    });
+    if (!response.ok) return false;
+    const result = await response.json();
+    items.value = result.data?.items ?? [];
+    emit("updateResult", {
+      ...props.selectedResult,
+      ...result,
+      uuid: props.selectedResult.uuid,
+    });
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 function toggle(item: TodoItem) {

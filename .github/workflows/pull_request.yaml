@@ -30,4 +30,4 @@ jobs:
     - run: yarn run typecheck:server
     - run: yarn run lint
     - run: yarn run build
-    - run: yarn test
+    - run: yarn run test:coverage
