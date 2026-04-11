@@ -63,7 +63,7 @@ MulmoClaude uses Claude Code as its AI backend, which has access to tools includ
 5. Wait for Docker Desktop to finish starting — the whale icon in the menu bar / system tray should turn steady (not animated)
 6. Restart MulmoClaude — it will detect Docker and build the sandbox image on first run (one-time, takes about a minute)
 
-On macOS, credentials are managed automatically — the app extracts OAuth tokens from the system Keychain at startup and refreshes them on 401 errors, so no manual steps are needed.
+When the Docker sandbox is active on macOS, credentials are managed automatically — the app extracts OAuth tokens from the system Keychain at startup and refreshes them on 401 errors, so no manual steps are needed.
 
 If Docker is not installed, the app shows a warning banner and continues to work without sandboxing.
 
