@@ -47,15 +47,21 @@ let running = false;
 let disabled = false;
 
 // The agent route calls this as `maybeRunJournal().catch(...)`.
+export interface MaybeRunJournalOptions {
+  summarize?: Summarize;
+  workspaceRoot?: string;
+  activeSessionIds?: ReadonlySet<string>;
+  // Skip the interval check and run both passes unconditionally.
+  // Useful for debugging / CLI-driven manual runs — the feature's
+  // disable flags (claude CLI missing, in-process lock) still apply.
+  force?: boolean;
+}
+
 // Everything inside swallows its own errors so the promise never
 // rejects in practice, but we still attach a catch at the call
 // site defensively.
 export async function maybeRunJournal(
-  opts: {
-    summarize?: Summarize;
-    workspaceRoot?: string;
-    activeSessionIds?: ReadonlySet<string>;
-  } = {},
+  opts: MaybeRunJournalOptions = {},
 ): Promise<void> {
   if (disabled) return;
   if (running) return;
@@ -76,11 +82,7 @@ export async function maybeRunJournal(
   }
 }
 
-async function runJournalPass(opts: {
-  summarize?: Summarize;
-  workspaceRoot?: string;
-  activeSessionIds?: ReadonlySet<string>;
-}): Promise<void> {
+async function runJournalPass(opts: MaybeRunJournalOptions): Promise<void> {
   const workspaceRoot = opts.workspaceRoot ?? defaultWorkspacePath;
   const summarize = opts.summarize ?? runClaudeCli;
   const activeSessionIds = opts.activeSessionIds ?? new Set<string>();
@@ -88,9 +90,16 @@ async function runJournalPass(opts: {
   const state = await readState(workspaceRoot);
   const now = Date.now();
 
-  const daily = isDailyDue(state, now);
-  const optimize = isOptimizationDue(state, now);
+  // `force: true` bypasses the interval gate entirely so debug /
+  // startup flows can trigger a full pass even when nothing is
+  // technically due.
+  const daily = opts.force === true || isDailyDue(state, now);
+  const optimize = opts.force === true || isOptimizationDue(state, now);
   if (!daily && !optimize) return;
+  if (opts.force === true) {
+    // eslint-disable-next-line no-console
+    console.log("[journal] force-run: skipping interval gates");
+  }
 
   let nextState = state;
 
