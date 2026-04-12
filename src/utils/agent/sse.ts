@@ -66,22 +66,50 @@ export function decodeSSELine(line: string): SseEvent | null {
   return parsed;
 }
 
-// Runtime shape check for an SSE event. Only validates the
-// discriminator (`type`) — the downstream dispatch handles each
-// shape's specific fields. If we ever add structural validation it
-// should live here, not scatter across every consumer.
+// Runtime shape check for an SSE event. Validates both the
+// discriminator AND each variant's required fields — a partial
+// payload like `{"type":"tool_result"}` (no `result` field) used
+// to slip through this guard, then crash `applyAgentEvent` when
+// it dereferenced `event.result.uuid`. Addressing the one brittle
+// trust point here is cheaper than spreading defensive checks
+// across every dispatch branch.
+//
+// The field list mirrors the per-variant interfaces in
+// `src/types/sse.ts`; keep them in sync if new SSE events land.
 function isSseEvent(value: unknown): value is SseEvent {
   if (typeof value !== "object" || value === null) return false;
-  const type = (value as { type?: unknown }).type;
+  const candidate = value as Record<string, unknown>;
+  const type = candidate.type;
   if (typeof type !== "string") return false;
-  return (
-    type === "tool_call" ||
-    type === "tool_call_result" ||
-    type === "status" ||
-    type === "switch_role" ||
-    type === "text" ||
-    type === "tool_result" ||
-    type === "roles_updated" ||
-    type === "error"
-  );
+  switch (type) {
+    case "status":
+    case "text":
+    case "error":
+      return typeof candidate.message === "string";
+    case "switch_role":
+      return typeof candidate.roleId === "string";
+    case "tool_call":
+      return (
+        typeof candidate.toolUseId === "string" &&
+        typeof candidate.toolName === "string" &&
+        "args" in candidate
+      );
+    case "tool_call_result":
+      return (
+        typeof candidate.toolUseId === "string" &&
+        typeof candidate.content === "string"
+      );
+    case "tool_result": {
+      const result = candidate.result;
+      return (
+        typeof result === "object" &&
+        result !== null &&
+        typeof (result as { uuid?: unknown }).uuid === "string"
+      );
+    }
+    case "roles_updated":
+      return true;
+    default:
+      return false;
+  }
 }

@@ -89,6 +89,107 @@ describe("decodeSSELine — rejects noise", () => {
   });
 });
 
+describe("decodeSSELine — rejects malformed variant shapes (per-field validation)", () => {
+  // Addresses the PR #177 CodeRabbit finding: the type-guard used
+  // to trust the discriminator alone, so a payload like
+  // `{"type":"tool_result"}` would pass here and crash
+  // `applyAgentEvent` when it dereferenced `event.result.uuid`.
+  //
+  // Every case below is a payload that has the correct `type`
+  // string but is missing (or malforming) at least one required
+  // field per the `SseEvent` variant interfaces in
+  // `src/types/sse.ts`. All should return null.
+
+  function rejectPayload(obj: Record<string, unknown>): void {
+    const line = `data: ${JSON.stringify(obj)}`;
+    assert.equal(decodeSSELine(line), null);
+  }
+
+  it("rejects `status` without a message", () => {
+    rejectPayload({ type: "status" });
+    rejectPayload({ type: "status", message: 42 });
+    rejectPayload({ type: "status", message: null });
+  });
+
+  it("rejects `text` without a message", () => {
+    rejectPayload({ type: "text" });
+    rejectPayload({ type: "text", message: [] });
+  });
+
+  it("rejects `error` without a message", () => {
+    rejectPayload({ type: "error" });
+    rejectPayload({ type: "error", message: 500 });
+  });
+
+  it("rejects `switch_role` without a roleId", () => {
+    rejectPayload({ type: "switch_role" });
+    rejectPayload({ type: "switch_role", roleId: 0 });
+  });
+
+  it("rejects `tool_call` missing required fields", () => {
+    rejectPayload({ type: "tool_call" });
+    rejectPayload({ type: "tool_call", toolUseId: "u" });
+    rejectPayload({ type: "tool_call", toolUseId: "u", toolName: "t" });
+    rejectPayload({
+      type: "tool_call",
+      toolUseId: 1,
+      toolName: "t",
+      args: {},
+    });
+    rejectPayload({
+      type: "tool_call",
+      toolUseId: "u",
+      toolName: true,
+      args: {},
+    });
+  });
+
+  it("accepts `tool_call` with any `args` value (including null/primitive)", () => {
+    // `args` is `unknown` in the SseToolCall interface — content
+    // varies per tool, so we only require the KEY exists. This
+    // test pins that contract.
+    const sample = {
+      type: "tool_call",
+      toolUseId: "u",
+      toolName: "t",
+      args: null,
+    };
+    assert.ok(decodeSSELine(`data: ${JSON.stringify(sample)}`));
+  });
+
+  it("rejects `tool_call_result` missing toolUseId or content", () => {
+    rejectPayload({ type: "tool_call_result" });
+    rejectPayload({ type: "tool_call_result", toolUseId: "u" });
+    rejectPayload({ type: "tool_call_result", content: "c" });
+    rejectPayload({
+      type: "tool_call_result",
+      toolUseId: "u",
+      content: 123,
+    });
+  });
+
+  it("rejects `tool_result` with a missing / malformed result", () => {
+    // THE specific payload CodeRabbit called out:
+    // `{"type":"tool_result"}` with no `result` at all.
+    rejectPayload({ type: "tool_result" });
+    rejectPayload({ type: "tool_result", result: null });
+    rejectPayload({ type: "tool_result", result: "not an object" });
+    rejectPayload({ type: "tool_result", result: {} }); // missing uuid
+    rejectPayload({ type: "tool_result", result: { uuid: 42 } }); // non-string uuid
+  });
+
+  it("accepts `tool_result` with the minimum valid shape", () => {
+    const sample = { type: "tool_result", result: { uuid: "r-1" } };
+    assert.ok(decodeSSELine(`data: ${JSON.stringify(sample)}`));
+  });
+
+  it("accepts `roles_updated` with no fields (it's just a pulse)", () => {
+    assert.ok(
+      decodeSSELine(`data: ${JSON.stringify({ type: "roles_updated" })}`),
+    );
+  });
+});
+
 describe("parseSSEChunk — buffer management", () => {
   it("returns empty events and empty remaining for empty input", () => {
     assert.deepEqual(parseSSEChunk("", ""), { events: [], remaining: "" });
