@@ -1023,6 +1023,9 @@ async function toggleHistory() {
 }
 
 async function loadSession(id: string) {
+  // Re-selecting the already-active session is a no-op.
+  if (id === currentSessionId.value) return;
+
   // If the current session is empty, remove it from memory and use
   // replace-navigation so the empty session doesn't linger in
   // browser history (back button won't revisit it).
