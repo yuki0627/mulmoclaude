@@ -513,7 +513,7 @@ import { useCanvasViewMode } from "./composables/useCanvasViewMode";
 import { useMcpTools } from "./composables/useMcpTools";
 import { useRoles } from "./composables/useRoles";
 import { usePubSub } from "./composables/usePubSub";
-import { useRoute, useRouter } from "vue-router";
+import { useRoute, useRouter, isNavigationFailure } from "vue-router";
 
 // --- Debug beat (pub/sub) ---
 const debugBeatColor = ref<string | null>(null);
@@ -557,10 +557,17 @@ function navigateToSession(id: string, replace = false): void {
   // route.query — the ref may have been updated synchronously by
   // setCanvasViewMode before this navigation runs, while
   // route.query.view is still stale (router.push is async).
+  // Build query: view mode + role (omit role if it's the default
+  // to keep URLs clean for the common case).
+  const viewQuery = buildViewQuery();
+  const roleQuery =
+    currentRoleId.value && currentRoleId.value !== roles.value[0]?.id
+      ? { role: currentRoleId.value }
+      : {};
   method({
     name: "chat",
     params: { sessionId: id },
-    query: buildViewQuery(),
+    query: { ...viewQuery, ...roleQuery },
   }).catch((err) => {
     // NavigationDuplicated is harmless (user clicked the same session
     // they're already on). Anything else is a real bug.
@@ -586,6 +593,34 @@ watch(
   },
 );
 
+// External URL changes for ?role= → sync into currentRoleId.
+// This doesn't trigger onRoleChange (which creates a new session) —
+// the user is just navigating back/forward between sessions that
+// were already associated with a role.
+watch(
+  () => route.query.role,
+  (newRole) => {
+    if (typeof newRole !== "string" || newRole === currentRoleId.value) return;
+    const roleExists = roles.value.some((r) => r.id === newRole);
+    if (roleExists) currentRoleId.value = newRole;
+  },
+);
+
+// External URL changes for ?result= → sync into the session's
+// selectedResultUuid. This handles back/forward and direct URL
+// access with a specific result pre-selected.
+watch(
+  () => route.query.result,
+  (newResult) => {
+    const session = sessionMap.get(currentSessionId.value);
+    if (!session) return;
+    const resultId = typeof newResult === "string" ? newResult : null;
+    if (resultId !== session.selectedResultUuid) {
+      session.selectedResultUuid = resultId;
+    }
+  },
+);
+
 const activeSession = computed(() => sessionMap.get(currentSessionId.value));
 
 const toolResults = computed(() => activeSession.value?.toolResults ?? []);
@@ -598,6 +633,14 @@ const selectedResultUuid = computed({
   get: () => activeSession.value?.selectedResultUuid ?? null,
   set: (val: string | null) => {
     if (activeSession.value) activeSession.value.selectedResultUuid = val;
+    // Sync to URL. Null/empty → remove ?result= for clean URLs.
+    const { result: __result, ...restQuery } = route.query;
+    const nextQuery = val ? { ...restQuery, result: val } : restQuery;
+    router.replace({ query: nextQuery }).catch((err: unknown) => {
+      if (!isNavigationFailure(err)) {
+        console.error("[selectedResultUuid] navigation failed:", err);
+      }
+    });
   },
 });
 
@@ -990,11 +1033,20 @@ async function loadSession(id: string) {
     }
   }
 
+  // If the URL specifies ?result=, prefer it over the heuristic
+  // (which picks the last non-text tool result). This lets bookmarks
+  // restore the exact result the user was looking at.
+  const urlResult =
+    typeof route.query.result === "string" ? route.query.result : null;
   const lastTool = [...toolResultsList]
     .reverse()
     .find((r) => r.toolName !== "text-response");
-  const resolvedSelectedUuid =
+  const heuristicUuid =
     lastTool?.uuid ?? toolResultsList[toolResultsList.length - 1]?.uuid ?? null;
+  const resolvedSelectedUuid =
+    urlResult && toolResultsList.some((r) => r.uuid === urlResult)
+      ? urlResult
+      : heuristicUuid;
 
   const serverSummary = sessions.value.find((s) => s.id === id);
   const nowIso = new Date().toISOString();
@@ -1221,6 +1273,13 @@ onMounted(async () => {
   // createNewSession() picks a roleId that exists in the merged
   // role list (built-in + custom).
   await refreshRoles();
+
+  // If the URL specifies a role, apply it before session creation.
+  const urlRole =
+    typeof route.query.role === "string" ? route.query.role : null;
+  if (urlRole && roles.value.some((r) => r.id === urlRole)) {
+    currentRoleId.value = urlRole;
+  }
 
   // If the URL already names a session (e.g. a bookmarked link or a
   // page reload), try to load it. Otherwise create a fresh one.
