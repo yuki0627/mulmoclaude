@@ -175,4 +175,79 @@ test.describe("Todo Explorer", () => {
     // "1/5 done" — 1 completed out of 5
     await expect(page.getByText("1/5 done")).toBeVisible({ timeout: 5000 });
   });
+
+  test("+ Add button opens the add dialog", async ({ page }) => {
+    await page.goto("/chat?view=files&path=todos/todos.json");
+    await expect(page.getByText("Todo").first()).toBeVisible({
+      timeout: 5000,
+    });
+
+    await page.locator('[data-testid="todo-add-btn"]').click();
+    await expect(page.getByText("Add Todo")).toBeVisible();
+    // The dialog should have a text input and status select
+    await expect(page.locator('input[placeholder="What needs doing?"]')).toBeVisible();
+  });
+
+  test("Escape closes the add dialog", async ({ page }) => {
+    await page.goto("/chat?view=files&path=todos/todos.json");
+    await expect(page.getByText("Todo").first()).toBeVisible({
+      timeout: 5000,
+    });
+
+    await page.locator('[data-testid="todo-add-btn"]').click();
+    await expect(page.getByText("Add Todo")).toBeVisible();
+    await page.keyboard.press("Escape");
+    await expect(page.getByText("Add Todo")).not.toBeVisible();
+  });
+
+  test("clicking a kanban card opens the edit dialog", async ({ page }) => {
+    await page.goto("/chat?view=files&path=todos/todos.json");
+    await expect(page.getByText("Todo").first()).toBeVisible({
+      timeout: 5000,
+    });
+
+    // Click the first card
+    await page.locator('[data-testid="todo-card-todo_a"]').click();
+    await expect(page.getByText("Edit Todo")).toBeVisible();
+  });
+
+  test("Escape closes the edit dialog", async ({ page }) => {
+    await page.goto("/chat?view=files&path=todos/todos.json");
+    await expect(page.getByText("Todo").first()).toBeVisible({
+      timeout: 5000,
+    });
+
+    await page.locator('[data-testid="todo-card-todo_a"]').click();
+    await expect(page.getByText("Edit Todo")).toBeVisible();
+    await page.keyboard.press("Escape");
+    await expect(page.getByText("Edit Todo")).not.toBeVisible();
+  });
+
+  test("checkbox is rendered for each item in list view", async ({ page }) => {
+    await page.goto("/chat?view=files&path=todos/todos.json");
+    await expect(page.getByText("Todo").first()).toBeVisible({
+      timeout: 5000,
+    });
+
+    await page.locator('[data-testid="todo-view-list"]').click();
+    // Each list item has a checkbox
+    const checkboxes = page.locator('input[type="checkbox"]');
+    await expect(async () => {
+      expect(await checkboxes.count()).toBeGreaterThanOrEqual(5);
+    }).toPass({ timeout: 5000 });
+  });
+
+  test("delete button (✕) is visible on hover in list view", async ({
+    page,
+  }) => {
+    await page.goto("/chat?view=files&path=todos/todos.json");
+    await expect(page.getByText("Todo").first()).toBeVisible({
+      timeout: 5000,
+    });
+
+    await page.locator('[data-testid="todo-view-list"]').click();
+    // Hover over a list item to reveal the ✕ button
+    await page.getByText("Buy groceries").hover();
+    await expect(page.locator("text=✕").first()).toBeVisible();
+  });
 });

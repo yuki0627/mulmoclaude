@@ -135,4 +135,48 @@ test.describe("Todo column management", () => {
     await page.keyboard.press("Escape");
     await expect(page.getByText("Add Column")).not.toBeVisible();
   });
+
+  test("all 4 kanban columns are rendered", async ({ page }) => {
+    await page.goto("/chat?view=files&path=todos/todos.json");
+    await expect(page.getByText("Todo").first()).toBeVisible({
+      timeout: 5000,
+    });
+
+    // Check columns exist via data-testid (more reliable than text)
+    await expect(
+      page.locator('[data-testid="todo-column-backlog"]'),
+    ).toBeVisible();
+    await expect(
+      page.locator('[data-testid="todo-column-todo"]'),
+    ).toBeVisible();
+    await expect(
+      page.locator('[data-testid="todo-column-in_progress"]'),
+    ).toBeVisible();
+    await expect(
+      page.locator('[data-testid="todo-column-done"]'),
+    ).toBeVisible();
+  });
+
+  test("menu shows Mark as done column option", async ({ page }) => {
+    await page.goto("/chat?view=files&path=todos/todos.json");
+    await expect(page.getByText("Todo").first()).toBeVisible({
+      timeout: 5000,
+    });
+
+    // Open a non-done column's menu
+    const todoColumn = page.locator('[data-testid="todo-column-todo"]');
+    await todoColumn.locator("text=more_horiz").click();
+    await expect(page.getByText("Mark as done column")).toBeVisible();
+  });
+
+  test("done column's menu shows Already done column", async ({ page }) => {
+    await page.goto("/chat?view=files&path=todos/todos.json");
+    await expect(page.getByText("Todo").first()).toBeVisible({
+      timeout: 5000,
+    });
+
+    const doneColumn = page.locator('[data-testid="todo-column-done"]');
+    await doneColumn.locator("text=more_horiz").click();
+    await expect(page.getByText("Already done column")).toBeVisible();
+  });
 });

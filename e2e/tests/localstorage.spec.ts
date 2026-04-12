@@ -75,7 +75,42 @@ test.describe("localStorage state restoration", () => {
       localStorage.setItem("todo_explorer_view_mode", "");
     });
     await page.reload();
-    // The app should still load without crashing.
     await expect(page.getByText("MulmoClaude")).toBeVisible();
+  });
+
+  test("todo_explorer_view_mode=table persists across reload", async ({
+    page,
+  }) => {
+    await page.goto("/");
+    await page.evaluate(() =>
+      localStorage.setItem("todo_explorer_view_mode", "table"),
+    );
+    // The todo view mode is read when TodoExplorer mounts, not at
+    // app startup. We just verify the value survives a reload and
+    // the app doesn't crash.
+    await page.reload();
+    await expect(page.getByText("MulmoClaude")).toBeVisible();
+    const stored = await page.evaluate(() =>
+      localStorage.getItem("todo_explorer_view_mode"),
+    );
+    expect(stored).toBe("table");
+  });
+
+  test("files_expanded_dirs with valid JSON set is preserved", async ({
+    page,
+  }) => {
+    await page.goto("/");
+    await page.evaluate(() =>
+      localStorage.setItem(
+        "files_expanded_dirs",
+        JSON.stringify(["", "wiki", "todos"]),
+      ),
+    );
+    await page.reload();
+    await expect(page.getByText("MulmoClaude")).toBeVisible();
+    const stored = await page.evaluate(() =>
+      localStorage.getItem("files_expanded_dirs"),
+    );
+    expect(JSON.parse(stored!)).toContain("wiki");
   });
 });
