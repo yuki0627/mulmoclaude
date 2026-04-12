@@ -2,6 +2,7 @@ import { Router, Request, Response } from "express";
 import fs from "fs";
 import path from "path";
 import { workspacePath } from "../workspace.js";
+import { statSafe, readDirSafe, resolveWithinRoot } from "../utils/fs.js";
 
 const router = Router();
 
@@ -96,53 +97,25 @@ function classify(filename: string): ContentKind {
   return "binary";
 }
 
-// Realpath of the workspace, computed once at module load. Using the
-// realpath defeats symlink-based escapes — `path.resolve` + `startsWith`
-// alone is insufficient because a symlink inside the workspace could
-// point at `/etc/passwd` and still pass the prefix check.
+// Cached realpath of the workspace. Computed once at module load so
+// every request avoids the syscall. resolveWithinRoot needs an
+// already-realpath'd root.
 const workspaceReal = fs.realpathSync(workspacePath);
 
+// Wraps the shared resolveWithinRoot helper with the additional
+// hidden-dir traversal check (e.g. `.git/config`). buildTree already
+// hides these from the listing, but the URL endpoints are reachable
+// directly so they need their own check.
 function resolveSafe(relPath: string): string | null {
-  const normalized = path.normalize(relPath || "");
-  const resolved = path.resolve(workspaceReal, normalized);
-  let resolvedReal: string;
-  try {
-    resolvedReal = fs.realpathSync(resolved);
-  } catch {
-    return null;
-  }
-  if (
-    resolvedReal !== workspaceReal &&
-    !resolvedReal.startsWith(workspaceReal + path.sep)
-  ) {
-    return null;
-  }
-  // Reject paths that traverse a hidden directory (e.g. `.git/config`).
-  // buildTree already hides these from the listing, but the URL endpoints
-  // are reachable directly so they need their own check.
-  const relativeFromWorkspace = path.relative(workspaceReal, resolvedReal);
+  const resolved = resolveWithinRoot(workspaceReal, relPath);
+  if (!resolved) return null;
+  const relativeFromWorkspace = path.relative(workspaceReal, resolved);
   if (relativeFromWorkspace) {
     for (const seg of relativeFromWorkspace.split(path.sep)) {
       if (HIDDEN_DIRS.has(seg)) return null;
     }
   }
-  return resolvedReal;
-}
-
-function readDirSafe(absPath: string): fs.Dirent[] {
-  try {
-    return fs.readdirSync(absPath, { withFileTypes: true });
-  } catch {
-    return [];
-  }
-}
-
-function statSafe(absPath: string): fs.Stats | null {
-  try {
-    return fs.statSync(absPath);
-  } catch {
-    return null;
-  }
+  return resolved;
 }
 
 function buildTree(absPath: string, relPath: string): TreeNode {
