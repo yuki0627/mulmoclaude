@@ -18,13 +18,22 @@
             </h1>
             <div class="button-group">
               <button
-                @click="downloadMarkdown"
                 class="download-btn download-btn-green"
+                :disabled="pdfDownloading"
+                @click="downloadPdf"
               >
-                <span class="material-icons">download</span>
-                MD
+                <span class="material-icons">{{
+                  pdfDownloading ? "hourglass_empty" : "download"
+                }}</span>
+                PDF
               </button>
             </div>
+            <span
+              v-if="pdfError"
+              class="text-xs text-red-500 self-center ml-2"
+              :title="pdfError"
+              >⚠ PDF failed</span
+            >
           </div>
           <div
             class="markdown-content prose prose-slate max-w-none"
@@ -154,25 +163,47 @@ watch(
   },
 );
 
-const downloadMarkdown = () => {
-  if (!markdownContent.value) return;
+const pdfDownloading = ref(false);
+const pdfError = ref<string | null>(null);
 
-  const blob = new Blob([markdownContent.value], { type: "text/markdown" });
-  const url = URL.createObjectURL(blob);
-  const link = document.createElement("a");
-  link.href = url;
+async function downloadPdf() {
+  if (!markdownContent.value) return;
+  pdfError.value = null;
+  pdfDownloading.value = true;
   const hint = props.selectedResult.data?.filenameHint;
-  const filename = hint
-    ? `${hint.replace(/[/\\:*?"<>|]/g, "_")}.md`
+  const title = hint
+    ? hint.replace(/[/\\:*?"<>|]/g, "_")
     : props.selectedResult.title
-      ? `${props.selectedResult.title.replace(/[/\\:*?"<>|]/g, "_")}.md`
-      : "document.md";
-  link.download = filename;
-  document.body.appendChild(link);
-  link.click();
-  document.body.removeChild(link);
+      ? props.selectedResult.title.replace(/[/\\:*?"<>|]/g, "_")
+      : "document";
+  const filename = `${title}.pdf`;
+  let response: Response;
+  try {
+    response = await fetch("/api/pdf/markdown", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ markdown: markdownContent.value, filename }),
+    });
+  } catch (err) {
+    pdfError.value = err instanceof Error ? err.message : String(err);
+    pdfDownloading.value = false;
+    return;
+  }
+  if (!response.ok) {
+    const errText = await response.text().catch(() => "");
+    pdfError.value = `PDF error ${response.status}: ${errText}`;
+    pdfDownloading.value = false;
+    return;
+  }
+  const blob = await response.blob();
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename;
+  a.click();
   URL.revokeObjectURL(url);
-};
+  pdfDownloading.value = false;
+}
 
 async function applyMarkdown() {
   const raw = props.selectedResult.data?.markdown;
@@ -274,6 +305,11 @@ watch(
 
 .download-btn .material-icons {
   font-size: 1.2em;
+}
+
+.download-btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
 }
 
 .markdown-content :deep(h1) {
