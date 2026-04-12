@@ -253,7 +253,10 @@ function resolveStoryPath(filePath: string, res: Response): string | null {
     return null;
   }
   // realpath check — defeats symlink escapes (stories/foo → /etc/passwd).
-  const resolved = resolveWithinRoot(storiesReal, path.relative(storiesReal, candidate));
+  const resolved = resolveWithinRoot(
+    storiesReal,
+    path.relative(storiesReal, candidate),
+  );
   if (!resolved) {
     res.status(404).json({ error: `File not found: ${filePath}` });
     return null;

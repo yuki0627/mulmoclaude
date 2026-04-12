@@ -94,44 +94,41 @@ function respond(msg: unknown): void {
   process.stdout.write(JSON.stringify(msg) + "\n");
 }
 
+// All bridge calls go to the same backend on the same session, so
+// every fetch was duplicating the same headers, method, and
+// stringify boilerplate. `postJson` captures BASE_URL + SESSION_ID
+// once and lets handleToolCall focus on what it's calling, not how.
+//
+// `path` is the absolute server path (e.g. /api/internal/tool-result)
+// — the session query string is appended automatically.
+async function postJson(path: string, body: unknown): Promise<Response> {
+  return fetch(`${BASE_URL}${path}?session=${SESSION_ID}`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+}
+
 async function handleToolCall(
   name: string,
   args: Record<string, unknown>,
 ): Promise<string> {
   if (name === "switchRole") {
-    await fetch(`${BASE_URL}/api/internal/switch-role?session=${SESSION_ID}`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ roleId: args.roleId }),
-    });
+    await postJson("/api/internal/switch-role", { roleId: args.roleId });
     return `Switching to ${args.roleId} role`;
   }
 
   if (name === "manageRoles") {
-    const res = await fetch(
-      `${BASE_URL}/api/roles/manage?session=${SESSION_ID}`,
-      {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(args),
-      },
-    );
+    const res = await postJson("/api/roles/manage", args);
     const result = await res.json();
 
     // For the list action, push a visual canvas result so the viewer renders
     if (args.action === "list" && result.success) {
-      await fetch(
-        `${BASE_URL}/api/internal/tool-result?session=${SESSION_ID}`,
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            toolName: "manageRoles",
-            uuid: crypto.randomUUID(),
-            ...result,
-          }),
-        },
-      );
+      await postJson("/api/internal/tool-result", {
+        toolName: "manageRoles",
+        uuid: crypto.randomUUID(),
+        ...result,
+      });
     }
 
     return result.message ?? (result.error ? `Error: ${result.error}` : "Done");
@@ -140,14 +137,7 @@ async function handleToolCall(
   // Pure MCP tools — call via /api/mcp-tools/:tool, return text directly (no frontend push)
   const mcpTool = mcpTools.find((t) => t.definition.name === name);
   if (mcpTool) {
-    const res = await fetch(
-      `${BASE_URL}/api/mcp-tools/${name}?session=${SESSION_ID}`,
-      {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(args),
-      },
-    );
+    const res = await postJson(`/api/mcp-tools/${name}`, args);
     const json = await res.json();
     if (!res.ok) return `Error: ${json.error ?? res.status}`;
     return typeof json.result === "string"
@@ -158,23 +148,14 @@ async function handleToolCall(
   const tool = tools.find((t) => t.name === name);
   if (!tool) throw new Error(`Unknown tool: ${name}`);
 
-  const res = await fetch(`${BASE_URL}${tool.endpoint}?session=${SESSION_ID}`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(args),
-  });
+  const res = await postJson(tool.endpoint!, args);
   const result = await res.json();
 
   // Push visual ToolResult to the frontend via the session
-  const toolResult = {
+  await postJson("/api/internal/tool-result", {
     toolName: name,
     uuid: crypto.randomUUID(),
     ...result,
-  };
-  await fetch(`${BASE_URL}/api/internal/tool-result?session=${SESSION_ID}`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(toolResult),
   });
 
   const parts = [result.message, result.instructions].filter(Boolean);

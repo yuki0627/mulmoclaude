@@ -74,9 +74,7 @@ router.post(
         res.json({ message: message ?? "no image data in response" });
       }
     } catch (err) {
-      res
-        .status(500)
-        .json({ success: false, message: errorMessage(err) });
+      res.status(500).json({ success: false, message: errorMessage(err) });
     }
   },
 );
@@ -154,9 +152,7 @@ router.post(
         res.json({ message: message ?? "no image data in response" });
       }
     } catch (err) {
-      res
-        .status(500)
-        .json({ success: false, message: errorMessage(err) });
+      res.status(500).json({ success: false, message: errorMessage(err) });
     }
   },
 );

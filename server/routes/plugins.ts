@@ -130,7 +130,10 @@ router.post(
 );
 
 // openCanvas — drawing canvas
-router.post("/canvas", wrapPluginExecute(() => executeOpenCanvas()));
+router.post(
+  "/canvas",
+  wrapPluginExecute(() => executeOpenCanvas()),
+);
 
 // present3d — 3D visualization
 router.post(

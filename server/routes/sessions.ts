@@ -195,8 +195,11 @@ router.get(
                     } catch {
                       return entry;
                     }
-                    const filePath: string = entry.result.data.filePath;
-                    const candidate = path.resolve(workspacePath, filePath);
+                    const scriptRelPath: string = entry.result.data.filePath;
+                    const candidate = path.resolve(
+                      workspacePath,
+                      scriptRelPath,
+                    );
                     if (
                       candidate !== storiesReal &&
                       !candidate.startsWith(storiesReal + path.sep)
