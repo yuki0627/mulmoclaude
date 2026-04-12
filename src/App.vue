@@ -517,6 +517,7 @@ import { useCanvasViewMode } from "./composables/useCanvasViewMode";
 import { useMcpTools } from "./composables/useMcpTools";
 import { useRoles } from "./composables/useRoles";
 import { usePubSub } from "./composables/usePubSub";
+import { useRoute, useRouter } from "vue-router";
 
 // --- Debug beat (pub/sub) ---
 const debugBeatColor = ref<string | null>(null);
@@ -534,9 +535,29 @@ pubsubSubscribe("debug.beat", (data) => {
   }
 });
 
+// --- Routing ---
+const route = useRoute();
+const router = useRouter();
+
 // --- Per-session state ---
 const sessionMap = reactive(new Map<string, ActiveSession>());
-const currentSessionId = ref("");
+
+// currentSessionId is derived from the URL. Writes go through
+// router.push / router.replace so the URL stays in sync and the
+// browser back/forward buttons work.
+const currentSessionId = computed(() => {
+  const param = route.params.sessionId;
+  return typeof param === "string" ? param : "";
+});
+
+function navigateToSession(id: string, replace = false): void {
+  const method = replace ? router.replace : router.push;
+  void method({
+    name: "chat",
+    params: { sessionId: id },
+    query: route.query,
+  });
+}
 
 const activeSession = computed(() => sessionMap.get(currentSessionId.value));
 
@@ -870,7 +891,7 @@ function createNewSession(roleId?: string): ActiveSession {
     updatedAt: now,
   };
   sessionMap.set(id, session);
-  currentSessionId.value = id;
+  navigateToSession(id, true);
   currentRoleId.value = rId;
   queriesExpanded.value = false;
   return sessionMap.get(id)!;
@@ -914,7 +935,7 @@ async function loadSession(id: string) {
   // currentSessionId clears the unread flag automatically.
   const live = sessionMap.get(id);
   if (live) {
-    currentSessionId.value = id;
+    navigateToSession(id);
     currentRoleId.value = live.roleId;
     showHistory.value = false;
     return;
@@ -966,7 +987,7 @@ async function loadSession(id: string) {
     startedAt: originalStartedAt,
     updatedAt: originalUpdatedAt,
   });
-  currentSessionId.value = id;
+  navigateToSession(id);
   currentRoleId.value = roleId;
   showHistory.value = false;
 }
@@ -1169,7 +1190,20 @@ onMounted(async () => {
   // createNewSession() picks a roleId that exists in the merged
   // role list (built-in + custom).
   await refreshRoles();
-  createNewSession();
+
+  // If the URL already names a session (e.g. a bookmarked link or a
+  // page reload), try to load it. Otherwise create a fresh one.
+  const initialSessionId = currentSessionId.value;
+  if (initialSessionId) {
+    await loadSession(initialSessionId);
+    // loadSession is a no-op when the server returns 404 — in that
+    // case sessionMap won't have the id, so fall through to create.
+    if (!sessionMap.has(initialSessionId)) {
+      createNewSession();
+    }
+  } else {
+    createNewSession();
+  }
 });
 
 onUnmounted(() => {
