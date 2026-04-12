@@ -50,9 +50,9 @@
           spellcheck="false"
         ></textarea>
         <button
-          @click="applyMarkdown"
           class="apply-btn"
           :disabled="!hasChanges || saving"
+          @click="applyMarkdown"
         >
           {{ saving ? "Saving..." : "Apply Changes" }}
         </button>

@@ -23,7 +23,7 @@
               {{ selectedResult.title || "Spreadsheet" }}
             </h1>
             <div class="button-group">
-              <button @click="downloadExcel" class="download-btn excel-btn">
+              <button class="download-btn excel-btn" @click="downloadExcel">
                 <span class="material-icons">download</span>
                 Excel
               </button>
@@ -35,8 +35,8 @@
             <button
               v-for="(sheet, index) in resolvedSheets"
               :key="index"
-              @click="activeSheetIndex = index"
               :class="['sheet-tab', { active: activeSheetIndex === index }]"
+              @click="activeSheetIndex = index"
             >
               {{ sheet.name }}
             </button>
@@ -46,8 +46,8 @@
           <div
             ref="tableContainer"
             class="table-container"
-            v-html="renderedHtml"
             @click="handleTableClick"
+            v-html="renderedHtml"
           ></div>
         </div>
       </div>
@@ -62,11 +62,11 @@
         <textarea
           ref="editorTextarea"
           v-model="editableData"
-          @input="handleDataEdit"
           class="spreadsheet-editor"
           spellcheck="false"
+          @input="handleDataEdit"
         ></textarea>
-        <button @click="applyChanges" class="apply-btn" :disabled="!hasChanges">
+        <button class="apply-btn" :disabled="!hasChanges" @click="applyChanges">
           Apply Changes
         </button>
       </details>
@@ -81,11 +81,11 @@
           <!-- Type Selector -->
           <div class="radio-group">
             <label class="radio-option">
-              <input type="radio" value="string" v-model="miniEditorType" />
+              <input v-model="miniEditorType" type="radio" value="string" />
               String
             </label>
             <label class="radio-option">
-              <input type="radio" value="object" v-model="miniEditorType" />
+              <input v-model="miniEditorType" type="radio" value="object" />
               Formula
             </label>
           </div>
@@ -93,8 +93,8 @@
           <!-- String input -->
           <input
             v-if="miniEditorType === 'string'"
-            type="text"
             v-model="miniEditorValue"
+            type="text"
             class="form-input"
             placeholder="Value"
             @keyup.enter="saveMiniEditor"
@@ -103,23 +103,23 @@
           <!-- Formula inputs -->
           <template v-if="miniEditorType === 'object'">
             <input
-              type="text"
               v-model="miniEditorFormula"
+              type="text"
               class="form-input"
               placeholder="Value or Formula (e.g., 100 or SUM(B2:B11))"
               @keyup.enter="saveMiniEditor"
             />
             <input
-              type="text"
               v-model="miniEditorFormat"
+              type="text"
               class="form-input"
               placeholder="Format (e.g., $#,##0.00)"
               @keyup.enter="saveMiniEditor"
             />
           </template>
 
-          <button @click="saveMiniEditor" class="save-btn">Update</button>
-          <button @click="closeMiniEditor" class="cancel-btn">✕</button>
+          <button class="save-btn" @click="saveMiniEditor">Update</button>
+          <button class="cancel-btn" @click="closeMiniEditor">✕</button>
         </div>
       </div>
     </template>
@@ -131,7 +131,13 @@ import { computed, ref, watch, onMounted, onUnmounted } from "vue";
 import * as XLSX from "xlsx";
 import type { ToolResult } from "gui-chat-protocol";
 import type { SpreadsheetToolData, SpreadsheetSheet } from "./definition";
-import { SpreadsheetEngine, columnToIndex, indexToColumn } from "./engine";
+import {
+  SpreadsheetEngine,
+  indexToColumn,
+  extractCellReferences,
+  type SpreadsheetCell,
+  type CellValue,
+} from "./engine";
 
 // Import all spreadsheet functions to populate the function registry
 import "./engine/functions";
@@ -141,6 +147,8 @@ import "./engine/functions";
  * Some models generate flat arrays instead of 2D arrays - fix them
  */
 
+// Cells can be raw LLM output of arbitrary shape; tightening here would cascade through the engine API.
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
 function normalizeSheetData(data: any): any[][] {
   // Handle null/undefined
   if (!data) {
@@ -165,6 +173,7 @@ function normalizeSheetData(data: any): any[][] {
   // If data is a flat array of cell objects, convert to 2D by pairing cells
   // Pattern: [cell1, cell2, cell3, cell4] -> [[cell1, cell2], [cell3, cell4]]
   if (typeof data[0] === "object" && data[0] !== null) {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const rows: any[][] = [];
     for (let i = 0; i < data.length; i += 2) {
       const row = [data[i]];
@@ -309,7 +318,7 @@ const tableContainer = ref<HTMLDivElement | null>(null);
 const miniEditorOpen = ref(false);
 const miniEditorCell = ref<{ row: number; col: number } | null>(null);
 
-const miniEditorValue = ref<any>(null);
+const miniEditorValue = ref<unknown>(null);
 const miniEditorType = ref<"number" | "string" | "object">("string");
 const miniEditorFormula = ref("");
 const miniEditorFormat = ref("");
@@ -327,22 +336,21 @@ const hasChanges = computed(() => {
   }
 });
 
-// Helper functions using the spreadsheet engine utilities
-const colToIndex = columnToIndex;
+// Short alias used in the template column header.
 const indexToCol = indexToColumn;
 
 // Calculate formulas in the data using the spreadsheet engine
 const calculateFormulas = (
-  data: Array<Array<any>>,
+  data: SpreadsheetCell[][],
   sheetName?: string,
-): Array<Array<any>> => {
+): CellValue[][] => {
   // If we have a sheet name, we need to find all sheets for cross-sheet references
   const allSheets = resolvedSheets.value;
 
   // Create a SheetData object for the engine
   const sheet = {
     name: sheetName || "Sheet1",
-    data: data,
+    data,
   };
 
   // Calculate using the engine
@@ -350,7 +358,7 @@ const calculateFormulas = (
 
   // Return the calculated data
 
-  return result.data as Array<Array<any>>;
+  return result.data;
 };
 
 // Render the active sheet as HTML table
@@ -417,70 +425,11 @@ function handleDataEdit() {
   // User needs to click "Apply Changes" button
 }
 
-// Extract cell references from a formula string
-function extractCellReferences(
-  formula: string,
-): Array<{ row: number; col: number }> {
-  const references: Array<{ row: number; col: number }> = [];
-
-  // Remove the "=" prefix if present
-  const cleanFormula = formula.startsWith("=") ? formula.substring(1) : formula;
-
-  // First, extract range references (e.g., A1:B10, $A$1:$B$10)
-  const rangeRegex = /\$?[A-Z]+\$?\d+:\$?[A-Z]+\$?\d+/g;
-  const rangeMatches = cleanFormula.match(rangeRegex);
-
-  if (rangeMatches) {
-    for (const range of rangeMatches) {
-      // Remove $ symbols for absolute references
-      const cleanRange = range.replace(/\$/g, "");
-      const rangeMatch = cleanRange.match(/^([A-Z]+)(\d+):([A-Z]+)(\d+)$/);
-
-      if (rangeMatch) {
-        const startCol = colToIndex(rangeMatch[1]);
-        const startRow = parseInt(rangeMatch[2]) - 1;
-        const endCol = colToIndex(rangeMatch[3]);
-        const endRow = parseInt(rangeMatch[4]) - 1;
-
-        // Add all cells in the range
-        for (let row = startRow; row <= endRow; row++) {
-          for (let col = startCol; col <= endCol; col++) {
-            if (!references.some((ref) => ref.row === row && ref.col === col)) {
-              references.push({ row, col });
-            }
-          }
-        }
-      }
-    }
-  }
-
-  // Remove ranges from formula before extracting individual cell references
-  const formulaWithoutRanges = cleanFormula.replace(rangeRegex, "");
-
-  // Then, extract individual cell references (e.g., A1, $B$2, B2)
-  const cellRefRegex = /\$?[A-Z]+\$?\d+/g;
-  const cellMatches = formulaWithoutRanges.match(cellRefRegex);
-
-  if (cellMatches) {
-    for (const match of cellMatches) {
-      // Remove $ symbols for absolute references
-      const cleanRef = match.replace(/\$/g, "");
-      const cellMatch = cleanRef.match(/^([A-Z]+)(\d+)$/);
-
-      if (cellMatch) {
-        const col = colToIndex(cellMatch[1]);
-        const row = parseInt(cellMatch[2]) - 1; // Convert to 0-based
-
-        // Add to references if not already present
-        if (!references.some((ref) => ref.row === row && ref.col === col)) {
-          references.push({ row, col });
-        }
-      }
-    }
-  }
-
-  return references;
-}
+// `extractCellReferences` now lives in `./engine/formulaRefs.ts`
+// (imported at the top of this file). Extracted to bring this
+// file's cognitive complexity back under the sonarjs threshold
+// and to make the formula-reference scanner unit-testable.
+// See `test/plugins/spreadsheet/engine/test_formulaRefs.ts`.
 
 function openMiniEditor(rowIndex: number, colIndex: number) {
   try {
@@ -570,7 +519,7 @@ function saveMiniEditor() {
     const { row, col } = miniEditorCell.value;
 
     // Normalize the data in case it's malformed
-    let normalizedData = normalizeSheetData(currentSheet.data);
+    const normalizedData = normalizeSheetData(currentSheet.data);
 
     // Ensure the row exists
     while (normalizedData.length <= row) {
@@ -584,7 +533,7 @@ function saveMiniEditor() {
 
     // Build the new cell value based on type (new format: {v, f})
 
-    let newCellValue: any;
+    let newCellValue: SpreadsheetCell;
     if (miniEditorType.value === "string") {
       // String type - create simple cell with string value
       newCellValue = {
@@ -600,8 +549,8 @@ function saveMiniEditor() {
       // 3. Arithmetic expressions with operators (6/100, 5*2, etc.)
       const isFormula =
         /^[-+]?\s*[A-Z]+\s*\(/i.test(input) || // Any function call, optionally preceded by +/- operator
-        /[A-Z]+\d+\s*[\+\-\*\/\^]/.test(input) ||
-        /\d+\s*[\+\-\*\/\^]\s*\d+/.test(input);
+        /[A-Z]+\d+\s*[+\-*/^]/.test(input) ||
+        /\d+\s*[+\-*/^]\s*\d+/.test(input);
 
       newCellValue = { v: "" };
       if (isFormula) {
@@ -867,10 +816,10 @@ watch(
         }
 
         // Highlight referenced cells
-        for (const ref of referencedCells.value) {
-          const row = table.querySelectorAll("tr")[ref.row];
+        for (const cellRef of referencedCells.value) {
+          const row = table.querySelectorAll("tr")[cellRef.row];
           if (row) {
-            const cell = row.querySelectorAll("td")[ref.col];
+            const cell = row.querySelectorAll("td")[cellRef.col];
             if (cell) {
               cell.classList.add("cell-referenced");
             }

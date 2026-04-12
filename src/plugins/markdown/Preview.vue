@@ -71,7 +71,7 @@ function extractPreview(md: string): string {
   const lines = md
     .split("\n")
     .filter((l) => !/^#{1,6}\s/.test(l) && l.trim() !== "")
-    .map((l) => l.replace(/[*_`~\[\]]/g, "").trim())
+    .map((l) => l.replace(/[*_`~[\]]/g, "").trim())
     .filter(Boolean);
   return lines.slice(0, 6).join("\n");
 }

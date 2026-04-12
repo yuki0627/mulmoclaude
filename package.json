@@ -18,7 +18,7 @@
     "typecheck:server": "tsc -p server/tsconfig.json --noEmit",
     "build:client": "vite build",
     "build": "vite build && tsc -p server/tsconfig.json --noEmit",
-    "test": "tsx --test ./test/*/test_*.ts ./test/*/*/test_*.ts",
+    "test": "tsx --test ./test/*/test_*.ts ./test/*/*/test_*.ts ./test/*/*/*/test_*.ts",
     "test:e2e": "playwright test --config e2e/playwright.config.ts",
     "test:coverage": "tsx --test --experimental-test-coverage ./test/*/test_*.ts ./test/*/*/test_*.ts",
     "sandbox:remove": "docker rmi mulmoclaude-sandbox",
@@ -76,6 +76,7 @@
     "eslint-plugin-import": "^2.32.0",
     "eslint-plugin-prettier": "^5.5.5",
     "eslint-plugin-sonarjs": "^4.0.2",
+    "eslint-plugin-vue": "^10.8.0",
     "globals": "^17.5.0",
     "prettier": "^3.8.2",
     "tailwindcss": "^4.2.1",
@@ -83,6 +84,7 @@
     "typescript": "^6.0.2",
     "typescript-eslint": "^8.58.1",
     "vite": "^8.0.8",
+    "vue-eslint-parser": "^10.4.0",
     "vue-tsc": "^3.2.5"
   }
 }

@@ -140,7 +140,17 @@ The repo runs several PRs in flight at once. Code that sprawls across large func
 
 - Extract pure logic into exported helpers so unit tests can exercise them without a harness. Examples: `parseRange` / `classify` / `isSensitivePath` in `server/routes/files.ts`, `normalizeTopicAction` / `computeJustCompletedSessions` in `server/journal/dailyPass.ts`.
 - Prefer discriminated-union return types (`{ kind: "skipped", reason } | { kind: "processed", ... }`) over null / thrown errors for multi-outcome helpers.
-- Honour the `sonarjs/cognitive-complexity` threshold (warn at >15). Split rather than suppress.
+- Honour the `sonarjs/cognitive-complexity` threshold (**error at >15** in `.ts` / `.js`; temporarily **warn** in `.vue` until pre-existing violations like `App.vue#sendMessage` at 47 and `spreadsheet/View.vue` at 163 are refactored). Split rather than suppress.
+
+### Linting covers .vue files
+
+`eslint-plugin-vue` + `vue-eslint-parser` are enabled (`eslint.config.mjs`). The `.vue` override block at the end of the config:
+
+- demotes `vue/multi-word-component-names` to off — the `View` / `Preview` component names are the MulmoClaude plugin convention
+- demotes `sonarjs/cognitive-complexity`, `sonarjs/slow-regex`, and `vue/no-v-html` to **warn** because pre-existing violations would otherwise block CI
+- keeps `vue/attributes-order` / `vue/attribute-hyphenation` as warn (auto-fixable)
+
+Each warn-level rule is a follow-up target — when all violations in `.vue` are fixed, re-raise to `error` in the override block. The goal is parity with `.ts` files.
 
 ### DRY: eliminate duplication aggressively
 

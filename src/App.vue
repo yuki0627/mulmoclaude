@@ -21,8 +21,8 @@
           <button
             class="text-gray-400 hover:text-gray-700"
             data-testid="new-session-btn"
-            @click="createNewSession()"
             title="New session"
+            @click="createNewSession()"
           >
             <span class="material-icons">add_circle_outline</span>
           </button>
@@ -31,8 +31,8 @@
             data-testid="history-btn"
             class="relative text-gray-400 hover:text-gray-700"
             :class="{ 'text-blue-500': showHistory }"
-            @click="toggleHistory"
             title="Session history"
+            @click="toggleHistory"
           >
             <span class="material-icons">history</span>
             <!-- Active sessions badge -->
@@ -117,8 +117,8 @@
           <button
             class="text-gray-400 hover:text-gray-700"
             :class="{ 'text-blue-500': showRightSidebar }"
-            @click="toggleRightSidebar"
             title="Tool call history"
+            @click="toggleRightSidebar"
           >
             <span class="material-icons">build</span>
           </button>
@@ -382,8 +382,8 @@
         <div class="flex gap-2">
           <textarea
             ref="textareaRef"
-            data-testid="user-input"
             v-model="userInput"
+            data-testid="user-input"
             placeholder="Type a task..."
             rows="2"
             class="flex-1 bg-white border border-gray-300 rounded px-3 py-2 text-sm text-gray-900 placeholder-gray-400 disabled:opacity-50 disabled:cursor-not-allowed resize-none"
@@ -428,11 +428,11 @@
         <!-- Single mode -->
         <template v-if="canvasViewMode === 'single'">
           <component
+            :is="getPlugin(selectedResult.toolName)?.viewComponent"
             v-if="
               selectedResult &&
               getPlugin(selectedResult.toolName)?.viewComponent
             "
-            :is="getPlugin(selectedResult.toolName)?.viewComponent"
             :selected-result="selectedResult"
             :send-text-message="sendMessage"
             @update-result="handleUpdateResult"
@@ -494,7 +494,6 @@ import { SYSTEM_PROMPT } from "./config/system-prompt";
 import { getPlugin } from "./tools";
 import type { ToolResultComplete } from "gui-chat-protocol/vue";
 import RightSidebar from "./components/RightSidebar.vue";
-import type { ToolCallHistoryItem } from "./types/toolCallHistory";
 import CanvasViewToggle from "./components/CanvasViewToggle.vue";
 import StackView from "./components/StackView.vue";
 import FilesView from "./components/FilesView.vue";
@@ -722,13 +721,7 @@ const {
 } = useCanvasViewMode({ isRunning });
 const rightSidebarRef = ref<InstanceType<typeof RightSidebar> | null>(null);
 
-const {
-  disabledMcpTools,
-  mcpToolDescriptions,
-  availableTools,
-  toolDescriptions,
-  fetchMcpToolsStatus,
-} = useMcpTools({
+const { availableTools, toolDescriptions, fetchMcpToolsStatus } = useMcpTools({
   currentRole,
   getDefinition: (name) => getPlugin(name)?.toolDefinition ?? null,
 });

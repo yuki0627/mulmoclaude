@@ -293,8 +293,8 @@ function startRename(col: StatusColumn): void {
   renamingId.value = col.id;
   renameDraft.value = col.label;
   void nextTick(() => {
-    const ref = renameInput.value;
-    const el = Array.isArray(ref) ? ref[0] : ref;
+    const inputRef = renameInput.value;
+    const el = Array.isArray(inputRef) ? inputRef[0] : inputRef;
     el?.focus();
     el?.select();
   });
