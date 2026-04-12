@@ -39,6 +39,7 @@ import {
 } from "./diff.js";
 import { rewriteWorkspaceLinks } from "./linkRewrite.js";
 import { writeState, type JournalState } from "./state.js";
+import { readTextOrNull } from "../utils/fs.js";
 
 // --- Constants ------------------------------------------------------
 
@@ -498,14 +499,6 @@ async function readAllTopics(
     }
   }
   return out;
-}
-
-async function readTextOrNull(file: string): Promise<string | null> {
-  try {
-    return await fsp.readFile(file, "utf-8");
-  } catch {
-    return null;
-  }
 }
 
 async function writeDailySummary(

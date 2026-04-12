@@ -22,9 +22,26 @@ import {
 } from "mulmocast";
 import type { MulmoBeat, MulmoImagePromptMedia } from "@mulmocast/types";
 import { slugify } from "../utils/slug.js";
+import { resolveWithinRoot } from "../utils/fs.js";
 
 const router = Router();
 const storiesDir = path.resolve(workspacePath, "stories");
+
+// Lazily realpath the stories dir on first use. We can't realpath at
+// module load because the directory may not exist yet (it's created
+// on demand by /mulmo-script POST). The cache is invalidated never —
+// once the dir exists, its realpath is stable.
+let storiesRealCache: string | null = null;
+function ensureStoriesReal(): string | null {
+  if (storiesRealCache) return storiesRealCache;
+  try {
+    fs.mkdirSync(storiesDir, { recursive: true });
+    storiesRealCache = fs.realpathSync(storiesDir);
+    return storiesRealCache;
+  } catch {
+    return null;
+  }
+}
 
 interface SaveMulmoScriptBody {
   script: MulmoScript;
@@ -216,17 +233,35 @@ function errorMessage(err: unknown): string {
 }
 
 // Helper: resolve and validate a stories filePath, returns absoluteFilePath or null
+//
+// Uses the realpath-based resolveWithinRoot helper to defeat
+// symlink-based escapes. The previous implementation used a plain
+// `path.resolve` + `startsWith` check, which a malicious symlink
+// under stories/ could bypass.
 function resolveStoryPath(filePath: string, res: Response): string | null {
-  const absoluteFilePath = path.resolve(workspacePath, filePath);
-  if (!absoluteFilePath.startsWith(storiesDir + path.sep)) {
+  const storiesReal = ensureStoriesReal();
+  if (!storiesReal) {
+    res.status(500).json({ error: "stories directory not available" });
+    return null;
+  }
+  // Syntactic stories/ membership check first, on the unresolved
+  // candidate path. Distinguishes "outside stories" (400) from
+  // "missing file" (404) and short-circuits before we hit realpath.
+  const candidate = path.resolve(workspacePath, filePath);
+  if (
+    candidate !== storiesReal &&
+    !candidate.startsWith(storiesReal + path.sep)
+  ) {
     res.status(400).json({ error: "Invalid filePath" });
     return null;
   }
-  if (!fs.existsSync(absoluteFilePath)) {
+  // realpath check — defeats symlink escapes (stories/foo → /etc/passwd).
+  const resolved = resolveWithinRoot(storiesReal, path.relative(storiesReal, candidate));
+  if (!resolved) {
     res.status(404).json({ error: `File not found: ${filePath}` });
     return null;
   }
-  return absoluteFilePath;
+  return resolved;
 }
 
 // Helper: build mulmo context for a story file

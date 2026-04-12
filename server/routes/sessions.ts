@@ -1,8 +1,10 @@
 import { Router, Request, Response } from "express";
+import fs from "fs";
 import { readdir, readFile, stat } from "fs/promises";
 import path from "path";
 import { workspacePath } from "../workspace.js";
 import { readManifest } from "../chat-index/indexer.js";
+import { resolveWithinRoot } from "../utils/fs.js";
 import type { ChatIndexEntry } from "../chat-index/types.js";
 
 async function readSessionMeta(
@@ -184,14 +186,28 @@ router.get(
                   entry.result?.data?.filePath
                 ) {
                   try {
+                    // Realpath-based traversal check defeats symlink
+                    // escapes — see resolveWithinRoot in utils/fs.ts.
                     const storiesDir = path.resolve(workspacePath, "stories");
-                    const scriptPath = path.resolve(
-                      workspacePath,
-                      entry.result.data.filePath,
-                    );
-                    if (!scriptPath.startsWith(storiesDir + path.sep)) {
+                    let storiesReal: string;
+                    try {
+                      storiesReal = fs.realpathSync(storiesDir);
+                    } catch {
                       return entry;
                     }
+                    const filePath: string = entry.result.data.filePath;
+                    const candidate = path.resolve(workspacePath, filePath);
+                    if (
+                      candidate !== storiesReal &&
+                      !candidate.startsWith(storiesReal + path.sep)
+                    ) {
+                      return entry;
+                    }
+                    const scriptPath = resolveWithinRoot(
+                      storiesReal,
+                      path.relative(storiesReal, candidate),
+                    );
+                    if (!scriptPath) return entry;
                     const scriptJson = await readFile(scriptPath, "utf-8");
                     return {
                       ...entry,
