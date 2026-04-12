@@ -31,6 +31,7 @@ import { createPubSub } from "./pub-sub/index.js";
 import { createTaskManager } from "./task-manager/index.js";
 import type { ITaskManager } from "./task-manager/index.js";
 import type { IPubSub } from "./pub-sub/index.js";
+import { requireSameOrigin } from "./csrfGuard.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -57,6 +58,12 @@ app.disable("x-powered-by");
 // plans/fix-server-lockdown-cors-localhost.md for the threat
 // model.
 app.use(express.json({ limit: "50mb" }));
+// CSRF guard: reject state-changing requests that arrive with a
+// non-localhost Origin header. Allows missing Origin (server-to-
+// server / CLI callers) because the listener is already bound to
+// localhost (#148); if that ever changes, tighten this middleware
+// too. See plans/fix-server-csrf-origin-check.md.
+app.use(requireSameOrigin);
 
 app.get("/api/health", (_req: Request, res: Response) => {
   res.json({
