@@ -17,6 +17,11 @@ import {
   overwriteMarkdown,
   isMarkdownPath,
 } from "../utils/markdown-store.js";
+import {
+  saveSpreadsheet,
+  overwriteSpreadsheet,
+  isSpreadsheetPath,
+} from "../utils/spreadsheet-store.js";
 
 const router = Router();
 
@@ -158,10 +163,52 @@ router.put(
 // path — so we satisfy the type signature with a never cast rather
 // than fabricating a fake context.
 
-// presentSpreadsheet — uses package execute for validation/processing
+// presentSpreadsheet — validate, then save sheets to disk
 router.post(
   "/present-spreadsheet",
-  wrapPluginExecute((req) => executeSpreadsheet(req.body)),
+  wrapPluginExecute(async (req) => {
+    const result = await executeSpreadsheet(req.body);
+    const sheetsPath = await saveSpreadsheet(result.data.sheets as unknown[]);
+    return { ...result, data: { ...result.data, sheets: sheetsPath } };
+  }),
+);
+
+// Update spreadsheet file on disk (user edits in View)
+interface UpdateSpreadsheetBody {
+  sheets: unknown[];
+}
+
+interface UpdateSpreadsheetResponse {
+  path: string;
+}
+
+interface UpdateSpreadsheetError {
+  error: string;
+}
+
+router.put(
+  "/spreadsheets/:filename",
+  async (
+    req: Request<{ filename: string }, unknown, UpdateSpreadsheetBody>,
+    res: Response<UpdateSpreadsheetResponse | UpdateSpreadsheetError>,
+  ) => {
+    const relativePath = `spreadsheets/${req.params.filename}`;
+    const { sheets } = req.body;
+    if (!sheets) {
+      res.status(400).json({ error: "sheets is required" });
+      return;
+    }
+    if (!isSpreadsheetPath(relativePath)) {
+      res.status(400).json({ error: "invalid spreadsheet path" });
+      return;
+    }
+    try {
+      await overwriteSpreadsheet(relativePath, sheets);
+      res.json({ path: relativePath });
+    } catch (err) {
+      res.status(500).json({ error: errorMessage(err) });
+    }
+  },
 );
 
 // createMindMap — uses package execute for node layout computation
