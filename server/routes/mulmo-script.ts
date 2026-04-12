@@ -28,6 +28,13 @@ import { errorMessage } from "../utils/errors.js";
 const router = Router();
 const storiesDir = path.resolve(workspacePath, "stories");
 
+// Realpath of the workspace, computed once at module load. Needed
+// because the stories realpath check below has to compare against a
+// candidate path built from the same realpath form — otherwise on
+// macOS where /tmp → /private/tmp, a workspace under /tmp would have
+// every legitimate request rejected.
+const workspaceReal = fs.realpathSync(workspacePath);
+
 // Lazily realpath the stories dir on first use. We can't realpath at
 // module load because the directory may not exist yet (it's created
 // on demand by /mulmo-script POST). The cache is invalidated never —
@@ -244,7 +251,9 @@ function resolveStoryPath(filePath: string, res: Response): string | null {
   // Syntactic stories/ membership check first, on the unresolved
   // candidate path. Distinguishes "outside stories" (400) from
   // "missing file" (404) and short-circuits before we hit realpath.
-  const candidate = path.resolve(workspacePath, filePath);
+  // Builds the candidate from the workspace's realpath so the
+  // comparison against storiesReal (also realpath'd) is symmetric.
+  const candidate = path.resolve(workspaceReal, filePath);
   if (
     candidate !== storiesReal &&
     !candidate.startsWith(storiesReal + path.sep)

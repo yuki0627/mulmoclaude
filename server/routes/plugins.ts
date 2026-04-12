@@ -106,6 +106,13 @@ router.post(
   },
 );
 
+// `null as never` in the calls below: each plugin's `execute*`
+// function expects a client-side context object as its first
+// argument. The server-side bridge has no such context — these
+// functions only touch their second arg (the request body) on this
+// path — so we satisfy the type signature with a never cast rather
+// than fabricating a fake context.
+
 // presentSpreadsheet — uses package execute for validation/processing
 router.post(
   "/present-spreadsheet",

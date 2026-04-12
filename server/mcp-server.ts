@@ -101,12 +101,23 @@ function respond(msg: unknown): void {
 //
 // `path` is the absolute server path (e.g. /api/internal/tool-result)
 // — the session query string is appended automatically.
+//
+// Network errors (DNS failure, connection refused, etc.) are wrapped
+// in a descriptive Error so the outer catch in handleToolCall reports
+// them as the failed tool call instead of a bare TypeError. HTTP
+// status checking (`!res.ok`) is left to call sites that need it,
+// since several callers fire-and-forget for the result push.
 async function postJson(path: string, body: unknown): Promise<Response> {
-  return fetch(`${BASE_URL}${path}?session=${SESSION_ID}`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(body),
-  });
+  try {
+    return await fetch(`${BASE_URL}${path}?session=${SESSION_ID}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    });
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    throw new Error(`Network error calling ${path}: ${message}`);
+  }
 }
 
 async function handleToolCall(

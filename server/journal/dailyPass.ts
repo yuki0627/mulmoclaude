@@ -514,14 +514,28 @@ async function writeDailySummary(
 // If the file doesn't exist, write `content` fresh; otherwise append
 // it after a blank line. Returns "created" or "updated" so the caller
 // can report which action was taken.
+//
+// Distinguishes a true missing file (ENOENT) from other read errors
+// (permission denied, I/O failure) — without this, a transient EACCES
+// on an existing topic would silently overwrite it.
 async function appendOrCreate(
   filePath: string,
   content: string,
 ): Promise<"created" | "updated"> {
-  const existing = await readTextOrNull(filePath);
-  if (existing === null) {
-    await fsp.writeFile(filePath, content, "utf-8");
-    return "created";
+  let existing: string;
+  try {
+    existing = await fsp.readFile(filePath, "utf-8");
+  } catch (err) {
+    if (
+      typeof err === "object" &&
+      err !== null &&
+      "code" in err &&
+      err.code === "ENOENT"
+    ) {
+      await fsp.writeFile(filePath, content, "utf-8");
+      return "created";
+    }
+    throw err;
   }
   await fsp.writeFile(
     filePath,

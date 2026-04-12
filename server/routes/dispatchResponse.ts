@@ -6,6 +6,7 @@
 // the translation step so each route handler stays a few lines.
 
 import type { Response } from "express";
+import { errorMessage } from "../utils/errors.js";
 
 export type DispatchResult<T> =
   | { kind: "error"; status: number; error: string }
@@ -44,6 +45,12 @@ export interface RespondOptions<T> {
 // Translate a DispatchResult into the JSON response shape used by
 // dispatcher-style routes. Side-effects: calls `options.persist` on
 // success when `options.shouldPersist` is true; writes the response.
+//
+// Persistence failures are caught and translated into a structured
+// 500 JSON error so the route's response contract stays consistent —
+// otherwise an fs.writeFileSync throw would bubble out and trigger
+// Express's default HTML error page instead of the JSON shape that
+// clients expect.
 export function respondWithDispatchResult<T>(
   res: Response<DispatchSuccessResponse<T> | DispatchErrorResponse>,
   result: DispatchResult<T>,
@@ -54,7 +61,14 @@ export function respondWithDispatchResult<T>(
     return;
   }
   if (options.shouldPersist) {
-    options.persist(result.items);
+    try {
+      options.persist(result.items);
+    } catch (err) {
+      res.status(500).json({
+        error: `Failed to persist changes: ${errorMessage(err)}`,
+      });
+      return;
+    }
   }
   res.json({
     data: { items: result.items },
