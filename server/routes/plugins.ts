@@ -1,6 +1,9 @@
 import { Router, Request, Response } from "express";
 import { executeMindMap } from "@gui-chat-plugin/mindmap";
-import { executeSpreadsheet } from "../../src/plugins/spreadsheet/definition.js";
+import {
+  executeSpreadsheet,
+  type SpreadsheetArgs,
+} from "../../src/plugins/spreadsheet/definition.js";
 import { executeQuiz } from "@mulmochat-plugin/quiz";
 import { executeForm } from "@mulmochat-plugin/form";
 import { executeOpenCanvas } from "../../src/plugins/canvas/definition.js";
@@ -39,10 +42,11 @@ interface PluginErrorResponse {
 // default and each plugin's execute function does its own runtime
 // validation — matching the behavior of the inline handlers this
 // replaces.
-function wrapPluginExecute<TResult>(
-  execute: (req: Request) => Promise<TResult>,
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function wrapPluginExecute<TBody = any, TResult = unknown>(
+  execute: (req: Request<object, unknown, TBody>) => Promise<TResult>,
 ): (
-  req: Request,
+  req: Request<object, unknown, TBody>,
   res: Response<TResult | PluginErrorResponse>,
 ) => Promise<void> {
   return async (req, res) => {
@@ -166,9 +170,12 @@ router.put(
 // presentSpreadsheet — validate, then save sheets to disk
 router.post(
   "/present-spreadsheet",
-  wrapPluginExecute(async (req) => {
+  wrapPluginExecute<SpreadsheetArgs, unknown>(async (req) => {
     const result = await executeSpreadsheet(req.body);
-    const sheetsPath = await saveSpreadsheet(result.data.sheets as unknown[]);
+    if (!Array.isArray(result.data.sheets)) {
+      throw new Error("Expected sheets array from executeSpreadsheet");
+    }
+    const sheetsPath = await saveSpreadsheet(result.data.sheets);
     return { ...result, data: { ...result.data, sheets: sheetsPath } };
   }),
 );
