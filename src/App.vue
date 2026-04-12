@@ -640,13 +640,31 @@ const toolResults = computed(() => activeSession.value?.toolResults ?? []);
 // calls produce 4 identical "22 upcoming" previews. We keep only the
 // last one in each consecutive run. text-response is excluded because
 // each user/assistant message is unique content.
+// Deduplicate consecutive tool results that represent "full-state
+// refreshes" of the same collection. Tools like manageScheduler /
+// manageTodoList / manageWiki return the full list on every call
+// and set `updating: true` on the response — that flag is the
+// signal that the previous result is superseded, not a new artifact.
+//
+// Tools that create individual artifacts (generateImage,
+// presentDocument, editImage) DO NOT set `updating`, so consecutive
+// calls stay visible as separate preview cards. This matches the
+// "tennis vs golf docs" case raised in review: two different
+// documents produced in a row must both be shown.
+//
+// text-response is never collapsed because each user/assistant
+// message is unique content.
 const sidebarResults = computed(() => {
   const all = toolResults.value;
   return all.filter((r, i) => {
     if (r.toolName === "text-response") return true;
     const next = all[i + 1];
-    // Keep if this is the last item, or the next item is a different tool.
-    return !next || next.toolName !== r.toolName;
+    if (!next) return true;
+    if (next.toolName !== r.toolName) return true;
+    // Same tool as the next item — only collapse when BOTH results
+    // are full-state refreshes (updating: true). Individual-artifact
+    // tools that don't set `updating` stay visible.
+    return !(r.updating === true && next.updating === true);
   });
 });
 
@@ -851,6 +869,17 @@ function handleKeyNavigation(e: KeyboardEvent) {
   const currentIndex = results.findIndex(
     (r) => r.uuid === selectedResultUuid.value,
   );
+  // If the currently selected UUID is filtered out of sidebarResults
+  // (e.g. an older duplicate that was hidden by dedup), jump to the
+  // edge instead of an arbitrary index. ArrowDown → first item;
+  // ArrowUp → last item.
+  if (currentIndex === -1) {
+    selectedResultUuid.value =
+      e.key === "ArrowDown"
+        ? results[0].uuid
+        : results[results.length - 1].uuid;
+    return;
+  }
   const nextIndex =
     e.key === "ArrowUp"
       ? Math.max(0, currentIndex - 1)
