@@ -175,31 +175,46 @@ interface PathQuery {
   path?: string;
 }
 
+// Shared validation preamble for /files/content and /files/raw. Both
+// endpoints need to: read `path` from the query, run it through
+// resolveSafe, stat it, and confirm it's a regular file. On any
+// failure this writes the appropriate 4xx response and returns null;
+// the caller bails out.
+function resolveAndStatFile(
+  req: Request<object, unknown, unknown, PathQuery>,
+  res: Response<ErrorResponse | unknown>,
+): { relPath: string; absPath: string; stat: fs.Stats } | null {
+  const relPath = typeof req.query.path === "string" ? req.query.path : "";
+  if (!relPath) {
+    res.status(400).json({ error: "path required" });
+    return null;
+  }
+  const absPath = resolveSafe(relPath);
+  if (!absPath) {
+    res.status(400).json({ error: "Path outside workspace" });
+    return null;
+  }
+  const stat = statSafe(absPath);
+  if (!stat) {
+    res.status(404).json({ error: "File not found" });
+    return null;
+  }
+  if (!stat.isFile()) {
+    res.status(400).json({ error: "Not a file" });
+    return null;
+  }
+  return { relPath, absPath, stat };
+}
+
 router.get(
   "/files/content",
   (
     req: Request<object, unknown, unknown, PathQuery>,
     res: Response<FileContentResponse | ErrorResponse>,
   ) => {
-    const relPath = typeof req.query.path === "string" ? req.query.path : "";
-    if (!relPath) {
-      res.status(400).json({ error: "path required" });
-      return;
-    }
-    const absPath = resolveSafe(relPath);
-    if (!absPath) {
-      res.status(400).json({ error: "Path outside workspace" });
-      return;
-    }
-    const stat = statSafe(absPath);
-    if (!stat) {
-      res.status(404).json({ error: "File not found" });
-      return;
-    }
-    if (!stat.isFile()) {
-      res.status(400).json({ error: "Not a file" });
-      return;
-    }
+    const ctx = resolveAndStatFile(req, res);
+    if (!ctx) return;
+    const { relPath, absPath, stat } = ctx;
 
     const meta = {
       path: relPath,
@@ -259,25 +274,10 @@ router.get(
     req: Request<object, unknown, unknown, PathQuery>,
     res: Response<ErrorResponse>,
   ) => {
-    const relPath = typeof req.query.path === "string" ? req.query.path : "";
-    if (!relPath) {
-      res.status(400).json({ error: "path required" });
-      return;
-    }
-    const absPath = resolveSafe(relPath);
-    if (!absPath) {
-      res.status(400).json({ error: "Path outside workspace" });
-      return;
-    }
-    const stat = statSafe(absPath);
-    if (!stat) {
-      res.status(404).json({ error: "File not found" });
-      return;
-    }
-    if (!stat.isFile()) {
-      res.status(400).json({ error: "Not a file" });
-      return;
-    }
+    const ctx = resolveAndStatFile(req, res);
+    if (!ctx) return;
+    const { absPath, stat } = ctx;
+
     if (stat.size > MAX_RAW_BYTES) {
       res.status(413).json({
         error: `File too large to stream (${stat.size} bytes, limit ${MAX_RAW_BYTES})`,
