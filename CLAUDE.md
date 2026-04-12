@@ -12,173 +12,159 @@ See `plan/mulmo_claude.md` for the full design plan.
 
 ## Key Commands
 
-- **Development server**: `npm run dev` (runs both client and server concurrently)
-- **Client only**: `npm run dev:client`
-- **Server only**: `npm run dev:server`
-- **Lint**: `yarn lint`
-- **Format**: `yarn format`
-- **Typecheck**: `yarn typecheck`
-- **Build**: `yarn build`
+- **Dev server**: `npm run dev` (runs both client and server concurrently)
+- **Lint**: `yarn lint` / **Format**: `yarn format` / **Typecheck**: `yarn typecheck` / **Build**: `yarn build`
 
 **IMPORTANT**: After modifying any source code, always run `yarn format`, `yarn lint`, `yarn typecheck`, and `yarn build` before considering the task done.
 
-**IMPORTANT**: Always write error handling for all `fetch` calls. Handle both network errors (try/catch around `fetch`) and HTTP errors (`!response.ok`). Surface errors to the user in the UI where appropriate.
-
-**IMPORTANT**: Do NOT run `npm run preview` as it serves unnecessary build artifacts.
+**IMPORTANT**: Always write error handling for all `fetch` calls. Handle both network errors (try/catch) and HTTP errors (`!response.ok`). Surface errors to the user in the UI where appropriate.
 
 ## Architecture
 
 ### LLM Core
 
-**Package**: `@anthropic-ai/claude-agent-sdk`
-
-The agent loop runs via `query()` in `server/agent.ts`. Claude decides autonomously which tools to use — built-in file tools (bash, read, write, glob, grep) or gui-chat-protocol plugins registered as MCP servers.
+The agent loop runs via `runAgent()` in `server/agent.ts`. Claude decides autonomously which tools to use — built-in file tools or gui-chat-protocol plugins registered as MCP servers. The MCP server (`server/mcp-server.ts`) is a stdio JSON-RPC bridge spawned by the Claude CLI via `--mcp-config`.
 
 ### Plugin Layer
 
-**Package**: `gui-chat-protocol`
-
-Plugins follow the gui-chat-protocol standard (`ToolDefinition`, `ToolResult`, `ViewComponent`, `PreviewComponent`). Each plugin is wrapped as a Claude Code SDK `tool()` and registered via `createSdkMcpServer`.
-
-Plugin registry: `src/tools/index.ts`
-Plugin types: `src/tools/types.ts`
+Plugins follow the gui-chat-protocol standard (`ToolDefinition`, `ToolResult`, `ViewComponent`, `PreviewComponent`). Plugin registry: `src/tools/index.ts`. Plugin types: `src/tools/types.ts`.
 
 ### Roles
 
-Defined in `src/config/roles.ts`. A role defines:
-- **Persona** — system prompt
-- **Plugin palette** — `availablePlugins[]` maps to MCP servers created for that session
-- **Context reset** — switching roles always starts a fresh `query()` call
-
-**MCP servers are created per role switch** — only the current role's plugins are registered, keeping Claude's context lean.
+Defined in `src/config/roles.ts`. A role defines a persona (system prompt), a plugin palette (`availablePlugins[]`), and a context reset on switch. **MCP servers are created per role switch** — only the current role's plugins are registered.
 
 ### Server → Client Communication
 
-The agent streams results to the frontend via **SSE** (Server-Sent Events) from `POST /api/agent`. Event types:
-- `{ type: "status", message }` — agent progress updates
-- `{ type: "tool_result", result }` — gui-chat-protocol ToolResult to render in canvas
-- `{ type: "error", message }` — error from agent
+SSE from `POST /api/agent`: `{ type: "status" | "tool_result" | "error", ... }`.
 
 ### Workspace
 
-The app operates on a workspace directory set via `WORKSPACE_PATH` env var (defaults to `cwd()`). All data lives here as plain Markdown + YAML frontmatter files:
+Set via `WORKSPACE_PATH` env var (defaults to `cwd()`). All data lives as plain Markdown + YAML frontmatter files:
 
 ```
 workspace/
-  chat/                   ← session ToolResults (one .jsonl per session)
-  todos/                  ← todo items
-  calendar/               ← calendar events
-  contacts/               ← address book
-  memory.md               ← distilled facts always loaded as context
+  chat/           ← session ToolResults (one .jsonl per session)
+  chat/index/     ← per-session title/summary cache (chat indexer)
+  todos/          ← todo items
+  calendar/       ← calendar events
+  wiki/           ← wiki pages + assets
+  summaries/      ← journal output (daily/ + topics/ + archive/)
+  memory.md       ← distilled facts always loaded as context
 ```
 
 ## Key Files
 
 | File | Purpose |
 |---|---|
-| `server/agent.ts` | Claude Code agent loop, MCP server creation per role |
-| `server/routes/agent.ts` | POST /api/agent → SSE stream |
+| `server/agent.ts` | Agent loop, MCP server creation per role |
+| `server/routes/agent.ts` | `POST /api/agent` → SSE stream |
+| `server/journal/` | Workspace journal (daily + optimization passes) |
+| `server/chat-index/` | Per-session summarizer + sidebar title cache |
+| `server/utils/` | Shared helpers: `fs.ts`, `errors.ts` |
+| `server/csrfGuard.ts` | CSRF origin-check middleware |
 | `src/config/roles.ts` | Role definitions |
 | `src/tools/index.ts` | Plugin registry |
-| `src/tools/types.ts` | ToolPlugin type, MulmoClaudeToolContextApp |
 | `src/App.vue` | Main UI — sidebar + canvas + role switcher |
 
 ## Plugin Development
 
-Each plugin is a `ToolPlugin` (from `gui-chat-protocol/vue`, extended in `src/tools/types.ts`):
-- `toolDefinition` — JSON Schema for Claude's function calling
-- `execute()` — runs the plugin, returns a `ToolResult`
-- `viewComponent` — Vue component rendered in the canvas
-- `previewComponent` — Vue component shown in the sidebar
+Each plugin is a `ToolPlugin` (from `gui-chat-protocol/vue`, extended in `src/tools/types.ts`): `toolDefinition` + `execute()` + `viewComponent` + `previewComponent`.
 
 ### Adding a package plugin (`@gui-chat-plugin/*` or `@mulmochat-plugin/*`)
 
-Package plugins export a canonical `TOOL_DEFINITION` that is used directly — **do not copy or re-type the schema**. Required updates in **4 places**:
+Import the canonical `TOOL_DEFINITION` directly — **do not copy or re-type the schema**. Update **4 places**:
 
-1. **`server/mcp-server.ts`** — import `TOOL_DEFINITION` from the package, add to the imports list and the `TOOL_ENDPOINTS` map, and include the def in the `ALL_TOOLS` spread array
-2. **`src/tools/index.ts`** — import the plugin's vue export and register it in the `plugins` map using `TOOL_NAME` as the key (must match exactly — check the package's exported `TOOL_NAME`)
-3. **`src/config/roles.ts`** — add the tool name to the relevant role's `availablePlugins`
-4. **`server/agent.ts`** — add the tool name to `MCP_PLUGINS`
+1. `server/mcp-server.ts` — import and add to `TOOL_ENDPOINTS` + `ALL_TOOLS`
+2. `src/tools/index.ts` — register in the `plugins` map using `TOOL_NAME` as key
+3. `src/config/roles.ts` — add to relevant role's `availablePlugins`
+4. `server/agent.ts` — add to `MCP_PLUGINS`
 
-For the server route, add a handler in `server/routes/plugins.ts` that calls the package's `execute*` function.
+Route handler goes in `server/routes/plugins.ts`.
 
 ### Adding a local plugin (`src/plugins/<name>/`)
 
-Local plugins import Vue components, so their `toolDefinition` must live in a **separate file** to allow server-side imports without pulling in Vue:
+Local plugins import Vue components, so `toolDefinition` must be in a **separate file** (`definition.ts`) to allow server-side imports without pulling in Vue. Update **7 places**: `definition.ts`, `index.ts`, `server/routes/<name>.ts`, `server/mcp-server.ts`, `src/tools/index.ts`, `src/config/roles.ts`, `server/agent.ts`.
 
-1. **`src/plugins/<name>/definition.ts`** — `toolDefinition` only, no Vue imports
-2. **`src/plugins/<name>/index.ts`** — imports `toolDefinition` from `./definition`, adds `execute()` and Vue components
-3. **`server/routes/`** — add a new route file with the backend logic
-4. **`server/mcp-server.ts`** — import the definition from `../src/plugins/<name>/definition.js`, add to `TOOL_ENDPOINTS` and the `ALL_TOOLS` spread array
-5. **`src/tools/index.ts`** — register plugin in the `plugins` map
-6. **`src/config/roles.ts`** — add tool name to relevant role's `availablePlugins`
-7. **`server/agent.ts`** — add tool name to `MCP_PLUGINS`
+> If a plugin is in `availablePlugins` but absent from `MCP_PLUGINS` or `ALL_TOOLS`, it will be silently dropped.
 
-> If a plugin is in `availablePlugins` but absent from `MCP_PLUGINS` or `ALL_TOOLS`, it will be silently dropped and Claude won't see the MCP tool.
-
-> The key in `src/tools/index.ts` must exactly match the tool's `name` field (i.e. `TOOL_NAME` from the package, or `toolDefinition.name` for local plugins). This is what the frontend uses to look up the view component when rendering a tool result.
+> The key in `src/tools/index.ts` must exactly match the tool's `name` field.
 
 ## Express Route Type Safety
 
 MUST use Express generics to type route handlers — NEVER use `as` casts on `req.body`, `req.params`, or `req.query`.
 
-### Request typing
-
-`Request<Params, ResBody, ReqBody>` — always specify all three type parameters:
-
 ```typescript
-// GOOD — fully typed request
-interface MyBody { action: string; text?: string }
-interface MyParams { id: string }
-
-router.post("/items/:id", (req: Request<MyParams, unknown, MyBody>, res: Response) => {
-  const { id } = req.params;    // string — typed
-  const { action } = req.body;  // MyBody — typed
-});
+// GOOD — fully typed
+router.post("/items/:id", (req: Request<MyParams, unknown, MyBody>, res: Response) => { ... });
 
 // BAD — untyped, requires casts
-router.post("/items/:id", (req: Request, res: Response) => {
-  const { action } = req.body as { action: string }; // avoid
-});
+router.post("/items/:id", (req: Request, res: Response) => { const x = req.body as MyBody; });
 ```
 
-### Response typing
+- NEVER cast `req.query` — use `typeof req.query.x === "string" ? req.query.x : undefined`
+- Use type annotation (`const data: MyType = JSON.parse(raw)`) instead of `as` cast
 
-Use `Response<T>` when the response shape is consistent:
+## Code Organization
 
-```typescript
-interface ErrorResponse { error: string }
-interface TodoResponse { message: string; data: { items: TodoItem[] } }
+The repo runs several PRs in flight at once. Code that sprawls across large functions or monolithic files creates expensive merge conflicts. Keep units small so parallel PRs touch different blocks.
 
-router.post("/todos", (req: Request<object, unknown, TodoBody>, res: Response<TodoResponse | ErrorResponse>) => {
-  // res.json() is now type-checked
-});
+### Functions: small, pure, extractable
+
+- Extract pure logic into exported helpers so unit tests can exercise them without a harness. Examples: `parseRange` / `classify` / `isSensitivePath` in `server/routes/files.ts`, `normalizeTopicAction` / `computeJustCompletedSessions` in `server/journal/dailyPass.ts`.
+- Prefer discriminated-union return types (`{ kind: "skipped", reason } | { kind: "processed", ... }`) over null / thrown errors for multi-outcome helpers.
+- Honour the `sonarjs/cognitive-complexity` threshold (warn at >15). Split rather than suppress.
+
+### DRY: eliminate duplication aggressively
+
+When the same 3+ line pattern appears in two or more files, extract a shared helper immediately — don't wait for a third copy. Place helpers in named files under the right directory (`server/utils/fs.ts`, not inlined in the first consumer). Before writing new boilerplate, grep the codebase — it probably already exists in `server/utils/` or `src/utils/`.
+
+Key shared helpers in this repo:
+
+| Helper | Location |
+|---|---|
+| `resolveWithinRoot(root, relPath)` | `server/utils/fs.ts` |
+| `errorMessage(err)` | `server/utils/errors.ts` |
+| `statSafe` / `readDirSafe` | `server/utils/fs.ts` |
+| `dispatchResponse(res, result)` | `server/routes/dispatchResponse.ts` |
+| `useFreshPluginData(opts)` | `src/composables/useFreshPluginData.ts` |
+
+Periodically audit for duplication (`sonarjs/no-duplicate-string` warnings, `jscpd`). Batch low-risk extractions into a single refactor PR (as #145 did).
+
+### Files: one concept per file
+
+- Name files for the concept they contain — **not** generic `utils.ts` / `helpers.ts` / `common.ts` (conflict magnets).
+- Split at ~500 lines or when two concepts are touched independently by parallel PRs.
+- No re-export barrel files (`index.ts` that re-exports siblings) without specific reason.
+
+### Directories: the name is the contract
+
+Looking at a directory name should predict what's inside:
+
+```
+server/
+  agent/          ← agent-loop (config, prompt, stream)
+  chat-index/     ← per-session summarizer + manifest
+  journal/        ← workspace journal (daily + optimization)
+  routes/         ← one file per /api/* surface
+  task-manager/   ← cron-like task runner
+  utils/          ← shared helpers, one file per concept
+
+src/
+  components/     ← shared Vue components
+  composables/    ← Vue 3 composables
+  config/         ← static config (roles, system prompts)
+  plugins/<name>/ ← one dir per plugin (definition, index, View, Preview)
+  tools/          ← plugin registry + types
+  types/          ← shared type definitions
+  utils/          ← grouped by concern (dom/, format/, path/, role/)
+
+test/             ← mirrors source layout 1:1
+plans/            ← one file per feature/refactor/fix
 ```
 
-### Query parameters
-
-NEVER cast `req.query` — use type narrowing:
-
-```typescript
-// GOOD
-const session = String(req.query.session ?? "");
-const moviePath = typeof req.query.moviePath === "string" ? req.query.moviePath : undefined;
-
-// BAD
-const { session } = req.query as { session: string };
-```
-
-### JSON.parse results
-
-Use type annotation instead of `as` cast:
-
-```typescript
-// GOOD
-const data: MyType = JSON.parse(raw);
-
-// BAD
-const data = JSON.parse(raw) as MyType;
-```
+- Group by *what files are about*, not file kind. `src/plugins/wiki/` keeps def/index/View/Preview together.
+- Mirror source layout in `test/`. `server/journal/dailyPass.ts` → `test/journal/test_dailyPass.ts`.
+- Prefer a new named directory over dropping files into the closest pre-existing bucket.
 
 ## Tech Stack
 
