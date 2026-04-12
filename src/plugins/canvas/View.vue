@@ -141,7 +141,7 @@ const applyStyle = async (style: { id: string; label: string }) => {
   await saveDrawingState();
   if (props.sendTextMessage) {
     props.sendTextMessage(
-      `Turn my drawing on the canvas into a ${style.label} style image. Use the drawing as a reference for the composition.`,
+      `Turn my drawing on the canvas into a ${style.label} style image.`,
     );
   }
 };
