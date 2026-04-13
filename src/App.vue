@@ -125,83 +125,16 @@
         </div>
       </div>
       <!-- History popup -->
-      <div
+      <SessionHistoryPanel
         v-if="showHistory"
-        ref="historyPopupRef"
-        class="absolute left-0 right-0 bottom-0 bg-white border-b border-gray-200 shadow-lg z-50 overflow-y-auto"
-        :style="{ top: headerRef ? headerRef.offsetHeight + 'px' : '4rem' }"
-      >
-        <div class="p-2 space-y-1">
-          <p
-            v-if="mergedSessions.length === 0"
-            class="text-xs text-gray-400 p-2"
-          >
-            No sessions yet.
-          </p>
-          <div
-            v-for="session in mergedSessions"
-            :key="session.id"
-            class="cursor-pointer rounded border p-2 text-sm transition-colors"
-            :class="
-              sessionMap.get(session.id)?.isRunning
-                ? 'border-yellow-400 bg-yellow-50 hover:bg-yellow-100'
-                : sessionMap.get(session.id)?.hasUnread
-                  ? 'border-gray-400 bg-white hover:bg-gray-50'
-                  : session.id === currentSessionId
-                    ? 'border-blue-400 bg-blue-50 hover:bg-blue-100'
-                    : 'border-gray-200 hover:bg-gray-50'
-            "
-            :data-testid="`session-item-${session.id}`"
-            @click="loadSession(session.id)"
-          >
-            <div class="flex items-center gap-1 text-xs text-gray-500 mb-1">
-              <span class="material-icons text-xs">{{
-                roleIcon(session.roleId)
-              }}</span>
-              <span>{{ roleName(session.roleId) }}</span>
-              <span class="ml-auto flex items-center gap-1.5">
-                <span
-                  v-if="sessionMap.get(session.id)?.isRunning"
-                  class="flex items-center gap-0.5 text-yellow-600 font-medium"
-                >
-                  <span
-                    class="w-1.5 h-1.5 rounded-full bg-yellow-400 animate-pulse"
-                  />
-                  Running
-                </span>
-                <span
-                  v-else-if="sessionMap.get(session.id)?.hasUnread"
-                  class="flex items-center gap-0.5 text-gray-900 font-bold"
-                >
-                  Unread
-                </span>
-                <span v-else>{{ formatDate(session.updatedAt) }}</span>
-              </span>
-            </div>
-            <p
-              class="truncate"
-              :class="
-                sessionMap.get(session.id)?.isRunning
-                  ? 'text-yellow-800'
-                  : sessionMap.get(session.id)?.hasUnread
-                    ? 'text-gray-900 font-bold'
-                    : 'text-gray-700'
-              "
-            >
-              {{ session.preview || "(no messages)" }}
-            </p>
-            <!-- Optional second line: AI-generated summary of the
-                 session, populated by the chat indexer (#123).
-                 Older sessions with no index entry simply omit this. -->
-            <p
-              v-if="session.summary"
-              class="text-xs text-gray-500 truncate mt-0.5"
-            >
-              {{ session.summary }}
-            </p>
-          </div>
-        </div>
-      </div>
+        ref="historyPanelRef"
+        :sessions="mergedSessions"
+        :session-map="sessionMap"
+        :current-session-id="currentSessionId"
+        :roles="roles"
+        :top-offset="headerRef?.offsetHeight"
+        @load-session="loadSession"
+      />
 
       <!-- Role selector -->
       <div
@@ -493,6 +426,7 @@ import { SYSTEM_PROMPT } from "./config/system-prompt";
 import { getPlugin } from "./tools";
 import type { ToolResultComplete } from "gui-chat-protocol/vue";
 import RightSidebar from "./components/RightSidebar.vue";
+import SessionHistoryPanel from "./components/SessionHistoryPanel.vue";
 import CanvasViewToggle from "./components/CanvasViewToggle.vue";
 import StackView from "./components/StackView.vue";
 import FilesView from "./components/FilesView.vue";
@@ -507,7 +441,6 @@ import {
   roleIcon as roleIconLookup,
   roleName as roleNameLookup,
 } from "./utils/role/icon";
-import { formatDate } from "./utils/format/date";
 import { findScrollableChild } from "./utils/dom/scrollable";
 import { buildAgentRequestBody } from "./utils/agent/request";
 import { parseSSEChunk } from "./utils/agent/sse";
@@ -727,7 +660,10 @@ const chatListRef = ref<HTMLDivElement | null>(null);
 const canvasRef = ref<HTMLDivElement | null>(null);
 const textareaRef = ref<HTMLTextAreaElement | null>(null);
 const historyButtonRef = ref<HTMLButtonElement | null>(null);
-const historyPopupRef = ref<HTMLDivElement | null>(null);
+// Exposed `root` from SessionHistoryPanel — the click-outside guard
+// needs the actual popup DOM element (not the component instance).
+const historyPanelRef = ref<{ root: HTMLDivElement | null } | null>(null);
+const historyPopupRef = computed(() => historyPanelRef.value?.root ?? null);
 const lockButtonRef = ref<HTMLButtonElement | null>(null);
 const lockPopupRef = ref<HTMLDivElement | null>(null);
 const headerRef = ref<HTMLDivElement | null>(null);
