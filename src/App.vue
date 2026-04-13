@@ -531,6 +531,7 @@ import { usePubSub } from "./composables/usePubSub";
 import { useHealth } from "./composables/useHealth";
 import { useSessionHistory } from "./composables/useSessionHistory";
 import { useRightSidebar } from "./composables/useRightSidebar";
+import { useQueriesPanel } from "./composables/useQueriesPanel";
 import { useRoute, useRouter, isNavigationFailure } from "vue-router";
 
 // --- Debug beat (pub/sub) ---
@@ -866,30 +867,17 @@ function handleKeyNavigation(e: KeyboardEvent) {
   selectedResultUuid.value = results[nextIndex].uuid;
 }
 
-const queriesExpanded = ref(false);
-const queriesListRef = ref<HTMLDivElement | null>(null);
-
-watch(queriesExpanded, (expanded) => {
-  if (expanded) {
-    nextTick(() => {
-      if (queriesListRef.value) {
-        queriesListRef.value.scrollTop = queriesListRef.value.scrollHeight;
-      }
-    });
-  }
+// The sendMessage wrapper defers resolution until call time so the
+// composable can be instantiated here, before sendMessage is
+// declared further down. Function declarations are hoisted so the
+// reference is valid at click time.
+const { queriesExpanded, queriesListRef, onQueryClick } = useQueriesPanel({
+  userInput,
+  textareaRef,
+  sendMessage: (msg) => sendMessage(msg),
 });
 
 const showQueries = computed(() => !!currentRole.value.queries?.length);
-
-function onQueryClick(e: MouseEvent, query: string) {
-  queriesExpanded.value = false;
-  if (e.shiftKey) {
-    userInput.value = query;
-    nextTick(() => textareaRef.value?.focus());
-  } else {
-    sendMessage(query);
-  }
-}
 
 // Local wrappers that thread the reactive `roles.value` into the
 // pure helpers in src/utils/role.ts. Template bindings keep the
