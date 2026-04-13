@@ -94,6 +94,22 @@ function renewTokenViaPty(): Promise<boolean> {
 
 The call site (`agent.ts:127-128`) already calls `refreshCredentials()` before each agent run. The new expiry check and PTY renewal are internal to `refreshCredentials()`.
 
+### 4. Server console logging
+
+Every step of the renewal flow must be visible in the server console via the structured logger (`log.*` from `server/logger/`). Use prefix `"credentials"`.
+
+| Situation | Level | Example message |
+|---|---|---|
+| Token is valid (fast path) | `info` | `"Access token is valid, expires at 2026-04-13T18:00:00Z"` |
+| Token is expired, starting PTY renewal | `warn` | `"Access token expired at 2026-04-13T12:00:00Z, launching claude CLI to renew..."` |
+| PTY renewal succeeded | `info` | `"Token renewed successfully via claude CLI"` |
+| PTY renewal timed out | `error` | `"Token renewal timed out after 30s"` |
+| PTY renewal failed (other) | `error` | `"Token renewal via claude CLI failed"` |
+| Re-read from Keychain after renewal | `info` | `"Fresh credentials written to ~/.claude/.credentials.json"` |
+| Credentials JSON parse error | `error` | `"Failed to parse credentials JSON from Keychain"` |
+
+This ensures the operator can see exactly what happened when a 401 occurs — whether the token was expired, whether renewal was attempted, and whether it succeeded.
+
 ## Considerations
 
 - **Timeout**: The PTY spawn has a 30-second timeout. If `claude` hangs or fails to respond, we kill it and return false (falling back to the existing stale-token behavior).
