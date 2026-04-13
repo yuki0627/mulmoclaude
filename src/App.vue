@@ -530,6 +530,7 @@ import { useRoles } from "./composables/useRoles";
 import { usePubSub } from "./composables/usePubSub";
 import { useHealth } from "./composables/useHealth";
 import { useSessionHistory } from "./composables/useSessionHistory";
+import { useRightSidebar } from "./composables/useRightSidebar";
 import { useRoute, useRouter, isNavigationFailure } from "vue-router";
 
 // --- Debug beat (pub/sub) ---
@@ -750,9 +751,7 @@ watch(isRunning, (running) => {
   }
 });
 
-const showRightSidebar = ref(
-  localStorage.getItem("right_sidebar_visible") === "true",
-);
+const { showRightSidebar, toggleRightSidebar } = useRightSidebar();
 
 const {
   canvasViewMode,
@@ -961,11 +960,6 @@ const needsGemini = (roleId: string) =>
   (roles.value.find((r) => r.id === roleId)?.availablePlugins ?? []).some((p) =>
     GEMINI_PLUGINS.has(p),
   );
-
-function toggleRightSidebar() {
-  showRightSidebar.value = !showRightSidebar.value;
-  localStorage.setItem("right_sidebar_visible", String(showRightSidebar.value));
-}
 
 // Remove the current session from sessionMap if it's empty (no messages).
 // Returns true if a session was removed, so the caller can use
