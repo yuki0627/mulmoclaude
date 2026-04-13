@@ -46,8 +46,24 @@ describe("extractFirstH1", () => {
     assert.equal(extractFirstH1("#foo"), null);
   });
 
-  it("handles CRLF line endings by trimming the trailing \\r", () => {
-    // Split on `\n` leaves `\r` attached; `.trim()` removes it.
+  it("handles CRLF line endings", () => {
     assert.equal(extractFirstH1("# Title\r\nbody"), "Title");
+  });
+
+  it("handles CR-only (Mac Classic) line endings", () => {
+    // The old `/^#\s+(.+)$/m` regex's `$` anchor under the `m`
+    // flag stops at either `\r` or `\n`. Preserve that by splitting
+    // on both.
+    assert.equal(extractFirstH1("# Title\rbody"), "Title");
+  });
+
+  it("accepts a tab between `#` and title", () => {
+    // The old `\s+` matched any whitespace including tab; preserve
+    // that so `#\tTitle` still yields `Title`.
+    assert.equal(extractFirstH1("#\tTab after hash"), "Tab after hash");
+  });
+
+  it("returns null when only tabs follow `#`", () => {
+    assert.equal(extractFirstH1("#\t\t"), null);
   });
 });

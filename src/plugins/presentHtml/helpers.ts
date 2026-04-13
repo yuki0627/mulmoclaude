@@ -1,12 +1,15 @@
 // Pure helpers for presentHtml/Preview.vue. Replaces the former
 // `/<[^>]*>/g` + `/\s+/g` regex pair — both flagged by
 // `sonarjs/slow-regex` for backtracking risk — with a single
-// linear walker.
+// linear walker that produces the exact same output.
 
 /**
  * Produce a short plain-text preview from an HTML fragment:
  *
- * - all `<...>` tag spans are removed (replaced by a single space)
+ * - every `<...>` span (a `<` with a later `>`) is replaced by a
+ *   single space
+ * - a bare `<` with no matching `>` is kept as a literal character
+ *   (matches the old regex, which required both brackets to match)
  * - runs of whitespace are collapsed to one space
  * - the result is trimmed and truncated to `maxLength` characters
  *
@@ -20,19 +23,21 @@ export function stripHtmlToPreview(html: string, maxLength: number): string {
     // and a leading tag both get trimmed without a separate pass.
     lastWasSpace: true,
   };
-  let inTag = false;
-  for (let i = 0; i < html.length; i++) {
+  let i = 0;
+  while (i < html.length) {
     const c = html[i];
-    if (inTag) {
-      if (c === ">") inTag = false;
-      continue;
-    }
     if (c === "<") {
-      inTag = true;
-      emitSeparator(state);
-      continue;
+      const close = html.indexOf(">", i + 1);
+      if (close !== -1) {
+        // Real tag span `<...>` — skip it, emit a separator.
+        emitSeparator(state);
+        i = close + 1;
+        continue;
+      }
+      // No closing `>` anywhere after — treat as literal.
     }
     emitChar(state, c);
+    i++;
   }
   trimTrailingSpace(state.out);
   return state.out.join("").slice(0, maxLength);
