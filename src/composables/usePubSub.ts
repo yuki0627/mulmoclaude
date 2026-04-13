@@ -101,32 +101,5 @@ export function usePubSub() {
     };
   }
 
-  /**
-   * Subscribe to a channel with a separate handler for the initial
-   * snapshot message (type === "snapshot" or "sessions_snapshot").
-   * Subsequent events go to `onEvent`.
-   */
-  function subscribeWithSnapshot(
-    channel: string,
-    onSnapshot: Callback,
-    onEvent: Callback,
-  ): Unsubscribe {
-    let snapshotReceived = false;
-    return subscribe(channel, (data) => {
-      if (!snapshotReceived && isSnapshotEvent(data)) {
-        snapshotReceived = true;
-        onSnapshot(data);
-      } else {
-        onEvent(data);
-      }
-    });
-  }
-
-  return { subscribe, subscribeWithSnapshot };
-}
-
-function isSnapshotEvent(data: unknown): boolean {
-  if (typeof data !== "object" || data === null) return false;
-  const type = (data as Record<string, unknown>).type;
-  return type === "snapshot" || type === "sessions_snapshot";
+  return { subscribe };
 }

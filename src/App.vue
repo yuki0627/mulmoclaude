@@ -390,16 +390,11 @@ interface SessionStateEvent {
   hasUnread?: boolean;
   statusMessage?: string;
   updatedAt?: string;
-  sessions?: SessionStateEvent[];
 }
 
 pubsubSubscribe("sessions", (data) => {
   const event = data as SessionStateEvent;
-  if (event.type === "sessions_snapshot" && Array.isArray(event.sessions)) {
-    for (const s of event.sessions) {
-      applySessionStateEvent(s);
-    }
-  } else if (event.type === "session_state_changed") {
+  if (event.type === "session_state_changed") {
     applySessionStateEvent(event);
   }
 });

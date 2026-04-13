@@ -45,12 +45,6 @@ export interface SessionStateEvent {
   updatedAt: string;
 }
 
-/** Full state sent to late-joining subscribers. */
-export interface SessionSnapshot {
-  type: "snapshot";
-  session: Omit<ServerSession, "abortRun" | "selectedImageData">;
-}
-
 /** Sent on the `sessions` channel when a session is evicted. */
 export interface SessionRemovedEvent {
   type: "session_removed";
@@ -220,22 +214,6 @@ export async function pushToolResult(
     JSON.stringify({ source: "tool", type: "tool_result", result }) + "\n",
   );
   return true;
-}
-
-// ── Snapshots ──────────────────────────────────────────────────
-
-export function getSessionSnapshot(
-  chatSessionId: string,
-): SessionSnapshot | null {
-  const session = store.get(chatSessionId);
-  if (!session) return null;
-  const { abortRun: __abort, selectedImageData: __img, ...rest } = session;
-  return { type: "snapshot", session: rest };
-}
-
-/** Snapshot of all in-memory sessions for the `sessions` channel. */
-export function getAllSessionStates(): SessionStateEvent[] {
-  return [...store.values()].map(toStateEvent);
 }
 
 // ── Query helpers ──────────────────────────────────────────────
