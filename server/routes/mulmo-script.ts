@@ -157,27 +157,14 @@ router.get(
       return;
     }
 
-    const absoluteFilePath = resolveStoryPath(filePath, res);
-    if (!absoluteFilePath) return;
-
-    try {
-      const context = await buildContext(absoluteFilePath);
-      if (!context) {
-        res.status(500).json({ error: "Failed to initialize mulmo context" });
-        return;
-      }
-
+    await withStoryContext(res, filePath, {}, async ({ context }) => {
       const { imagePath } = getBeatPngImagePath(context, beatIndex);
-
       if (!fs.existsSync(imagePath)) {
         res.json({ image: null });
         return;
       }
-
       res.json({ image: fileToDataUri(imagePath, "image/png") });
-    } catch (err) {
-      res.status(500).json({ error: errorMessage(err) });
-    }
+    });
   },
 );
 
@@ -292,6 +279,50 @@ async function buildContext(absoluteFilePath: string, force = false) {
   return initializeContextFromFiles(files, true, force);
 }
 
+// Awaited context type used by every helper that calls buildContext.
+type StoryContext = NonNullable<Awaited<ReturnType<typeof buildContext>>>;
+
+interface WithStoryContextDeps {
+  resolveStoryPath?: (filePath: string, res: Response) => string | null;
+  buildContext?: (
+    absoluteFilePath: string,
+    force?: boolean,
+  ) => Promise<StoryContext | undefined>;
+}
+
+// Shared scaffolding for mulmo-script handlers. Each handler resolves
+// the workspace-relative filePath, builds the mulmo context, and
+// catches unexpected errors with a 500 + errorMessage. Extracted so
+// every handler can focus on its own business logic.
+//
+// Accepts a `deps` param so unit tests can inject fakes without the
+// full mulmocast stack.
+export async function withStoryContext(
+  res: Response,
+  filePath: string,
+  options: { force?: boolean },
+  handler: (ctx: {
+    absoluteFilePath: string;
+    context: StoryContext;
+  }) => Promise<void>,
+  deps: WithStoryContextDeps = {},
+): Promise<void> {
+  const resolver = deps.resolveStoryPath ?? resolveStoryPath;
+  const build = deps.buildContext ?? buildContext;
+  const absoluteFilePath = resolver(filePath, res);
+  if (!absoluteFilePath) return;
+  try {
+    const context = await build(absoluteFilePath, options.force ?? false);
+    if (!context) {
+      res.status(500).json({ error: "Failed to initialize mulmo context" });
+      return;
+    }
+    await handler({ absoluteFilePath, context });
+  } catch (err) {
+    res.status(500).json({ error: errorMessage(err) });
+  }
+}
+
 router.get(
   "/mulmo-script/beat-audio",
   async (
@@ -307,16 +338,7 @@ router.get(
       return;
     }
 
-    const absoluteFilePath = resolveStoryPath(filePath, res);
-    if (!absoluteFilePath) return;
-
-    try {
-      const context = await buildContext(absoluteFilePath);
-      if (!context) {
-        res.json({ audio: null });
-        return;
-      }
-
+    await withStoryContext(res, filePath, {}, async ({ context }) => {
       const beat = context.studio.script.beats[beatIndex];
       const audioPath = getBeatAudioPathOrUrl(
         beat.text ?? "",
@@ -328,11 +350,8 @@ router.get(
         res.json({ audio: null });
         return;
       }
-
       res.json({ audio: fileToDataUri(audioPath, "audio/mpeg") });
-    } catch (err) {
-      res.status(500).json({ error: errorMessage(err) });
-    }
+    });
   },
 );
 
@@ -353,45 +372,40 @@ router.post(
       return;
     }
 
-    const absoluteFilePath = resolveStoryPath(filePath, res);
-    if (!absoluteFilePath) return;
+    await withStoryContext(res, filePath, { force }, async ({ context }) => {
+      try {
+        await generateBeatAudio(beatIndex, context, {
+          settings: process.env as Record<string, string>,
+        } as Parameters<typeof generateBeatAudio>[2]);
 
-    try {
-      const context = await buildContext(absoluteFilePath, force);
-      if (!context) {
-        res.status(500).json({ error: "Failed to initialize mulmo context" });
-        return;
+        const beat = context.studio.script.beats[beatIndex];
+        const audioPath =
+          context.studio.beats[beatIndex]?.audioFile ??
+          getBeatAudioPathOrUrl(beat.text ?? "", context, beat, context.lang);
+
+        if (!audioPath || !fs.existsSync(audioPath)) {
+          // Don't write raw `beat.text` into persistent logs — it's
+          // free-form user content and can contain sensitive data.
+          log.error("generate-beat-audio", "audio was not generated", {
+            beatIndex,
+            audioPath,
+            exists: audioPath ? fs.existsSync(audioPath) : false,
+            beatTextLength:
+              typeof beat?.text === "string" ? beat.text.length : 0,
+            audioFilePresent: Boolean(
+              context.studio.beats[beatIndex]?.audioFile,
+            ),
+          });
+          res.status(500).json({ error: "Audio was not generated" });
+          return;
+        }
+
+        res.json({ audio: fileToDataUri(audioPath, "audio/mpeg") });
+      } catch (err) {
+        log.error("generate-beat-audio", "error", { error: String(err) });
+        throw err;
       }
-
-      await generateBeatAudio(beatIndex, context, {
-        settings: process.env as Record<string, string>,
-      } as Parameters<typeof generateBeatAudio>[2]);
-
-      const beat = context.studio.script.beats[beatIndex];
-      const audioPath =
-        context.studio.beats[beatIndex]?.audioFile ??
-        getBeatAudioPathOrUrl(beat.text ?? "", context, beat, context.lang);
-
-      if (!audioPath || !fs.existsSync(audioPath)) {
-        // Don't write raw `beat.text` into persistent logs — it's
-        // free-form user content and can contain sensitive data.
-        // Operational debug can use length + presence instead.
-        log.error("generate-beat-audio", "audio was not generated", {
-          beatIndex,
-          audioPath,
-          exists: audioPath ? fs.existsSync(audioPath) : false,
-          beatTextLength: typeof beat?.text === "string" ? beat.text.length : 0,
-          audioFilePresent: Boolean(context.studio.beats[beatIndex]?.audioFile),
-        });
-        res.status(500).json({ error: "Audio was not generated" });
-        return;
-      }
-
-      res.json({ audio: fileToDataUri(audioPath, "audio/mpeg") });
-    } catch (err) {
-      log.error("generate-beat-audio", "error", { error: String(err) });
-      res.status(500).json({ error: errorMessage(err) });
-    }
+    });
   },
 );
 
@@ -405,16 +419,7 @@ router.post(
       return;
     }
 
-    const absoluteFilePath = resolveStoryPath(filePath, res);
-    if (!absoluteFilePath) return;
-
-    try {
-      const context = await buildContext(absoluteFilePath, force);
-      if (!context) {
-        res.status(500).json({ error: "Failed to initialize mulmo context" });
-        return;
-      }
-
+    await withStoryContext(res, filePath, { force }, async ({ context }) => {
       await generateBeatImage({
         index: beatIndex,
         context,
@@ -422,16 +427,12 @@ router.post(
       });
 
       const { imagePath } = getBeatPngImagePath(context, beatIndex);
-
       if (!fs.existsSync(imagePath)) {
         res.status(500).json({ error: "Image was not generated" });
         return;
       }
-
       res.json({ image: fileToDataUri(imagePath, "image/png") });
-    } catch (err) {
-      res.status(500).json({ error: errorMessage(err) });
-    }
+    });
   },
 );
 
@@ -546,26 +547,14 @@ router.get(
       return;
     }
 
-    const absoluteFilePath = resolveStoryPath(filePath, res);
-    if (!absoluteFilePath) return;
-
-    try {
-      const context = await buildContext(absoluteFilePath);
-      if (!context) {
-        res.status(500).json({ error: "Failed to initialize mulmo context" });
-        return;
-      }
-
+    await withStoryContext(res, filePath, {}, async ({ context }) => {
       const imagePath = getReferenceImagePath(context, key, "png");
       if (!fs.existsSync(imagePath)) {
         res.json({ image: null });
         return;
       }
-
       res.json({ image: fileToDataUri(imagePath, "image/png") });
-    } catch (err) {
-      res.status(500).json({ error: errorMessage(err) });
-    }
+    });
   },
 );
 
@@ -584,16 +573,7 @@ router.post(
       return;
     }
 
-    const absoluteFilePath = resolveStoryPath(filePath, res);
-    if (!absoluteFilePath) return;
-
-    try {
-      const context = await buildContext(absoluteFilePath);
-      if (!context) {
-        res.status(500).json({ error: "Failed to initialize mulmo context" });
-        return;
-      }
-
+    await withStoryContext(res, filePath, {}, async ({ context }) => {
       const { imagePath } = getBeatPngImagePath(context, beatIndex);
       fs.mkdirSync(path.dirname(imagePath), { recursive: true });
 
@@ -601,9 +581,7 @@ router.post(
       fs.writeFileSync(imagePath, Buffer.from(base64, "base64"));
 
       res.json({ image: fileToDataUri(imagePath, "image/png") });
-    } catch (err) {
-      res.status(500).json({ error: errorMessage(err) });
-    }
+    });
   },
 );
 
@@ -620,16 +598,7 @@ router.post(
       return;
     }
 
-    const absoluteFilePath = resolveStoryPath(filePath, res);
-    if (!absoluteFilePath) return;
-
-    try {
-      const context = await buildContext(absoluteFilePath, force);
-      if (!context) {
-        res.status(500).json({ error: "Failed to initialize mulmo context" });
-        return;
-      }
-
+    await withStoryContext(res, filePath, { force }, async ({ context }) => {
       const images = context.studio.script.imageParams?.images ?? {};
       const imageEntry = images[key];
       if (!imageEntry || imageEntry.type !== "imagePrompt") {
@@ -652,11 +621,8 @@ router.post(
         res.status(500).json({ error: "Character image was not generated" });
         return;
       }
-
       res.json({ image: fileToDataUri(imagePath, "image/png") });
-    } catch (err) {
-      res.status(500).json({ error: errorMessage(err) });
-    }
+    });
   },
 );
 
@@ -675,16 +641,7 @@ router.post(
       return;
     }
 
-    const absoluteFilePath = resolveStoryPath(filePath, res);
-    if (!absoluteFilePath) return;
-
-    try {
-      const context = await buildContext(absoluteFilePath);
-      if (!context) {
-        res.status(500).json({ error: "Failed to initialize mulmo context" });
-        return;
-      }
-
+    await withStoryContext(res, filePath, {}, async ({ context }) => {
       const imagePath = getReferenceImagePath(context, key, "png");
       fs.mkdirSync(path.dirname(imagePath), { recursive: true });
 
@@ -692,9 +649,7 @@ router.post(
       fs.writeFileSync(imagePath, Buffer.from(base64, "base64"));
 
       res.json({ image: fileToDataUri(imagePath, "image/png") });
-    } catch (err) {
-      res.status(500).json({ error: errorMessage(err) });
-    }
+    });
   },
 );
 
