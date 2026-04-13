@@ -24,7 +24,7 @@ A direct PR is fine — and welcome — for:
 
 - Typos, copy fixes, doc tweaks
 - Dependency version bumps
-- Single-file bug fixes with an obvious root cause and a matching test (small, ideally under ~50 lines of diff)
+- Single-file bug fixes with an obvious root cause and a matching test (small, ideally under ~20 lines of diff)
 - Anything a maintainer or CI bot explicitly asks for in a review comment
 
 Anything larger than that should start as an issue. If you're not sure, opening an issue first is always cheaper than writing a PR that won't be accepted. Thanks for understanding.
