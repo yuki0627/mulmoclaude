@@ -319,7 +319,21 @@ export async function withStoryContext(
     }
     await handler({ absoluteFilePath, context });
   } catch (err) {
-    res.status(500).json({ error: errorMessage(err) });
+    // Log every handler failure at warn so operators get a breadcrumb
+    // even when the migrated handler doesn't wrap its own try/catch.
+    // Consistent with the chat-index / wiki-backlinks / journal
+    // fire-and-forget error pattern.
+    log.warn("mulmo-script", "handler failed", {
+      filePath,
+      error: errorMessage(err),
+    });
+    // Double-write guard: if the handler has already started streaming
+    // or sent a partial response, appending a 500 body here would
+    // trigger Express's "Cannot set headers after they are sent"
+    // warning and corrupt the on-wire response.
+    if (!res.headersSent) {
+      res.status(500).json({ error: errorMessage(err) });
+    }
   }
 }
 
@@ -373,38 +387,35 @@ router.post(
     }
 
     await withStoryContext(res, filePath, { force }, async ({ context }) => {
-      try {
-        await generateBeatAudio(beatIndex, context, {
-          settings: process.env as Record<string, string>,
-        } as Parameters<typeof generateBeatAudio>[2]);
+      // Thrown errors bubble up to withStoryContext which logs +
+      // returns 500. No inner try/catch needed.
+      await generateBeatAudio(beatIndex, context, {
+        settings: process.env as Record<string, string>,
+      } as Parameters<typeof generateBeatAudio>[2]);
 
-        const beat = context.studio.script.beats[beatIndex];
-        const audioPath =
-          context.studio.beats[beatIndex]?.audioFile ??
-          getBeatAudioPathOrUrl(beat.text ?? "", context, beat, context.lang);
+      const beat = context.studio.script.beats[beatIndex];
+      const audioPath =
+        context.studio.beats[beatIndex]?.audioFile ??
+        getBeatAudioPathOrUrl(beat.text ?? "", context, beat, context.lang);
 
-        if (!audioPath || !fs.existsSync(audioPath)) {
-          // Don't write raw `beat.text` into persistent logs — it's
-          // free-form user content and can contain sensitive data.
-          log.error("generate-beat-audio", "audio was not generated", {
-            beatIndex,
-            audioPath,
-            exists: audioPath ? fs.existsSync(audioPath) : false,
-            beatTextLength:
-              typeof beat?.text === "string" ? beat.text.length : 0,
-            audioFilePresent: Boolean(
-              context.studio.beats[beatIndex]?.audioFile,
-            ),
-          });
-          res.status(500).json({ error: "Audio was not generated" });
-          return;
-        }
-
-        res.json({ audio: fileToDataUri(audioPath, "audio/mpeg") });
-      } catch (err) {
-        log.error("generate-beat-audio", "error", { error: String(err) });
-        throw err;
+      if (!audioPath || !fs.existsSync(audioPath)) {
+        // Logic-flow failure (not an exception) — emit a targeted log
+        // with the diagnostic payload before responding. The helper's
+        // catch-all log.warn wouldn't fire for this non-throw path.
+        // Don't write raw `beat.text` into persistent logs — it's
+        // free-form user content and can contain sensitive data.
+        log.error("generate-beat-audio", "audio was not generated", {
+          beatIndex,
+          audioPath,
+          exists: audioPath ? fs.existsSync(audioPath) : false,
+          beatTextLength: typeof beat?.text === "string" ? beat.text.length : 0,
+          audioFilePresent: Boolean(context.studio.beats[beatIndex]?.audioFile),
+        });
+        res.status(500).json({ error: "Audio was not generated" });
+        return;
       }
+
+      res.json({ audio: fileToDataUri(audioPath, "audio/mpeg") });
     });
   },
 );

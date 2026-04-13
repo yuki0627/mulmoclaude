@@ -6,6 +6,7 @@ import { withStoryContext } from "../../server/routes/mulmo-script.js";
 interface RecordedResponse {
   statusCode: number;
   body: unknown;
+  headersSent: boolean;
   status(code: number): RecordedResponse;
   json(payload: unknown): RecordedResponse;
 }
@@ -14,12 +15,17 @@ function makeRes(): RecordedResponse {
   const rec: RecordedResponse = {
     statusCode: 200,
     body: undefined,
+    // Mirrors the Express flag — set true once any response is sent.
+    // Defaults to false so the happy path / error path tests below
+    // exercise the write branch of the double-write guard.
+    headersSent: false,
     status(code: number) {
       this.statusCode = code;
       return this;
     },
     json(payload: unknown) {
       this.body = payload;
+      this.headersSent = true;
       return this;
     },
   };
@@ -123,6 +129,29 @@ describe("withStoryContext — handler throws", () => {
     assert.equal(res.statusCode, 500);
     const body = res.body as { error: string };
     assert.match(body.error, /plain string/);
+  });
+
+  it("does not double-write when handler already sent a response", async () => {
+    const res = makeRes();
+    await withStoryContext(
+      res as unknown as Response,
+      "stories/x.json",
+      {},
+      async () => {
+        // Simulate a handler that successfully wrote a response and
+        // THEN encountered an async error (e.g. a late fs.readFile).
+        (res as unknown as RecordedResponse).status(200).json({ ok: true });
+        throw new Error("post-response failure");
+      },
+      {
+        resolveStoryPath: () => "/abs/stories/x.json",
+        buildContext: async () => fakeContext,
+      },
+    );
+    // Original 200/{ok:true} preserved; helper's catch must NOT
+    // overwrite with 500 because headersSent is already true.
+    assert.equal(res.statusCode, 200);
+    assert.deepEqual(res.body, { ok: true });
   });
 });
 
