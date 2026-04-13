@@ -31,10 +31,12 @@ interface OkResponse {
 
 router.post(
   "/internal/tool-result",
-  async (req: Request<object, unknown, unknown>, res: Response<OkResponse>) => {
+  async (
+    req: Request<object, unknown, Record<string, unknown>>,
+    res: Response<OkResponse>,
+  ) => {
     const chatSessionId = String(req.query.session ?? "");
-    const result = (req.body as Record<string, unknown>) ?? {};
-    const pushed = await pushToolResult(chatSessionId, result);
+    const pushed = await pushToolResult(chatSessionId, req.body);
     res.json({ ok: pushed });
   },
 );
