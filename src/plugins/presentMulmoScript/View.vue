@@ -431,7 +431,12 @@
         <div v-if="sourceOpen[index]" class="border-t border-gray-100">
           <textarea
             v-model="sourceText[index]"
-            class="w-full text-xs text-gray-600 bg-gray-50 p-2 font-mono resize-none outline-none"
+            class="w-full text-xs text-gray-600 bg-gray-50 p-2 font-mono resize-none"
+            :class="
+              isValidBeat(index)
+                ? 'outline-none'
+                : 'outline outline-2 outline-red-400'
+            "
             rows="8"
             spellcheck="false"
           />
@@ -471,6 +476,7 @@
         <textarea
           v-model="editableSource"
           class="script-editor"
+          :class="{ 'script-editor-invalid': sourceChanged && !sourceValid }"
           spellcheck="false"
         ></textarea>
         <div class="editor-actions">
@@ -1214,6 +1220,15 @@ async function generateMovie() {
   outline: none;
   border-color: #4caf50;
   box-shadow: 0 0 0 2px rgba(76, 175, 80, 0.1);
+}
+
+.script-editor-invalid {
+  border-color: #ef4444;
+}
+
+.script-editor-invalid:focus {
+  border-color: #ef4444;
+  box-shadow: 0 0 0 2px rgba(239, 68, 68, 0.1);
 }
 
 .editor-actions {
