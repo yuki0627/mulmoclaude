@@ -54,23 +54,41 @@ describe("createLogger level filtering", () => {
   });
 
   it("produces no output when all sinks are disabled", () => {
-    const logger = createLogger({
-      sinks: {
-        console: { enabled: false, level: "debug", format: "text" },
-        file: {
-          enabled: false,
-          level: "debug",
-          format: "text",
-          dir: "/tmp",
-          rotation: { kind: "daily", maxFiles: 1 },
+    // Capture writes to both streams so we can assert nothing is
+    // emitted. Prior to this tightening the test only verified
+    // "does not throw" — it would have passed even if the
+    // all-disabled config leaked through to the console sink.
+    const originalOut = process.stdout.write.bind(process.stdout);
+    const originalErr = process.stderr.write.bind(process.stderr);
+    const captured: string[] = [];
+    const recordWrite = (chunk: string | Uint8Array) => {
+      captured.push(typeof chunk === "string" ? chunk : chunk.toString());
+      return true;
+    };
+    process.stdout.write = recordWrite as typeof process.stdout.write;
+    process.stderr.write = recordWrite as typeof process.stderr.write;
+    try {
+      const logger = createLogger({
+        sinks: {
+          console: { enabled: false, level: "debug", format: "text" },
+          file: {
+            enabled: false,
+            level: "debug",
+            format: "text",
+            dir: "/tmp",
+            rotation: { kind: "daily", maxFiles: 1 },
+          },
+          telemetry: { enabled: false, level: "error", format: "json" },
         },
-        telemetry: { enabled: false, level: "error", format: "json" },
-      },
-    });
-    // Should not throw.
-    logger.error("x", "nowhere");
-    logger.warn("x", "nowhere");
-    logger.info("x", "nowhere");
-    logger.debug("x", "nowhere");
+      });
+      logger.error("x", "nowhere");
+      logger.warn("x", "nowhere");
+      logger.info("x", "nowhere");
+      logger.debug("x", "nowhere");
+      assert.equal(captured.length, 0);
+    } finally {
+      process.stdout.write = originalOut;
+      process.stderr.write = originalErr;
+    }
   });
 });

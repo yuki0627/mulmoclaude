@@ -68,15 +68,15 @@ export function createFileSink(
     return `${d.getUTCFullYear()}-${d.getUTCMonth()}-${d.getUTCDate()}`;
   }
 
-  function maybeRotate(ts: Date): void {
+  function maybeRotate(ts: Date): boolean {
     const key = dateKey(ts);
-    if (key === currentDateKey) return;
+    if (key === currentDateKey) return false;
     currentDateKey = key;
     currentPath = path.join(config.dir, dailyFileName(ts));
     enqueue(async () => {
       await ensureDir(config.dir);
-      await enforceMaxFiles(config.dir, config.rotation.maxFiles);
     });
+    return true;
   }
 
   return {
@@ -84,10 +84,16 @@ export function createFileSink(
     level: config.level,
     write(record: LogRecord) {
       const ts = now();
-      maybeRotate(ts);
+      const rotated = maybeRotate(ts);
       const line = fmt(record) + "\n";
       const filePath = currentPath;
       enqueue(() => writeLine(filePath, line));
+      // Enforce retention AFTER the write so maxFiles counts include
+      // the file we just touched. Enforcing before rotation would
+      // leave N-1 existing files plus the fresh one (off-by-one).
+      if (rotated) {
+        enqueue(() => enforceMaxFiles(config.dir, config.rotation.maxFiles));
+      }
     },
     flush() {
       return queue;

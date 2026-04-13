@@ -373,12 +373,15 @@ router.post(
         getBeatAudioPathOrUrl(beat.text ?? "", context, beat, context.lang);
 
       if (!audioPath || !fs.existsSync(audioPath)) {
+        // Don't write raw `beat.text` into persistent logs — it's
+        // free-form user content and can contain sensitive data.
+        // Operational debug can use length + presence instead.
         log.error("generate-beat-audio", "audio was not generated", {
           beatIndex,
           audioPath,
           exists: audioPath ? fs.existsSync(audioPath) : false,
-          beatText: beat.text,
-          audioFile: context.studio.beats[beatIndex]?.audioFile,
+          beatTextLength: typeof beat?.text === "string" ? beat.text.length : 0,
+          audioFilePresent: Boolean(context.studio.beats[beatIndex]?.audioFile),
         });
         res.status(500).json({ error: "Audio was not generated" });
         return;

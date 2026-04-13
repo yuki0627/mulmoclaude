@@ -64,10 +64,13 @@ describe("listLogFiles / enforceMaxFiles", () => {
   });
 
   it("is a no-op when maxFiles is 0 or negative", async () => {
-    const before = await readdir(dir);
+    // Local bindings were previously named `before` / `after`,
+    // which shadow the `node:test` lifecycle imports at the top
+    // of the file and fail the `no-shadow` lint rule.
+    const filesBefore = await readdir(dir);
     await enforceMaxFiles(dir, 0);
     await enforceMaxFiles(dir, -5);
-    const after = await readdir(dir);
-    assert.deepEqual(after.sort(), before.sort());
+    const filesAfter = await readdir(dir);
+    assert.deepEqual(filesAfter.sort(), filesBefore.sort());
   });
 });

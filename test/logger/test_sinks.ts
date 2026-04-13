@@ -106,9 +106,15 @@ describe("createFileSink", () => {
     sink.write(record({ message: "fresh" }));
     await sink.flush?.();
     const files = (await readdir(retDir)).sort();
-    // maxFiles=2 keeps the 2 newest log files (including the new one).
+    // maxFiles=2 keeps EXACTLY the 2 newest log files (including
+    // the fresh one). Asserting just "includes newest" and "not
+    // oldest" previously could pass even when retention left an
+    // extra middle log behind — tighten to count + exact set.
+    const logFiles = files.filter((f) => f.startsWith("server-"));
+    assert.equal(logFiles.length, 2);
     assert.ok(files.includes("server-2026-01-04.log"));
     assert.ok(files.includes("server-2026-01-03.log"));
+    assert.ok(!files.includes("server-2026-01-02.log"));
     assert.ok(!files.includes("server-2026-01-01.log"));
     await rm(retDir, { recursive: true, force: true });
   });

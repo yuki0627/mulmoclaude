@@ -149,12 +149,16 @@ export async function* runAgent(
     mcpConfigPath: hasMcp ? mcpPaths.argPath : undefined,
   });
 
+  // Don't persist raw sessionId into log sinks (esp. the retained
+  // file sink). A boolean presence flag is enough for operational
+  // debugging and avoids writing identifiers that route back to a
+  // specific session into long-lived log files.
   log.info("agent", "spawning claude", {
     roleId: role.id,
     useDocker,
     hasMcp,
     resumed: Boolean(claudeSessionId),
-    sessionId,
+    hasSessionId: Boolean(sessionId),
   });
   const proc = spawnClaude(useDocker, workspacePath, cliArgs);
 
