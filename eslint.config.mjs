@@ -123,10 +123,6 @@ export default [
       // isn't blocked — follow-up PRs should refactor each and
       // re-raise to error. See CLAUDE.md's Functions section.
       "sonarjs/cognitive-complexity": "warn",
-      // Pre-existing slow-regex hits in `.vue` files; demote to
-      // warn for the same reason. Each case needs a targeted
-      // regex rewrite in a follow-up.
-      "sonarjs/slow-regex": "warn",
       // `wiki/View.vue` uses `v-html` intentionally to render
       // sanitised markdown. Warn so the justified usage doesn't
       // block CI — audit per-use at review time.
