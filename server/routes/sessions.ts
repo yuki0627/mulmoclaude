@@ -6,6 +6,7 @@ import { workspacePath } from "../workspace.js";
 import { readManifest } from "../chat-index/indexer.js";
 import { resolveWithinRoot } from "../utils/fs.js";
 import type { ChatIndexEntry } from "../chat-index/types.js";
+import { markRead, getSession } from "../session-store/index.js";
 
 async function readSessionMeta(
   chatDir: string,
@@ -54,6 +55,11 @@ interface SessionSummary {
   // under the preview in the history popup. See #123.
   summary?: string;
   keywords?: string[];
+  // Live state from the in-memory session store. Absent when the
+  // session has no active entry in the store (i.e. idle / historical).
+  isRunning?: boolean;
+  hasUnread?: boolean;
+  statusMessage?: string;
 }
 
 const router = Router();
@@ -106,6 +112,7 @@ router.get(
               // `summary` and `keywords` are spread conditionally
               // to respect the server tsconfig's
               // exactOptionalPropertyTypes.
+              const live = getSession(id);
               return {
                 id,
                 roleId: meta.roleId,
@@ -117,6 +124,11 @@ router.get(
                 }),
                 ...(indexEntry?.keywords !== undefined && {
                   keywords: indexEntry.keywords,
+                }),
+                ...(live && {
+                  isRunning: live.isRunning,
+                  hasUnread: live.hasUnread,
+                  statusMessage: live.statusMessage,
                 }),
               };
             } catch {
@@ -240,6 +252,15 @@ router.get(
     } catch {
       res.status(404).json({ error: "Session not found" });
     }
+  },
+);
+
+// Mark a session as read (clears the hasUnread flag in the session store).
+router.post(
+  "/sessions/:id/mark-read",
+  (req: Request<SessionIdParams>, res: Response<{ ok: boolean }>) => {
+    const ok = markRead(req.params.id);
+    res.json({ ok });
   },
 );
 
