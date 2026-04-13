@@ -307,15 +307,7 @@
 </template>
 
 <script setup lang="ts">
-import {
-  ref,
-  computed,
-  watch,
-  nextTick,
-  onMounted,
-  reactive,
-  markRaw,
-} from "vue";
+import { ref, computed, watch, nextTick, onMounted, reactive } from "vue";
 import { v4 as uuidv4 } from "uuid";
 import { SYSTEM_PROMPT } from "./config/system-prompt";
 import { getPlugin } from "./tools";
@@ -869,7 +861,6 @@ function createNewSession(roleId?: string): ActiveSession {
     toolCallHistory: [],
     selectedResultUuid: null,
     hasUnread: false,
-    abortController: markRaw(new AbortController()),
     startedAt: now,
     updatedAt: now,
   };
@@ -933,7 +924,6 @@ async function loadSession(id: string) {
     toolCallHistory: [],
     selectedResultUuid: resolvedSelectedUuid,
     hasUnread: false,
-    abortController: markRaw(new AbortController()),
     startedAt,
     updatedAt,
   });

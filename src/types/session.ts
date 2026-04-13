@@ -70,7 +70,6 @@ export interface ActiveSession {
   toolCallHistory: ToolCallHistoryItem[];
   selectedResultUuid: string | null;
   hasUnread: boolean;
-  abortController: AbortController;
   startedAt: string;
   // Bumped whenever the user sends a new message in this session.
   // Used by `mergedSessions` to sort the sidebar history list by

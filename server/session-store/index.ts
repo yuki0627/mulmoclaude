@@ -43,20 +43,10 @@ const EVICTION_CHECK_INTERVAL_MS = 5 * 60 * 1000; // check every 5 min
 
 const store = new Map<string, ServerSession>();
 let pubsub: IPubSub | null = null;
-let evictionTimer: ReturnType<typeof setInterval> | null = null;
 
 export function initSessionStore(ps: IPubSub): void {
   pubsub = ps;
-  evictionTimer = setInterval(evictIdleSessions, EVICTION_CHECK_INTERVAL_MS);
-}
-
-export function shutdownSessionStore(): void {
-  if (evictionTimer) {
-    clearInterval(evictionTimer);
-    evictionTimer = null;
-  }
-  store.clear();
-  pubsub = null;
+  setInterval(evictIdleSessions, EVICTION_CHECK_INTERVAL_MS);
 }
 
 // ── Session lifecycle ──────────────────────────────────────────
@@ -97,7 +87,7 @@ export function getOrCreateSession(
   return session;
 }
 
-export function removeSession(chatSessionId: string): void {
+function removeSession(chatSessionId: string): void {
   store.delete(chatSessionId);
   notifySessionsChanged();
 }
