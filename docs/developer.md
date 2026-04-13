@@ -8,26 +8,35 @@ Reference for contributors hacking on MulmoClaude. End-user instructions live in
 
 Thanks for wanting to contribute! Please read this section before sending a pull request — **we cannot accept large or AI-generated pull requests from outside contributors**, and unsolicited ones will be closed without a detailed review. The flow we ask for instead is:
 
-1. **Open a GitHub issue describing the problem and a proposed plan.** A few paragraphs are enough: what's wrong (or what's missing), the approach you have in mind, the files / surface area you expect to touch, and any open questions. The files under [`plans/`](../plans/) are good references — your plan doesn't need to be that long.
-2. **Discuss the plan in the issue thread.** We may suggest scope adjustments, point out existing helpers or in-flight refactors that overlap, or surface constraints that aren't obvious from the outside (security boundaries, deprecation paths, etc.). This is usually a short back-and-forth.
-3. **A maintainer drafts the PR.** Once we agree on the plan, one of us turns it into a PR. You're very welcome to follow the work, comment on the implementation, and flag anything that diverges from the agreed plan.
+1. **Open a GitHub issue describing the problem and a proposed plan.** A few paragraphs are enough: what's wrong (or what's missing), the approach you have in mind, the files you expect to touch, and any open questions. The files under [`plans/`](../plans/) are good references for the level of detail we want.
+2. **Discuss the plan in the issue thread.** We may suggest scope adjustments, point out existing helpers or in-flight refactors that overlap, or surface constraints that are hard to see from the outside, such as security boundaries or deprecation paths. This is usually a short back-and-forth.
+3. **A maintainer drafts the pull request.** Once we agree on the plan, one of us turns it into a pull request. You are welcome to follow the work, comment on the implementation, and flag anything that diverges from the agreed plan.
 
-### Why this flow — and why we close large unsolicited PRs
+### How to write the issue
 
-AI coding assistants make it easy to generate large, polished-looking diffs in minutes. The catch is that reviewing such a PR cold can take far longer than writing it, and even when the code reads cleanly, validating that no subtle behavioural / security / data-handling regression slipped in is genuinely hard for a reviewer who didn't help shape the design. We can't responsibly merge code we can't fully audit, and we can't dedicate the review hours to audit large drive-by submissions.
+Maintainer review time is the bottleneck. These rules keep that time productive:
 
-This isn't about screening out AI-assisted work — the maintainer who drafts the PR will often be using an agent too. The point is that **the plan is what we agree on, and the resulting code is owned by whoever lands it**. Locking that ownership boundary at the plan keeps responsibility clear and review focused on the parts that need human judgement.
+- **One issue covers exactly one topic.** If you have two unrelated proposals, file two issues. A combined issue is hard to scope, hard to review, and tends to stall on whichever half is harder.
+- **Keep it short.** Long issues do not get read carefully. Aim for the smallest amount of text that fully covers the problem, the proposal, and any decision points the maintainer needs to weigh in on. If your draft does not fit on two screens, it is probably two issues.
+- **Be specific.** Replace vague phrases with the concrete thing you mean. Instead of "the roles", write "the three built-in roles defined in `src/config/roles.ts`". Instead of "improve performance", write "reduce the number of `readFile` calls in `GET /api/sessions`".
+- **Spell things out.** Avoid project-internal abbreviations and acronyms unless the same form already appears in the code or in [README.md](../README.md) / [CLAUDE.md](../CLAUDE.md). A reader who is new to MulmoClaude should be able to follow the issue without opening other documents.
+
+### Why this flow — and why we close large unsolicited pull requests
+
+AI coding assistants make it easy to generate large, polished-looking diffs in minutes. The catch is that reviewing such a pull request cold can take far longer than writing it, and even when the code reads cleanly, validating that no subtle behavioural, security, or data-handling regression slipped in is genuinely hard for a reviewer who did not help shape the design. We cannot responsibly merge code we cannot fully audit, and we cannot dedicate the review hours that auditing a large drive-by submission would require.
+
+This is not about screening out AI-assisted work — the maintainer who drafts the pull request will often be using an agent too. The point is that **the plan is what we agree on, and the resulting code is owned by whoever lands it**. Locking that ownership boundary at the plan keeps responsibility clear and review focused on the parts that need human judgement.
 
 ### When you can skip the plan
 
-A direct PR is fine — and welcome — for:
+A direct pull request is welcome for:
 
-- Typos, copy fixes, doc tweaks
+- Typos, copy fixes, documentation tweaks
 - Dependency version bumps
-- Single-file bug fixes with an obvious root cause and a matching test (small, ideally under ~20 lines of diff)
-- Anything a maintainer or CI bot explicitly asks for in a review comment
+- Single-file bug fixes with an obvious root cause and a matching test, ideally under 20 lines of diff
+- Anything a maintainer or a continuous integration bot explicitly asks for in a review comment
 
-Anything larger than that should start as an issue. If you're not sure, opening an issue first is always cheaper than writing a PR that won't be accepted. Thanks for understanding.
+Anything larger than that should start as an issue. If you are not sure, opening an issue first is always cheaper than writing a pull request that will not be accepted. Thanks for understanding.
 
 ---
 
