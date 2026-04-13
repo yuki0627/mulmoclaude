@@ -36,8 +36,8 @@ router.post(
     res: Response<OkResponse>,
   ) => {
     const chatSessionId = String(req.query.session ?? "");
-    const pushed = await pushToolResult(chatSessionId, req.body);
-    res.json({ ok: pushed });
+    const outcome = await pushToolResult(chatSessionId, req.body);
+    res.json({ ok: outcome.kind === "processed" });
   },
 );
 

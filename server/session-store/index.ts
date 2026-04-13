@@ -171,22 +171,24 @@ export function pushSessionEvent(
   publishToSessionChannel(chatSessionId, event);
 }
 
-/** Push a tool_result event and persist to JSONL. */
+export type PushToolResultOutcome =
+  | { kind: "skipped"; reason: string }
+  | { kind: "processed" };
+
+/** Persist a tool_result to JSONL, then publish to the session channel. */
 export async function pushToolResult(
   chatSessionId: string,
   result: unknown,
-): Promise<boolean> {
+): Promise<PushToolResultOutcome> {
   const session = store.get(chatSessionId);
-  if (!session) return false;
-
-  const event = { type: "tool_result", result };
-  publishToSessionChannel(chatSessionId, event);
+  if (!session) return { kind: "skipped", reason: "unknown session" };
 
   await appendFile(
     session.resultsFilePath,
     JSON.stringify({ source: "tool", type: "tool_result", result }) + "\n",
   );
-  return true;
+  publishToSessionChannel(chatSessionId, { type: "tool_result", result });
+  return { kind: "processed" };
 }
 
 // ── Query helpers ──────────────────────────────────────────────

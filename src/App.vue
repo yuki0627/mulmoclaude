@@ -70,7 +70,6 @@
         v-if="showHistory"
         ref="historyPanelRef"
         :sessions="mergedSessions"
-        :session-map="sessionMap"
         :current-session-id="currentSessionId"
         :roles="roles"
         :top-offset="headerRef?.offsetHeight"
@@ -137,7 +136,7 @@
               class="material-icons text-base"
               :class="[
                 tabColor(tabSessions[i - 1]),
-                sessionMap.get(tabSessions[i - 1].id)?.isRunning
+                tabSessions[i - 1].isRunning
                   ? 'animate-spin [animation-duration:3s]'
                   : '',
               ]"

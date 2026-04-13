@@ -56,13 +56,12 @@
 <script setup lang="ts">
 import { ref } from "vue";
 import type { Role } from "../config/roles";
-import type { SessionSummary, ActiveSession } from "../types/session";
+import type { SessionSummary } from "../types/session";
 import { formatDate } from "../utils/format/date";
 import { roleIcon, roleName } from "../utils/role/icon";
 
 const props = defineProps<{
   sessions: SessionSummary[];
-  sessionMap: Map<string, ActiveSession>;
   currentSessionId: string;
   roles: Role[];
   topOffset?: number;
@@ -82,17 +81,12 @@ function roleNameFor(id: string): string {
   return roleName(props.roles, id);
 }
 
-// Check server summary first (authoritative), then sessionMap fallback.
 function isSessionRunning(session: SessionSummary): boolean {
-  return (
-    session.isRunning ?? props.sessionMap.get(session.id)?.isRunning ?? false
-  );
+  return session.isRunning ?? false;
 }
 
 function isSessionUnread(session: SessionSummary): boolean {
-  return (
-    session.hasUnread ?? props.sessionMap.get(session.id)?.hasUnread ?? false
-  );
+  return session.hasUnread ?? false;
 }
 
 function rowClasses(session: SessionSummary): string {
