@@ -380,43 +380,27 @@ pubsubSubscribe("debug.beat", (data) => {
 });
 
 // --- Sessions channel (pub/sub) ---
-// Subscribe to the global `sessions` channel to receive real-time
-// state changes (isRunning, hasUnread) from the server. This enables
-// multi-client sync — all tabs see the same badge state.
-interface SessionStateEvent {
-  type: string;
-  chatSessionId?: string;
-  isRunning?: boolean;
-  hasUnread?: boolean;
-  statusMessage?: string;
-  updatedAt?: string;
-}
-
-pubsubSubscribe("sessions", (data) => {
-  const event = data as SessionStateEvent;
-  if (event.type === "session_state_changed") {
-    applySessionStateEvent(event);
-  }
+// Subscribe to the global `sessions` channel. The server publishes a
+// bare notification (no data) whenever any session's state changes.
+// The client refetches the session list via REST — the server is the
+// single source of truth for isRunning, hasUnread, etc.
+pubsubSubscribe("sessions", () => {
+  refreshSessionStates();
 });
 
-function applySessionStateEvent(event: SessionStateEvent): void {
-  if (!event.chatSessionId) return;
-  const session = sessionMap.get(event.chatSessionId);
-  if (!session) return;
-  if (event.isRunning !== undefined) session.isRunning = event.isRunning;
-  // Don't mark the currently viewed session as unread — the user is
-  // already looking at it. The mark-read POST in the session_finished
-  // handler ensures the server agrees.
-  if (event.hasUnread !== undefined) {
-    if (event.hasUnread && event.chatSessionId === currentSessionId.value) {
-      // Skip — user is viewing this session right now
-    } else {
-      session.hasUnread = event.hasUnread;
+async function refreshSessionStates(): Promise<void> {
+  const summaries = await fetchSessions();
+  for (const s of summaries) {
+    const live = sessionMap.get(s.id);
+    if (!live) continue;
+    if (s.isRunning !== undefined) live.isRunning = s.isRunning;
+    if (s.hasUnread !== undefined) {
+      // Don't mark the currently viewed session as unread
+      if (s.hasUnread && s.id === currentSessionId.value) continue;
+      live.hasUnread = s.hasUnread;
     }
+    if (s.statusMessage !== undefined) live.statusMessage = s.statusMessage;
   }
-  if (event.statusMessage !== undefined)
-    session.statusMessage = event.statusMessage;
-  if (event.updatedAt !== undefined) session.updatedAt = event.updatedAt;
 }
 
 // --- Routing ---
@@ -553,8 +537,22 @@ const sidebarResults = computed(() => {
   });
 });
 
-const isRunning = computed(() => activeSession.value?.isRunning ?? false);
-const statusMessage = computed(() => activeSession.value?.statusMessage ?? "");
+// Read running/status from the server session list (single source of
+// truth). Falls back to sessionMap for the brief window before the
+// first fetchSessions completes.
+const currentSummary = computed(() =>
+  sessions.value.find((s) => s.id === currentSessionId.value),
+);
+const isRunning = computed(
+  () =>
+    currentSummary.value?.isRunning ?? activeSession.value?.isRunning ?? false,
+);
+const statusMessage = computed(
+  () =>
+    currentSummary.value?.statusMessage ??
+    activeSession.value?.statusMessage ??
+    "",
+);
 const toolCallHistory = computed(
   () => activeSession.value?.toolCallHistory ?? [],
 );
@@ -574,10 +572,10 @@ const selectedResultUuid = computed({
 });
 
 const activeSessionCount = computed(
-  () => [...sessionMap.values()].filter((s) => s.isRunning).length,
+  () => sessions.value.filter((s) => s.isRunning).length,
 );
 const unreadCount = computed(
-  () => [...sessionMap.values()].filter((s) => s.hasUnread).length,
+  () => sessions.value.filter((s) => s.hasUnread).length,
 );
 
 // --- Global state ---
@@ -679,9 +677,8 @@ const mergedSessions = computed((): SessionSummary[] =>
 const tabSessions = computed(() => mergedSessions.value.slice(0, 6));
 
 function tabColor(session: SessionSummary): string {
-  const live = sessionMap.get(session.id);
-  if (live?.isRunning) return "text-yellow-400";
-  if (live?.hasUnread) return "text-gray-900";
+  if (session.isRunning) return "text-yellow-400";
+  if (session.hasUnread) return "text-gray-900";
   return "text-gray-400";
 }
 
@@ -690,15 +687,20 @@ function tabColor(session: SessionSummary): string {
 // or a tab that navigated to an in-progress session receives events).
 watch(currentSessionId, (id) => {
   const session = sessionMap.get(id);
-  if (!session) return;
-  if (session.hasUnread) {
-    session.hasUnread = false;
+  if (session?.isRunning) {
+    ensureSessionSubscription(session, session.toolResults.length);
+  }
+  // Clear unread in both sessionMap and sessions list (for badge count),
+  // then tell the server so other tabs see it too.
+  const summary = sessions.value.find((s) => s.id === id);
+  const wasUnread =
+    (session && session.hasUnread) || (summary && summary.hasUnread);
+  if (wasUnread) {
+    if (session) session.hasUnread = false;
+    if (summary) summary.hasUnread = false;
     fetch(`/api/sessions/${encodeURIComponent(id)}/mark-read`, {
       method: "POST",
     }).catch(() => {});
-  }
-  if (session.isRunning) {
-    ensureSessionSubscription(session, session.toolResults.length);
   }
 });
 
@@ -904,20 +906,10 @@ async function loadSession(id: string) {
     return;
   }
 
-  // Load session entries and live state in parallel
-  const [entriesRes, stateRes] = await Promise.all([
-    fetch(`/api/sessions/${id}`),
-    fetch(`/api/sessions/${encodeURIComponent(id)}/state`),
-  ]);
-  if (!entriesRes.ok) return;
-  const entries: SessionEntry[] = await entriesRes.json();
-  const liveState: {
-    isRunning: boolean;
-    hasUnread: boolean;
-    statusMessage: string;
-  } = stateRes.ok
-    ? await stateRes.json()
-    : { isRunning: false, hasUnread: false, statusMessage: "" };
+  // Load from server
+  const res = await fetch(`/api/sessions/${id}`);
+  if (!res.ok) return;
+  const entries: SessionEntry[] = await res.json();
 
   const meta = entries.find((e) => e.type === "session_meta");
   const roleId = meta?.roleId ?? currentRoleId.value;
@@ -925,6 +917,7 @@ async function loadSession(id: string) {
   const urlResult =
     typeof route.query.result === "string" ? route.query.result : null;
   const resolvedSelectedUuid = resolveSelectedUuid(toolResultsList, urlResult);
+  // Use server summary for live state (isRunning, etc.) and timestamps
   const serverSummary = sessions.value.find((s) => s.id === id);
   const { startedAt, updatedAt } = resolveSessionTimestamps(
     serverSummary,
@@ -935,8 +928,8 @@ async function loadSession(id: string) {
     id,
     roleId,
     toolResults: toolResultsList,
-    isRunning: liveState.isRunning,
-    statusMessage: liveState.statusMessage,
+    isRunning: serverSummary?.isRunning ?? false,
+    statusMessage: serverSummary?.statusMessage ?? "",
     toolCallHistory: [],
     selectedResultUuid: resolvedSelectedUuid,
     hasUnread: false,
@@ -956,16 +949,12 @@ async function loadSession(id: string) {
 // decide whether a trailing text response becomes the selected
 // canvas result.
 function beginUserTurn(session: ActiveSession, message: string): number {
-  session.isRunning = true;
-  session.statusMessage = "Thinking...";
-  // Bump updatedAt so the session floats to the top of the
-  // "most recently touched" sort in the sidebar as soon as the
-  // user submits a message. The server's jsonl mtime will match
-  // on the next fetchSessions() after the run ends.
+  // Append the user's message so it renders immediately. State like
+  // isRunning / statusMessage is NOT set here — it comes from the
+  // server via the `sessions` channel notification → refetch cycle,
+  // keeping all clients (including the initiator) in sync.
   session.updatedAt = new Date().toISOString();
   session.toolResults.push(makeTextResult(message, "user"));
-  // Fresh AbortController for this run
-  session.abortController = markRaw(new AbortController());
   return session.toolResults.length;
 }
 
@@ -997,23 +986,15 @@ function ensureSessionSubscription(
     if (!event || typeof event !== "object") return;
 
     // session_finished signals end-of-run — clean up subscription.
-    // The server sets hasUnread = true unconditionally in endRun(),
-    // then publishes session_state_changed on the `sessions` channel.
-    // If the user is currently viewing this session we must tell the
-    // server to clear hasUnread, otherwise the `sessions` channel
-    // event will overwrite the local flag back to true.
+    // If the user is viewing this session, tell the server to clear
+    // hasUnread. State updates (isRunning, hasUnread) arrive via the
+    // `sessions` channel notification → refetch cycle.
     if (event.type === "session_finished") {
-      session.isRunning = false;
-      session.statusMessage = "";
       if (currentSessionId.value === session.id) {
-        session.hasUnread = false;
         fetch(`/api/sessions/${encodeURIComponent(session.id)}/mark-read`, {
           method: "POST",
         }).catch(() => {});
-      } else {
-        session.hasUnread = true;
       }
-      fetchSessions();
       unsubscribeSession(session.id);
       return;
     }
@@ -1156,8 +1137,6 @@ async function sendMessage(text?: string) {
         session,
         `Server error ${response.status}: ${errBody.slice(0, 200)}`,
       );
-      session.isRunning = false;
-      session.statusMessage = "";
       unsubscribeSession(session.id);
     }
   } catch (e) {
@@ -1166,8 +1145,6 @@ async function sendMessage(text?: string) {
       session,
       e instanceof Error ? e.message : "Connection error.",
     );
-    session.isRunning = false;
-    session.statusMessage = "";
     unsubscribeSession(session.id);
   }
 }

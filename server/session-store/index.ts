@@ -34,23 +34,6 @@ export interface ServerSession {
   abortRun?: () => void;
 }
 
-/** Lightweight projection for the `sessions` channel. */
-export interface SessionStateEvent {
-  type: "session_state_changed";
-  chatSessionId: string;
-  roleId: string;
-  isRunning: boolean;
-  hasUnread: boolean;
-  statusMessage: string;
-  updatedAt: string;
-}
-
-/** Sent on the `sessions` channel when a session is evicted. */
-export interface SessionRemovedEvent {
-  type: "session_removed";
-  chatSessionId: string;
-}
-
 // ── Constants ──────────────────────────────────────────────────
 
 const IDLE_EVICTION_MS = 60 * 60 * 1000; // 1 hour
@@ -116,7 +99,7 @@ export function getOrCreateSession(
 
 export function removeSession(chatSessionId: string): void {
   store.delete(chatSessionId);
-  publishToSessions({ type: "session_removed", chatSessionId });
+  notifySessionsChanged();
 }
 
 // ── State mutations (publish to pub/sub) ───────────────────────
@@ -131,7 +114,7 @@ export function beginRun(chatSessionId: string, abortRun: () => void): boolean {
   session.toolCallHistory = [];
   session.abortRun = abortRun;
   session.updatedAt = new Date().toISOString();
-  publishStateChanged(session);
+  notifySessionsChanged();
   return true;
 }
 
@@ -145,7 +128,7 @@ export function endRun(chatSessionId: string): void {
   session.abortRun = undefined;
   session.updatedAt = new Date().toISOString();
   publishToSessionChannel(chatSessionId, { type: "session_finished" });
-  publishStateChanged(session);
+  notifySessionsChanged();
 }
 
 /** Cancel a running session by killing the child process. */
@@ -162,7 +145,7 @@ export function markRead(chatSessionId: string): boolean {
   if (!session) return false;
   if (!session.hasUnread) return true;
   session.hasUnread = false;
-  publishStateChanged(session);
+  notifySessionsChanged();
   return true;
 }
 
@@ -192,7 +175,7 @@ export function pushSessionEvent(
     if (entry) entry.result = event.content as string;
   } else if (type === "status") {
     session.statusMessage = event.message as string;
-    publishStateChanged(session);
+    notifySessionsChanged();
   }
 
   publishToSessionChannel(chatSessionId, event);
@@ -236,26 +219,9 @@ function publishToSessionChannel(chatSessionId: string, data: unknown): void {
   pubsub?.publish(`session.${chatSessionId}`, data);
 }
 
-function publishToSessions(
-  data: SessionStateEvent | SessionRemovedEvent,
-): void {
-  pubsub?.publish("sessions", data);
-}
-
-function publishStateChanged(session: ServerSession): void {
-  publishToSessions(toStateEvent(session));
-}
-
-function toStateEvent(session: ServerSession): SessionStateEvent {
-  return {
-    type: "session_state_changed",
-    chatSessionId: session.chatSessionId,
-    roleId: session.roleId,
-    isRunning: session.isRunning,
-    hasUnread: session.hasUnread,
-    statusMessage: session.statusMessage,
-    updatedAt: session.updatedAt,
-  };
+/** Notify all clients that session state has changed — refetch via REST. */
+function notifySessionsChanged(): void {
+  pubsub?.publish("sessions", {});
 }
 
 function evictIdleSessions(): void {

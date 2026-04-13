@@ -21,6 +21,11 @@ export interface SessionSummary {
   preview: string;
   summary?: string;
   keywords?: string[];
+  // Live state from the server session store (present when the
+  // session has an active in-memory entry on the server).
+  isRunning?: boolean;
+  hasUnread?: boolean;
+  statusMessage?: string;
 }
 
 // One line of a session jsonl as returned by `/api/sessions/:id`.

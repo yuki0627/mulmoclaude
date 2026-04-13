@@ -55,6 +55,11 @@ interface SessionSummary {
   // under the preview in the history popup. See #123.
   summary?: string;
   keywords?: string[];
+  // Live state from the in-memory session store. Absent when the
+  // session has no active entry in the store (i.e. idle / historical).
+  isRunning?: boolean;
+  hasUnread?: boolean;
+  statusMessage?: string;
 }
 
 const router = Router();
@@ -107,6 +112,7 @@ router.get(
               // `summary` and `keywords` are spread conditionally
               // to respect the server tsconfig's
               // exactOptionalPropertyTypes.
+              const live = getSession(id);
               return {
                 id,
                 roleId: meta.roleId,
@@ -118,6 +124,11 @@ router.get(
                 }),
                 ...(indexEntry?.keywords !== undefined && {
                   keywords: indexEntry.keywords,
+                }),
+                ...(live && {
+                  isRunning: live.isRunning,
+                  hasUnread: live.hasUnread,
+                  statusMessage: live.statusMessage,
                 }),
               };
             } catch {
@@ -250,34 +261,6 @@ router.post(
   (req: Request<SessionIdParams>, res: Response<{ ok: boolean }>) => {
     const ok = markRead(req.params.id);
     res.json({ ok });
-  },
-);
-
-// Returns the live session state from the in-memory store. Clients
-// use this to check if a session is currently running (e.g. when a
-// second tab opens an in-progress session).
-interface SessionState {
-  isRunning: boolean;
-  hasUnread: boolean;
-  statusMessage: string;
-}
-
-router.get(
-  "/sessions/:id/state",
-  (
-    req: Request<SessionIdParams>,
-    res: Response<SessionState | { error: string }>,
-  ) => {
-    const session = getSession(req.params.id);
-    if (!session) {
-      res.json({ isRunning: false, hasUnread: false, statusMessage: "" });
-      return;
-    }
-    res.json({
-      isRunning: session.isRunning,
-      hasUnread: session.hasUnread,
-      statusMessage: session.statusMessage,
-    });
   },
 );
 

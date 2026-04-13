@@ -23,7 +23,7 @@
           <span>{{ roleNameFor(session.roleId) }}</span>
           <span class="ml-auto flex items-center gap-1.5">
             <span
-              v-if="sessionMap.get(session.id)?.isRunning"
+              v-if="isSessionRunning(session)"
               class="flex items-center gap-0.5 text-yellow-600 font-medium"
             >
               <span
@@ -32,7 +32,7 @@
               Running
             </span>
             <span
-              v-else-if="sessionMap.get(session.id)?.hasUnread"
+              v-else-if="isSessionUnread(session)"
               class="flex items-center gap-0.5 text-gray-900 font-bold"
             >
               Unread
@@ -82,20 +82,32 @@ function roleNameFor(id: string): string {
   return roleName(props.roles, id);
 }
 
+// Check server summary first (authoritative), then sessionMap fallback.
+function isSessionRunning(session: SessionSummary): boolean {
+  return (
+    session.isRunning ?? props.sessionMap.get(session.id)?.isRunning ?? false
+  );
+}
+
+function isSessionUnread(session: SessionSummary): boolean {
+  return (
+    session.hasUnread ?? props.sessionMap.get(session.id)?.hasUnread ?? false
+  );
+}
+
 function rowClasses(session: SessionSummary): string {
-  const live = props.sessionMap.get(session.id);
-  if (live?.isRunning)
+  if (isSessionRunning(session))
     return "border-yellow-400 bg-yellow-50 hover:bg-yellow-100";
-  if (live?.hasUnread) return "border-gray-400 bg-white hover:bg-gray-50";
+  if (isSessionUnread(session))
+    return "border-gray-400 bg-white hover:bg-gray-50";
   if (session.id === props.currentSessionId)
     return "border-blue-400 bg-blue-50 hover:bg-blue-100";
   return "border-gray-200 hover:bg-gray-50";
 }
 
 function previewClasses(session: SessionSummary): string {
-  const live = props.sessionMap.get(session.id);
-  if (live?.isRunning) return "text-yellow-800";
-  if (live?.hasUnread) return "text-gray-900 font-bold";
+  if (isSessionRunning(session)) return "text-yellow-800";
+  if (isSessionUnread(session)) return "text-gray-900 font-bold";
   return "text-gray-700";
 }
 </script>
