@@ -63,6 +63,27 @@ export class RobotsDisallowedError extends Error {
 // which the evaluator treats as permissive — the usual convention.
 export type RobotsProvider = (host: string) => Promise<string | null>;
 
+// Cap the number of redirect hops one fetchPolite call will follow.
+// Matches the common browser default (Firefox 20, Chrome 20) and
+// RFC 7231 recommendation. Rejects with a plain Error after the cap.
+export const MAX_REDIRECTS = 5;
+
+// Thrown when the redirect chain exceeds MAX_REDIRECTS. Caller can
+// distinguish "site is mis-configured" from "network error" and log
+// appropriately.
+export class RedirectLimitError extends Error {
+  readonly startUrl: string;
+  readonly lastUrl: string;
+  constructor(startUrl: string, lastUrl: string) {
+    super(
+      `[sources] too many redirects (>${MAX_REDIRECTS}) starting from ${startUrl}`,
+    );
+    this.name = "RedirectLimitError";
+    this.startUrl = startUrl;
+    this.lastUrl = lastUrl;
+  }
+}
+
 export interface HttpFetcherDeps {
   // HTTP client. Defaults to global `fetch`; tests inject a
   // response-map function.
@@ -109,10 +130,34 @@ export function defaultHttpFetcherDeps(
 
 // Fetch a URL politely. Resolves with the Response object (caller
 // decides whether to `.text()` / `.json()`); rejects with
-// `RobotsDisallowedError` when robots says no, `DOMException`
+// `RobotsDisallowedError` when robots says no, `RedirectLimitError`
+// when the redirect chain exceeds MAX_REDIRECTS, `DOMException`
 // (AbortError) when the external signal or the internal timeout
 // fires, or whatever `fetchImpl` throws otherwise.
+//
+// Redirects are followed manually so every hop goes through the
+// same robots-check + per-host rate-limit. Auto-follow (`fetch`'s
+// default) would let a 302 to another host or another path bypass
+// those checks entirely — a silent politeness violation.
 export async function fetchPolite(
+  rawUrl: string,
+  deps: HttpFetcherDeps,
+): Promise<Response> {
+  let currentUrl = rawUrl;
+  for (let hop = 0; hop <= MAX_REDIRECTS; hop++) {
+    const response = await fetchSingleHop(currentUrl, deps);
+    const nextUrl = redirectTarget(response, currentUrl);
+    if (nextUrl === null) return response;
+    currentUrl = nextUrl;
+  }
+  throw new RedirectLimitError(rawUrl, currentUrl);
+}
+
+// A single hop: validate scheme, check robots.txt, run the fetch
+// under the per-host rate limit. Returns whatever Response the
+// server produced (including 3xx with a Location header — the
+// caller in fetchPolite inspects and may re-enter).
+async function fetchSingleHop(
   rawUrl: string,
   deps: HttpFetcherDeps,
 ): Promise<Response> {
@@ -127,7 +172,6 @@ export async function fetchPolite(
   }
   const host = url.host.toLowerCase();
 
-  // 1. robots.txt check.
   const robotsText = await deps.robots(host);
   if (robotsText !== null) {
     const parsed = parseRobots(robotsText);
@@ -137,14 +181,32 @@ export async function fetchPolite(
     }
   }
 
-  // 2. Per-host rate-limited HTTP call. The task body builds and
-  // executes the fetch; the limiter owns ordering + minimum gap.
   const minDelay = deps.crawlDelayMs(host) ?? DEFAULT_MIN_DELAY_MS;
   return deps.rateLimiter.run(
     host,
     () => fetchWithTimeout(rawUrl, deps),
     minDelay,
   );
+}
+
+// Return the absolute URL the caller should hop to next, or null
+// when the response is not a redirect we should follow. A 3xx
+// status without a Location header is treated as terminal — the
+// server sent something unusual and it's safer to surface the
+// response than to guess.
+function redirectTarget(response: Response, currentUrl: string): string | null {
+  if (response.status < 300 || response.status >= 400) return null;
+  // 304 Not Modified is a cache response, not a redirect.
+  if (response.status === 304) return null;
+  const location = response.headers.get("location");
+  if (!location) return null;
+  try {
+    return new URL(location, currentUrl).toString();
+  } catch {
+    // Malformed Location — give up so the caller sees the 3xx
+    // instead of a recursive parse crash.
+    return null;
+  }
 }
 
 async function fetchWithTimeout(
@@ -186,7 +248,10 @@ async function fetchWithTimeout(
     return await deps.fetchImpl(rawUrl, {
       headers: { "User-Agent": USER_AGENT },
       signal: controller.signal,
-      redirect: "follow",
+      // Redirects are followed manually in `fetchPolite` so each
+      // hop re-runs robots.txt + per-host rate-limit. Auto-follow
+      // would skip those checks on the second hop.
+      redirect: "manual",
     });
   } finally {
     clearTimeout(timeoutHandle);

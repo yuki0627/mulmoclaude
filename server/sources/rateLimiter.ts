@@ -53,6 +53,12 @@ interface HostState {
   // rather than 0 as the sentinel avoids ambiguity against fake
   // test clocks that legitimately start at t=0.
   lastFinishedAt: number | null;
+  // Number of tasks currently queued or in-flight for this host.
+  // Must hit zero before the host is eligible for eviction —
+  // otherwise evictIdle can delete a state with pending work,
+  // letting a later run() recreate a fresh chain and break serial
+  // ordering.
+  activeCount: number;
 }
 
 export class HostRateLimiter {
@@ -79,6 +85,7 @@ export class HostRateLimiter {
     const state: HostState = this.hosts.get(key) ?? {
       tail: Promise.resolve(),
       lastFinishedAt: null,
+      activeCount: 0,
     };
     const prev = state.tail;
 
@@ -88,6 +95,7 @@ export class HostRateLimiter {
       resolveTail = resolve;
     });
     state.tail = newTail;
+    state.activeCount++;
     this.hosts.set(key, state);
 
     return (async () => {
@@ -110,6 +118,8 @@ export class HostRateLimiter {
         }
       } finally {
         resolveTail();
+        const fresh = this.hosts.get(key);
+        if (fresh) fresh.activeCount--;
       }
     })();
   }
@@ -128,6 +138,12 @@ export class HostRateLimiter {
     const cutoff = this.deps.now() - idleMs;
     let removed = 0;
     for (const [key, state] of this.hosts) {
+      // Only evict states whose queue is empty. An idle
+      // `lastFinishedAt` alone isn't enough — if `tail` still has
+      // queued or in-flight work we'd delete live state and a
+      // later run() would recreate a fresh chain, breaking serial
+      // per-host ordering.
+      if (state.activeCount > 0) continue;
       if (state.lastFinishedAt !== null && state.lastFinishedAt < cutoff) {
         this.hosts.delete(key);
         removed++;

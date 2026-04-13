@@ -229,4 +229,43 @@ describe("HostRateLimiter — evictIdle", () => {
     const removed = lim.evictIdle(60_000);
     assert.equal(removed, 0);
   });
+
+  it("does not evict a host with queued / in-flight work even if lastFinishedAt is stale", async () => {
+    // Regression: evictIdle used to look only at lastFinishedAt,
+    // which can be old while new work sits queued behind a running
+    // task. Deleting the state mid-run would let the next run()
+    // recreate a fresh chain and drop serialization guarantees.
+    const clock = controllableClock(0);
+    const lim = new HostRateLimiter(clock.deps);
+
+    // Prime lastFinishedAt so the entry looks "old".
+    await lim.run("busy.com", async () => null, 0);
+    clock.tick(10_000);
+
+    // Kick off a second task that hangs (we never resolve it within
+    // the test). activeCount → 1, lastFinishedAt stays at t=0, so
+    // evictIdle would have deleted it under the old rule.
+    let releaseTask: () => void = () => {};
+    const taskGate = new Promise<void>((resolve) => {
+      releaseTask = resolve;
+    });
+    const inFlight = lim.run(
+      "busy.com",
+      async () => {
+        await taskGate;
+        return null;
+      },
+      0,
+    );
+
+    // Let the microtask queue flush so activeCount is observed.
+    await Promise.resolve();
+
+    const removed = lim.evictIdle(1_000);
+    assert.equal(removed, 0);
+    assert.equal(lim.hostCount(), 1);
+
+    releaseTask();
+    await inFlight;
+  });
 });

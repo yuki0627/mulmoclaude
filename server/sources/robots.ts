@@ -126,32 +126,64 @@ function parseDirective(line: string): { name: string; value: string } | null {
 
 // Pick the group whose User-agent directive best matches `userAgent`.
 // Ordering of preference:
-//   1. Exact match on the UA string (case-insensitive).
-//   2. Longest prefix match (so `Googlebot-News` beats `Googlebot`).
-//   3. Fall back to the `*` group.
+//   1. All exact-match groups (case-insensitive) merged together.
+//   2. All prefix-match groups tied for longest prefix, merged.
+//   3. All `*` groups merged together.
 //   4. No group at all → null (caller treats as "everything allowed").
+//
+// Per REP (IETF draft `robotstxt-00`): when multiple groups apply
+// equally to the same agent, their rules are combined into a single
+// rule set before the Allow/Disallow decision is made. Returning the
+// first match only (old behaviour) let a later Disallow in a
+// duplicate group get ignored, which could silently let a fetcher
+// hit a path the site explicitly blocked.
 export function selectGroup(
   robots: ParsedRobots,
   userAgent: string,
 ): RobotsGroup | null {
   const ua = userAgent.toLowerCase();
-  // Three tiers: exact match short-circuits, longest prefix wins
-  // among non-star groups, `*` is the ultimate fallback. Inner
-  // logic factored into a per-group helper so this function stays
-  // under cognitive-complexity threshold.
-  let best: { group: RobotsGroup; score: number } | null = null;
-  let star: RobotsGroup | null = null;
+  const exacts: RobotsGroup[] = [];
+  const stars: RobotsGroup[] = [];
+  let bestPrefixScore = -1;
+  let prefixMatches: RobotsGroup[] = [];
   for (const group of robots.groups) {
     const outcome = scoreGroupAgainstAgent(group, ua);
-    if (outcome.kind === "exact") return outcome.group;
-    if (outcome.kind === "star") star = outcome.group;
+    if (outcome.kind === "exact") exacts.push(outcome.group);
+    else if (outcome.kind === "star") stars.push(outcome.group);
     else if (outcome.kind === "prefix") {
-      if (!best || outcome.score > best.score) {
-        best = { group: outcome.group, score: outcome.score };
+      if (outcome.score > bestPrefixScore) {
+        bestPrefixScore = outcome.score;
+        prefixMatches = [outcome.group];
+      } else if (outcome.score === bestPrefixScore) {
+        prefixMatches.push(outcome.group);
       }
     }
   }
-  return best?.group ?? star;
+  if (exacts.length > 0) return mergeGroups(exacts);
+  if (prefixMatches.length > 0) return mergeGroups(prefixMatches);
+  if (stars.length > 0) return mergeGroups(stars);
+  return null;
+}
+
+// Merge an array of groups into one. Concatenates rules (preserving
+// per-group order) and takes the smallest non-null crawlDelaySec
+// (the most conservative value) if any group specifies one.
+function mergeGroups(groups: readonly RobotsGroup[]): RobotsGroup {
+  if (groups.length === 1) return groups[0];
+  const rules: RobotsRule[] = [];
+  const userAgents: string[] = [];
+  let crawlDelaySec: number | null = null;
+  for (const g of groups) {
+    rules.push(...g.rules);
+    userAgents.push(...g.userAgents);
+    if (g.crawlDelaySec !== null) {
+      crawlDelaySec =
+        crawlDelaySec === null
+          ? g.crawlDelaySec
+          : Math.min(crawlDelaySec, g.crawlDelaySec);
+    }
+  }
+  return { userAgents, rules, crawlDelaySec };
 }
 
 type AgentMatch =

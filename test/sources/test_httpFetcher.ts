@@ -2,9 +2,11 @@ import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import {
   fetchPolite,
+  RedirectLimitError,
   RobotsDisallowedError,
   USER_AGENT,
   DEFAULT_FETCH_TIMEOUT_MS,
+  MAX_REDIRECTS,
   type HttpFetcherDeps,
   type RobotsProvider,
 } from "../../server/sources/httpFetcher.js";
@@ -280,5 +282,115 @@ describe("fetchPolite — timeout + abort", () => {
     const res = await fetchPolite(url, deps);
     // 4xx/5xx are not thrown — the fetcher inspects status.
     assert.equal(res.status, 404);
+  });
+});
+
+describe("fetchPolite — manual redirect handling", () => {
+  it("follows a 302 redirect to the Location URL", async () => {
+    const start = "https://a.com/login";
+    const target = "https://a.com/dashboard";
+    const stub = makeStubFetch({
+      [start]: new Response("", {
+        status: 302,
+        headers: { location: target },
+      }),
+      [target]: new Response("ok", { status: 200 }),
+    });
+    const deps = makeDeps({ fetchImpl: stub.fetchImpl });
+    const res = await fetchPolite(start, deps);
+    assert.equal(res.status, 200);
+    assert.equal(stub.calls.length, 2);
+    assert.equal(stub.calls[0].url, start);
+    assert.equal(stub.calls[1].url, target);
+  });
+
+  it("re-checks robots.txt on every hop", async () => {
+    // The redirect crosses hosts. robots.txt says `a.com` is OK but
+    // `b.com` is disallowed — the second hop must throw rather than
+    // quietly follow.
+    const start = "https://a.com/go";
+    const target = "https://b.com/blocked";
+    const stub = makeStubFetch({
+      [start]: new Response("", {
+        status: 302,
+        headers: { location: target },
+      }),
+      // target fetch should never happen
+      [target]: new Response("leaked", { status: 200 }),
+    });
+    const robots: RobotsProvider = async (host) => {
+      if (host === "b.com") return "User-agent: *\nDisallow: /";
+      return null;
+    };
+    const deps = makeDeps({ fetchImpl: stub.fetchImpl, robots });
+    await assert.rejects(
+      () => fetchPolite(start, deps),
+      (err: unknown) => err instanceof RobotsDisallowedError,
+    );
+    // First hop fired, second did not.
+    assert.equal(stub.calls.length, 1);
+    assert.equal(stub.calls[0].url, start);
+  });
+
+  it("resolves a relative Location against the current URL", async () => {
+    const start = "https://a.com/foo/bar";
+    const target = "https://a.com/baz";
+    const stub = makeStubFetch({
+      [start]: new Response("", {
+        status: 301,
+        headers: { location: "/baz" },
+      }),
+      [target]: new Response("ok", { status: 200 }),
+    });
+    const deps = makeDeps({ fetchImpl: stub.fetchImpl });
+    const res = await fetchPolite(start, deps);
+    assert.equal(res.status, 200);
+    assert.equal(stub.calls[1].url, target);
+  });
+
+  it("returns the 3xx response as-is when no Location header is present", async () => {
+    const start = "https://a.com/odd";
+    const stub = makeStubFetch({
+      [start]: new Response("no location", { status: 302 }),
+    });
+    const deps = makeDeps({ fetchImpl: stub.fetchImpl });
+    const res = await fetchPolite(start, deps);
+    assert.equal(res.status, 302);
+    assert.equal(stub.calls.length, 1);
+  });
+
+  it("throws RedirectLimitError after MAX_REDIRECTS hops", async () => {
+    // Build a chain of MAX_REDIRECTS + 2 redirects — too many.
+    const base = "https://loop.example/";
+    const responses: Record<string, Response> = {};
+    for (let i = 0; i <= MAX_REDIRECTS + 1; i++) {
+      const url = `${base}${i}`;
+      const next = `${base}${i + 1}`;
+      responses[url] = new Response("", {
+        status: 302,
+        headers: { location: next },
+      });
+    }
+    const stub = makeStubFetch(responses);
+    const deps = makeDeps({ fetchImpl: stub.fetchImpl });
+    await assert.rejects(
+      () => fetchPolite(`${base}0`, deps),
+      (err: unknown) => err instanceof RedirectLimitError,
+    );
+  });
+
+  it("does not auto-follow via fetch — uses redirect: 'manual'", async () => {
+    // The point of manual redirects is that the platform's own
+    // follow logic is disabled. We check the `redirect` init value
+    // reaches our stub fetch.
+    const start = "https://a.com/x";
+    let observedRedirect: RequestInit["redirect"] | undefined;
+    const fetchImpl: typeof fetch = async (_input, init) => {
+      observedRedirect = init?.redirect;
+      return new Response("ok", { status: 200 });
+    };
+    const deps = makeDeps({ fetchImpl });
+    await fetchPolite(start, deps);
+    assert.equal(observedRedirect, "manual");
   });
 });
