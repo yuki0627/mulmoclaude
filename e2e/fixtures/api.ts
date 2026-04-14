@@ -121,6 +121,15 @@ export async function mockAllApis(
     }),
   );
 
+  // Lazy-expand endpoint (Phase 2 of #200). Returns an empty dir by
+  // default; specific tests override with their own fixtures (see
+  // e2e/tests/file-explorer.spec.ts).
+  await page.route(urlEndsWith("/api/files/dir"), (route) =>
+    route.fulfill({
+      json: { name: "", path: "", type: "dir", children: [] },
+    }),
+  );
+
   // Default agent mock — returns 202 (fire-and-forget). Tests that
   // need to deliver events should register their own route + WS mock
   // AFTER calling mockAllApis.
