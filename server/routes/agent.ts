@@ -101,8 +101,6 @@ interface AgentBody {
   roleId: string;
   chatSessionId: string;
   selectedImageData?: string;
-  systemPrompt?: string;
-  pluginPrompts?: Record<string, string>;
 }
 
 interface ErrorResponse {
@@ -119,14 +117,7 @@ router.post(
     req: Request<object, unknown, AgentBody>,
     res: Response<ErrorResponse | AcceptedResponse>,
   ) => {
-    const {
-      message,
-      roleId,
-      chatSessionId,
-      selectedImageData,
-      systemPrompt,
-      pluginPrompts,
-    } = req.body;
+    const { message, roleId, chatSessionId, selectedImageData } = req.body;
 
     if (!message || !roleId || !chatSessionId) {
       res
@@ -215,8 +206,6 @@ router.post(
       role,
       chatSessionId,
       claudeSessionId,
-      pluginPrompts,
-      systemPrompt,
       abortSignal: abortController.signal,
       resultsFilePath,
       metaFilePath,
@@ -238,8 +227,6 @@ interface BackgroundRunParams {
   role: ReturnType<typeof getRole>;
   chatSessionId: string;
   claudeSessionId: string | undefined;
-  pluginPrompts: Record<string, string> | undefined;
-  systemPrompt: string | undefined;
   abortSignal: AbortSignal;
   resultsFilePath: string;
   metaFilePath: string;
@@ -255,8 +242,6 @@ async function runAgentInBackground(
     role,
     chatSessionId,
     claudeSessionId,
-    pluginPrompts,
-    systemPrompt,
     abortSignal,
     resultsFilePath,
     metaFilePath,
@@ -272,8 +257,6 @@ async function runAgentInBackground(
       chatSessionId,
       PORT,
       claudeSessionId,
-      pluginPrompts,
-      systemPrompt,
       abortSignal,
     )) {
       if (event.type === "claude_session_id") {

@@ -104,8 +104,6 @@ export interface RunAgentOptions {
   sessionId: string;
   port: number;
   claudeSessionId?: string;
-  pluginPrompts?: Record<string, string>;
-  systemPrompt?: string;
   /** When aborted, the spawned Claude CLI process is killed. */
   abortSignal?: AbortSignal;
 }
@@ -117,8 +115,6 @@ export async function* runAgent(
   sessionId: string,
   port: number,
   claudeSessionId?: string,
-  pluginPrompts?: Record<string, string>,
-  systemPrompt?: string,
   abortSignal?: AbortSignal,
 ): AsyncGenerator<AgentEvent> {
   const activePlugins = getActivePlugins(role);
@@ -142,8 +138,6 @@ export async function* runAgent(
   const fullSystemPrompt = buildSystemPrompt({
     role,
     workspacePath: useDocker ? CONTAINER_WORKSPACE_PATH : workspacePath,
-    pluginPrompts,
-    systemPrompt,
   });
 
   const mcpPaths = resolveMcpConfigPaths({
