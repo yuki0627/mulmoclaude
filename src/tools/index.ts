@@ -16,6 +16,7 @@ import WeatherPlugin from "@gui-chat-plugin/weather/vue";
 import todoPlugin from "../plugins/todo/index";
 import schedulerPlugin from "../plugins/scheduler/index";
 import manageRolesPlugin from "../plugins/manageRoles/index";
+import manageSkillsPlugin from "../plugins/manageSkills/index";
 import wikiPlugin from "../plugins/wiki/index";
 import presentMulmoScriptPlugin from "../plugins/presentMulmoScript/index";
 import presentHtmlPlugin from "../plugins/presentHtml/index";
@@ -28,6 +29,7 @@ const plugins: Record<string, PluginEntry> = {
   manageTodoList: todoPlugin,
   manageScheduler: schedulerPlugin,
   manageRoles: manageRolesPlugin,
+  manageSkills: manageSkillsPlugin,
   manageWiki: wikiPlugin,
   presentMulmoScript: presentMulmoScriptPlugin,
   presentDocument: markdownPlugin,

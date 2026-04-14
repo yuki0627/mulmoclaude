@@ -28,6 +28,7 @@ export const ROLES: Role[] = [
       "manageTodoList",
       "manageScheduler",
       "manageWiki",
+      "manageSkills",
       "presentDocument",
       "createMindMap",
       "presentHtml",

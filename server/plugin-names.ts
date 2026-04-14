@@ -8,6 +8,7 @@ import TodoDef from "../src/plugins/todo/definition.js";
 import SchedulerDef from "../src/plugins/scheduler/definition.js";
 import PresentMulmoScriptDef from "../src/plugins/presentMulmoScript/definition.js";
 import ManageRolesDef from "../src/plugins/manageRoles/definition.js";
+import ManageSkillsDef from "../src/plugins/manageSkills/definition.js";
 import WikiDef from "../src/plugins/wiki/definition.js";
 import PresentHtmlDef from "../src/plugins/presentHtml/definition.js";
 import MarkdownDef from "../src/plugins/markdown/definition.js";
@@ -37,6 +38,7 @@ export const TOOL_ENDPOINTS: Record<string, string> = {
   [Present3DDef.name]: "/api/present3d",
   [MusicDef.name]: "/api/music",
   [ManageRolesDef.name]: "/api/roles/manage",
+  [ManageSkillsDef.name]: "/api/skills",
   [PresentMulmoScriptDef.name]: "/api/mulmo-script",
   [WikiDef.name]: "/api/wiki",
 };
@@ -58,6 +60,7 @@ export const PLUGIN_DEFS = [
   Present3DDef,
   MusicDef,
   ManageRolesDef,
+  ManageSkillsDef,
   WikiDef,
 ];
 
