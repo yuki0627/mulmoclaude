@@ -28,6 +28,7 @@ export const ROLES: Role[] = [
       "manageTodoList",
       "manageScheduler",
       "manageWiki",
+      "manageSkills",
       "presentDocument",
       "createMindMap",
       "presentHtml",
@@ -66,6 +67,7 @@ export const ROLES: Role[] = [
       "presentChart",
       "readXPost",
       "searchX",
+      "manageSkills",
       "switchRole",
     ],
     queries: [
@@ -161,6 +163,7 @@ export const ROLES: Role[] = [
       "generateImage",
       "presentHTML",
       "presentChart",
+      "manageSkills",
       "switchRole",
     ],
     queries: [

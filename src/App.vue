@@ -1203,6 +1203,7 @@ const { handler: handleClickOutsideRoleDropdown } = useClickOutside({
 
 useEventListeners({
   onRolesUpdated: refreshRoles,
+  onSkillRun: (message: string) => sendMessage(message),
   onKeyNavigation: handleKeyNavigation,
   onViewModeShortcut: handleViewModeShortcut,
   onClickOutsideHistory: handleClickOutsideHistory,
