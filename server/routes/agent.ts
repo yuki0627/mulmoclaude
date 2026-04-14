@@ -96,13 +96,126 @@ router.post(
   },
 );
 
+// ── Internal API: startChat ─────────────────────────────────────────
+//
+// Shared entry point for starting an agent chat. Called by both the
+// POST /api/agent route and server-side callers (e.g. debug tasks).
+
+export interface StartChatParams {
+  message: string;
+  roleId: string;
+  chatSessionId: string;
+  selectedImageData?: string;
+}
+
+export type StartChatResult =
+  | { kind: "started"; chatSessionId: string }
+  | { kind: "error"; error: string; status?: number };
+
+export async function startChat(
+  params: StartChatParams,
+): Promise<StartChatResult> {
+  const { message, roleId, chatSessionId, selectedImageData } = params;
+
+  if (!message || !roleId || !chatSessionId) {
+    return {
+      kind: "error",
+      error: "message, roleId, and chatSessionId are required",
+      status: 400,
+    };
+  }
+
+  const chatDir = path.join(workspacePath, "chat");
+  await mkdir(chatDir, { recursive: true });
+  const resultsFilePath = path.join(chatDir, `${chatSessionId}.jsonl`);
+  const metaFilePath = path.join(chatDir, `${chatSessionId}.json`);
+
+  // Write or update metadata. On the first message we create the file
+  // with firstUserMessage so GET /api/sessions never needs to read the
+  // jsonl content. On subsequent turns we backfill firstUserMessage if
+  // missing (migrates pre-existing sessions).
+  let isFirstTurn = false;
+  try {
+    await access(metaFilePath);
+  } catch {
+    isFirstTurn = true;
+  }
+  if (isFirstTurn) {
+    await writeFile(
+      metaFilePath,
+      JSON.stringify({
+        roleId,
+        startedAt: new Date().toISOString(),
+        firstUserMessage: message,
+      }),
+    );
+  } else {
+    await backfillFirstUserMessage(metaFilePath, message);
+  }
+
+  // Append user message for this turn
+  await appendFile(
+    resultsFilePath,
+    JSON.stringify({ source: "user", type: "text", message }) + "\n",
+  );
+
+  const now = new Date().toISOString();
+  getOrCreateSession(chatSessionId, {
+    roleId,
+    resultsFilePath,
+    selectedImageData,
+    startedAt: now,
+    updatedAt: now,
+  });
+
+  // Register abort callback and mark running. If the session is
+  // already running, reject with 409 Conflict.
+  const abortController = new AbortController();
+  const started = beginRun(chatSessionId, () => abortController.abort());
+  if (!started) {
+    return { kind: "error", error: "Session is already running", status: 409 };
+  }
+
+  const role = getRole(roleId);
+  const claudeSessionId = await readClaudeSessionId(
+    metaFilePath,
+    resultsFilePath,
+  );
+
+  const requestStartedAt = Date.now();
+  log.info("agent", "request received", {
+    chatSessionId,
+    roleId,
+    messageLen: message.length,
+    resumed: Boolean(claudeSessionId),
+  });
+
+  const decoratedMessage = claudeSessionId
+    ? message
+    : prependJournalPointer(message, workspacePath);
+
+  runAgentInBackground({
+    decoratedMessage,
+    role,
+    chatSessionId,
+    claudeSessionId,
+    abortSignal: abortController.signal,
+    resultsFilePath,
+    metaFilePath,
+    requestStartedAt,
+    toolArgsCache: createArgsCache(),
+  });
+
+  return { kind: "started", chatSessionId };
+}
+
+// ── HTTP route ──────────────────────────────────────────────────────
+
 interface AgentBody {
   message: string;
   roleId: string;
   chatSessionId: string;
   selectedImageData?: string;
-  systemPrompt?: string;
-  pluginPrompts?: Record<string, string>;
 }
 
 interface ErrorResponse {
@@ -119,114 +232,12 @@ router.post(
     req: Request<object, unknown, AgentBody>,
     res: Response<ErrorResponse | AcceptedResponse>,
   ) => {
-    const {
-      message,
-      roleId,
-      chatSessionId,
-      selectedImageData,
-      systemPrompt,
-      pluginPrompts,
-    } = req.body;
-
-    if (!message || !roleId || !chatSessionId) {
-      res
-        .status(400)
-        .json({ error: "message, roleId, and chatSessionId are required" });
+    const result = await startChat(req.body);
+    if (result.kind === "error") {
+      res.status(result.status ?? 500).json({ error: result.error });
       return;
     }
-
-    const chatDir = path.join(workspacePath, "chat");
-    await mkdir(chatDir, { recursive: true });
-    const resultsFilePath = path.join(chatDir, `${chatSessionId}.jsonl`);
-    const metaFilePath = path.join(chatDir, `${chatSessionId}.json`);
-
-    // Write or update metadata. On the first message we create the file
-    // with firstUserMessage so GET /api/sessions never needs to read the
-    // jsonl content. On subsequent turns we backfill firstUserMessage if
-    // missing (migrates pre-existing sessions).
-    let isFirstTurn = false;
-    try {
-      await access(metaFilePath);
-    } catch {
-      isFirstTurn = true;
-    }
-    if (isFirstTurn) {
-      await writeFile(
-        metaFilePath,
-        JSON.stringify({
-          roleId,
-          startedAt: new Date().toISOString(),
-          firstUserMessage: message,
-        }),
-      );
-    } else {
-      await backfillFirstUserMessage(metaFilePath, message);
-    }
-
-    // Append user message for this turn
-    await appendFile(
-      resultsFilePath,
-      JSON.stringify({ source: "user", type: "text", message }) + "\n",
-    );
-
-    const now = new Date().toISOString();
-    getOrCreateSession(chatSessionId, {
-      roleId,
-      resultsFilePath,
-      selectedImageData,
-      startedAt: now,
-      updatedAt: now,
-    });
-
-    // Register abort callback and mark running. If the session is
-    // already running, reject with 409 Conflict.
-    const abortController = new AbortController();
-    const started = beginRun(chatSessionId, () => abortController.abort());
-    if (!started) {
-      res.status(409).json({ error: "Session is already running" });
-      return;
-    }
-
-    // Fire-and-forget: return 202 immediately, run agent in background.
-    // Events are published to the `session.<chatSessionId>` pub/sub
-    // channel — clients subscribe via WebSocket.
-    res.status(202).json({ chatSessionId });
-
-    const role = getRole(roleId);
-    const claudeSessionId = await readClaudeSessionId(
-      metaFilePath,
-      resultsFilePath,
-    );
-
-    const requestStartedAt = Date.now();
-    log.info("agent", "request received", {
-      chatSessionId,
-      roleId,
-      messageLen: message.length,
-      resumed: Boolean(claudeSessionId),
-    });
-
-    const decoratedMessage = claudeSessionId
-      ? message
-      : prependJournalPointer(message, workspacePath);
-
-    runAgentInBackground({
-      decoratedMessage,
-      role,
-      chatSessionId,
-      claudeSessionId,
-      pluginPrompts,
-      systemPrompt,
-      abortSignal: abortController.signal,
-      resultsFilePath,
-      metaFilePath,
-      requestStartedAt,
-      // Per-turn cache used by the tool-trace driver to remember args
-      // from `tool_call` events so the matching `tool_call_result`
-      // can classify properly. Scoped to this request so toolUseIds
-      // can't collide across turns.
-      toolArgsCache: createArgsCache(),
-    });
+    res.status(202).json({ chatSessionId: result.chatSessionId });
   },
 );
 
@@ -238,8 +249,6 @@ interface BackgroundRunParams {
   role: ReturnType<typeof getRole>;
   chatSessionId: string;
   claudeSessionId: string | undefined;
-  pluginPrompts: Record<string, string> | undefined;
-  systemPrompt: string | undefined;
   abortSignal: AbortSignal;
   resultsFilePath: string;
   metaFilePath: string;
@@ -255,8 +264,6 @@ async function runAgentInBackground(
     role,
     chatSessionId,
     claudeSessionId,
-    pluginPrompts,
-    systemPrompt,
     abortSignal,
     resultsFilePath,
     metaFilePath,
@@ -272,8 +279,6 @@ async function runAgentInBackground(
       chatSessionId,
       PORT,
       claudeSessionId,
-      pluginPrompts,
-      systemPrompt,
       abortSignal,
     )) {
       if (event.type === "claude_session_id") {

@@ -46,7 +46,7 @@
     "cors": "^2.8.6",
     "dotenv": "^17.4.2",
     "express": "^5.2.1",
-    "gui-chat-protocol": "^0.0.4",
+    "gui-chat-protocol": "0.1.0",
     "marked": "^18.0.0",
     "material-icons": "^1.13.14",
     "mulmocast": "^2.6.7",

@@ -35,6 +35,7 @@ import type { IPubSub } from "./pub-sub/index.js";
 import { initSessionStore } from "./session-store/index.js";
 import { requireSameOrigin } from "./csrfGuard.js";
 import { log } from "./logger/index.js";
+import { startChat } from "./routes/agent.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -274,43 +275,32 @@ function startRuntimeServices(httpServer: ReturnType<typeof app.listen>): void {
 })();
 
 function registerDebugTasks(taskManager: ITaskManager, pubsub: IPubSub) {
-  let count = 0;
+  let tick = 0;
 
   taskManager.registerTask({
-    id: "debug.counter",
+    id: "debug.auto-chat",
     description:
-      "Debug counter — logs and publishes debug.beat, self-removes after 10 runs",
+      "Debug — toggles title color 10 times then starts a General-mode chat, then self-removes",
     schedule: { type: "interval", intervalMs: 1_000 },
     run: async () => {
-      count++;
-      const last = count === 10;
-      log.debug("task-manager", "debug.counter tick", { count });
-      pubsub.publish("debug.beat", { count, last });
-      if (last) {
-        taskManager.removeTask("debug.counter");
-        registerDebugCounter2(taskManager, pubsub);
-      }
+      tick++;
+      const last = tick === 10;
+      log.info("debug", `auto-chat countdown ${tick}/10`);
+      pubsub.publish("debug.beat", { count: tick, last });
+
+      if (!last) return;
+
+      taskManager.removeTask("debug.auto-chat");
+      const chatSessionId = crypto.randomUUID();
+      log.info("debug", "starting auto-chat", { chatSessionId });
+      const result = await startChat({
+        message: "Tell me about this app, MulmoClaude.",
+        roleId: "general",
+        chatSessionId,
+      });
+      log.info("debug", "auto-chat result", { kind: result.kind });
     },
   });
 
   log.info("debug", "Debug mode active — registered debug tasks");
-}
-
-function registerDebugCounter2(taskManager: ITaskManager, pubsub: IPubSub) {
-  let count = 0;
-
-  taskManager.registerTask({
-    id: "debug.counter2",
-    description: "Debug counter 2 — fires debug.beat every 2 seconds, 10 times",
-    schedule: { type: "interval", intervalMs: 2_000 },
-    run: async () => {
-      count++;
-      const last = count === 10;
-      log.debug("task-manager", "debug.counter2 tick", { count });
-      pubsub.publish("debug.beat", { count, last });
-      if (last) {
-        taskManager.removeTask("debug.counter2");
-      }
-    },
-  });
 }

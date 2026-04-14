@@ -324,7 +324,6 @@
 <script setup lang="ts">
 import { ref, computed, watch, nextTick, onMounted, reactive } from "vue";
 import { v4 as uuidv4 } from "uuid";
-import { SYSTEM_PROMPT } from "./config/system-prompt";
 import { getPlugin } from "./tools";
 import type { ToolResultComplete } from "gui-chat-protocol/vue";
 import RightSidebar from "./components/RightSidebar.vue";
@@ -1143,9 +1142,7 @@ async function sendMessage(text?: string) {
           message,
           role: sessionRole,
           chatSessionId: session.id,
-          systemPrompt: SYSTEM_PROMPT,
           selectedImageData: extractImageData(selectedRes),
-          getPluginSystemPrompt: (name) => getPlugin(name)?.systemPrompt,
         }),
       ),
     });

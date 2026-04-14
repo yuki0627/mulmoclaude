@@ -104,8 +104,6 @@ export interface RunAgentOptions {
   sessionId: string;
   port: number;
   claudeSessionId?: string;
-  pluginPrompts?: Record<string, string>;
-  systemPrompt?: string;
   /** When aborted, the spawned Claude CLI process is killed. */
   abortSignal?: AbortSignal;
 }
@@ -117,8 +115,6 @@ export async function* runAgent(
   sessionId: string,
   port: number,
   claudeSessionId?: string,
-  pluginPrompts?: Record<string, string>,
-  systemPrompt?: string,
   abortSignal?: AbortSignal,
 ): AsyncGenerator<AgentEvent> {
   const activePlugins = getActivePlugins(role);
@@ -142,9 +138,13 @@ export async function* runAgent(
   const fullSystemPrompt = buildSystemPrompt({
     role,
     workspacePath: useDocker ? CONTAINER_WORKSPACE_PATH : workspacePath,
-    pluginPrompts,
-    systemPrompt,
   });
+
+  // In debug mode (--debug), dump the full system prompt on the first
+  // message of each session so developers can inspect what the LLM sees.
+  if (!claudeSessionId && process.argv.includes("--debug")) {
+    log.info("agent", "system prompt for new session:\n" + fullSystemPrompt);
+  }
 
   const mcpPaths = resolveMcpConfigPaths({
     workspacePath,
