@@ -95,8 +95,9 @@ These are services we **don't control**. Each has its own:
 - Authentication model (bot tokens, OAuth, signing secrets)
 - Ingress pattern (polling vs webhooks)
 - Message format (text limits, markup flavor, media handling)
-- Rate limits and SLA constraints (Slack's 3-second ACK, LINE's 1-minute
-  reply-token, WhatsApp's 24-hour window)
+- Rate limits and SLA constraints (Telegram's long-polling timeout,
+  Slack's 3-second ACK, LINE's 1-minute reply-token, WhatsApp's 24-hour
+  messaging window, Twitter/X's strict per-app and per-user rate limits)
 
 Our code **conforms** to each of these — we can't change them. Everything
 above this layer is under our control.
@@ -159,8 +160,17 @@ The state store hides the filesystem details behind a small API:
 
 - `get(externalChatId)` — load or return null
 - `set(state)` — persist (atomic write)
-- `reset(externalChatId)` — start a fresh session, keep the role
+- `reset(externalChatId, roleId?)` — create a fresh session (new ID),
+  make it active. The old session is **not deleted** — it stays in the
+  sidebar for reference
+- `connect(externalChatId, chatSessionId)` — point this chat at an
+  existing MulmoClaude session. This is how `/connect` from the Web UI
+  works (see "Session model" below)
 - `delete(externalChatId)` — remove the mapping
+
+**Session ID format**: `{transportId}-{externalChatId}-{timestamp}`
+(e.g. `telegram-123-1713100000`). This makes the origin visible in the
+Web UI sidebar at a glance.
 
 Path safety is enforced via `resolveWithinRoot()` (shared with the file
 explorer) so a malicious external ID can't escape the transport directory.
@@ -184,7 +194,55 @@ if (result) {
 If a platform needs a unique command (`/slack-thread`, say), it can wrap
 or extend this handler without forking it.
 
-#### 3c. `relay.ts` — the bridge to the agent
+#### 3c. Session model — one pointer per chat
+
+MulmoClaude's Web UI supports multiple sessions (visible in the sidebar),
+but a messaging app is a single continuous thread. How do we bridge
+these two worlds?
+
+The answer: **each messaging chat has exactly one "active session
+pointer"**. This pointer is just the `sessionId` field in the chat-state
+JSON file. Both the messaging app and the Web UI can change what it
+points to:
+
+```
+Telegram chat 123
+  ┌──────────────────────────────┐
+  │ active session pointer:      │
+  │   sessionId = "telegram-123-1713100000"  ──────► jsonl, sidebar, etc.
+  │                              │
+  │ Previous sessions:           │
+  │   (still in sidebar,         │
+  │    just not "active" here)   │
+  └──────────────────────────────┘
+```
+
+**From the messaging app:**
+
+- First message ever → creates `telegram-{chatId}-{timestamp}`, sets
+  the pointer
+- Subsequent messages → continue the same session via the pointer
+- `/reset` → creates a **new** session, moves the pointer. The old
+  session stays in the sidebar — it's not deleted
+- `/role artist` → creates a new session with a different role, moves
+  the pointer
+
+**From the Web UI:**
+
+- Any messaging session appears in the sidebar like a normal session.
+  The user can open it and continue the conversation from the browser
+- `/connect telegram` (or a "Connect to Telegram" button) → takes the
+  currently-open browser session and makes it the active session for
+  the Telegram chat. This calls `POST /api/transports/telegram/connect`
+  which updates the pointer in the chat-state file
+
+**Why this matters:** without this model, you get "ghost sessions" that
+the Web UI can't see, or messaging chats that can't continue browser
+conversations. The pointer model means sessions are just normal
+MulmoClaude sessions — the pointer is a lightweight indirection that
+both sides can manipulate.
+
+#### 3d. `relay.ts` — the bridge to the agent
 
 The single function that non-command text flows through:
 
@@ -197,9 +255,10 @@ export async function relayMessage({
   onError,
 }: RelayMessageParams): Promise<RelayResult> {
   // 1. Invoke Layer 4's public entry point
-  const { sessionId } = await startChat({
-    sessionId: chatState.sessionId,
-    claudeSessionId: chatState.claudeSessionId,
+  //    Note: claudeSessionId is NOT a parameter — startChat() reads it
+  //    from the session's meta file on disk automatically.
+  const result = await startChat({
+    chatSessionId: chatState.sessionId,
     message,
     roleId: chatState.roleId,
   });
@@ -333,7 +392,7 @@ Sending a text message from your phone triggers this sequence:
      "Sunny with some clouds"
 ```
 
-Seventeen steps — but only steps at Layers 2 and 3 are **new code**.
+Thirteen steps — but only steps at Layers 2 and 3 are **new code**.
 Everything from "startChat" onwards already exists and is shared with
 the Web UI unchanged.
 
@@ -430,14 +489,20 @@ kind of caller.
    implements `MessagingTransport` and does nothing but talk the
    platform's wire protocol.
 3. **Layer 3 is where shared logic lives.** `chat-state.ts` (mapping),
-   `commands.ts` (slash commands), `relay.ts` (bridge to `startChat()`).
-   Write once, reuse across transports.
-4. **Layer 4 is the Web UI's existing entry point.** Messaging
+   `commands.ts` (slash commands), `relay.ts` (bridge to `startChat()`),
+   and the session model (one active pointer per chat). Write once,
+   reuse across transports.
+4. **One chat = one active session pointer.** A messaging chat always
+   points to exactly one MulmoClaude session. `/reset` creates a new
+   session and moves the pointer. `/connect` from the Web UI reassigns
+   the pointer to an existing browser session. Old sessions are never
+   deleted — they remain in the sidebar.
+5. **Layer 4 is the Web UI's existing entry point.** Messaging
    transports don't modify it — they just call `startChat()` like the
    Web UI does.
-5. **Two session IDs, two layers.** `sessionId` = persistent, lives in
+6. **Two session IDs, two layers.** `sessionId` = persistent, lives in
    Layer 4's jsonl. `claudeSessionId` = volatile, lives in Layer 5's CLI
    process. Recovery when the volatile one dies belongs in Layer 3.
-6. **The Web UI and messaging transports share everything below Layer
+7. **The Web UI and messaging transports share everything below Layer
    3.** A session started on Telegram appears in the Web UI sidebar
    automatically, because session-store doesn't care who the caller was.
