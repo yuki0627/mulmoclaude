@@ -230,6 +230,195 @@ router.post(
   },
 );
 
+// --- POST /api/sources/manage -------------------------------------------
+//
+// MCP-friendly single-endpoint wrapper for the manageSource plugin.
+// Every action returns { data: { sources, ... } } so the canvas
+// View can re-render without a separate list call. Unlike the
+// REST surface above, this endpoint never throws on validation —
+// errors come back as 400/500 with { error } and the LLM gets a
+// human-readable error to relay.
+
+interface ManageSourceBody {
+  action?: unknown;
+  slug?: unknown;
+  title?: unknown;
+  url?: unknown;
+  fetcherKind?: unknown;
+  fetcherParams?: unknown;
+  schedule?: unknown;
+  categories?: unknown;
+  notes?: unknown;
+}
+
+interface ManageSourceData {
+  sources: Source[];
+  highlightSlug?: string;
+  classifyRationale?: string;
+  lastRebuild?: {
+    plannedCount: number;
+    itemCount: number;
+    duplicateCount: number;
+    archiveErrors: string[];
+    isoDate: string;
+  };
+}
+
+interface ManageSourceSuccess {
+  message: string;
+  instructions: string;
+  data: ManageSourceData;
+}
+
+const MANAGE_ACTIONS = new Set(["list", "register", "remove", "rebuild"]);
+
+router.post(
+  "/sources/manage",
+  async (
+    req: Request<object, unknown, ManageSourceBody>,
+    res: Response<ManageSourceSuccess | ErrorResponse>,
+  ) => {
+    const action = req.body?.action;
+    if (typeof action !== "string" || !MANAGE_ACTIONS.has(action)) {
+      res.status(400).json({
+        error: `action must be one of: ${[...MANAGE_ACTIONS].join(", ")}`,
+      });
+      return;
+    }
+    try {
+      switch (action) {
+        case "list":
+          await respondWithList(res, "Loaded source registry.");
+          return;
+        case "register":
+          await handleRegister(req.body, res);
+          return;
+        case "remove":
+          await handleRemove(req.body, res);
+          return;
+        case "rebuild":
+          await handleRebuild(res);
+          return;
+      }
+    } catch (err) {
+      log.warn("sources", "manage failed", { action, error: String(err) });
+      res.status(500).json({
+        error: err instanceof Error ? err.message : "manage failed",
+      });
+    }
+  },
+);
+
+async function respondWithList(
+  res: Response<ManageSourceSuccess | ErrorResponse>,
+  message: string,
+  extra: Partial<ManageSourceData> = {},
+): Promise<void> {
+  const sources = await listSources(workspacePath);
+  res.json({
+    message,
+    instructions:
+      "The current information-source registry is now displayed in the canvas.",
+    data: { sources, ...extra },
+  });
+}
+
+async function handleRegister(
+  body: ManageSourceBody,
+  res: Response<ManageSourceSuccess | ErrorResponse>,
+): Promise<void> {
+  const parsed = parseRegisterBody(body as RegisterSourceBody);
+  if ("error" in parsed) {
+    res.status(parsed.status).json({ error: parsed.error });
+    return;
+  }
+  const existing = await readSource(workspacePath, parsed.slug);
+  if (existing) {
+    res.status(409).json({ error: `source "${parsed.slug}" already exists` });
+    return;
+  }
+  const { categories, rationale } = await resolveCategories(parsed);
+  const source: Source = {
+    slug: parsed.slug,
+    title: parsed.title,
+    url: parsed.url,
+    fetcherKind: parsed.fetcherKind,
+    fetcherParams: parsed.fetcherParams,
+    schedule: parsed.schedule,
+    categories,
+    maxItemsPerFetch: parsed.maxItemsPerFetch,
+    addedAt: new Date().toISOString(),
+    notes: parsed.notes,
+  };
+  await writeSource(workspacePath, source);
+  log.info("sources", "source registered (manage)", {
+    slug: parsed.slug,
+    fetcherKind: parsed.fetcherKind,
+  });
+  await respondWithList(res, `Registered source "${parsed.slug}".`, {
+    highlightSlug: parsed.slug,
+    ...(rationale !== undefined && { classifyRationale: rationale }),
+  });
+}
+
+async function handleRemove(
+  body: ManageSourceBody,
+  res: Response<ManageSourceSuccess | ErrorResponse>,
+): Promise<void> {
+  const slug = typeof body.slug === "string" ? body.slug.trim() : "";
+  if (!isValidSlug(slug)) {
+    res
+      .status(400)
+      .json({ error: "slug is required and must be a valid slug" });
+    return;
+  }
+  const removed = await deleteSource(workspacePath, slug);
+  await deleteSourceState(workspacePath, slug);
+  if (removed) {
+    log.info("sources", "source deleted (manage)", { slug });
+  }
+  await respondWithList(
+    res,
+    removed
+      ? `Removed source "${slug}".`
+      : `No source "${slug}" was registered (nothing to remove).`,
+  );
+}
+
+async function handleRebuild(
+  res: Response<ManageSourceSuccess | ErrorResponse>,
+): Promise<void> {
+  log.info("sources", "manual rebuild triggered (manage)");
+  const result = await runSourcesPipeline({
+    workspaceRoot: workspacePath,
+    scheduleType: "daily",
+    fetcherDeps: {
+      http: defaultHttpFetcherDeps(NO_ROBOTS),
+      now: () => Date.now(),
+    },
+    nowMs: () => Date.now(),
+  });
+  log.info("sources", "rebuild complete (manage)", {
+    plannedCount: result.plannedCount,
+    itemCount: result.items.length,
+    duplicateCount: result.dedup.duplicateCount,
+    archiveErrors: result.archiveErrors.length,
+  });
+  await respondWithList(
+    res,
+    `Rebuild complete: ${result.items.length} items from ${result.plannedCount} sources.`,
+    {
+      lastRebuild: {
+        plannedCount: result.plannedCount,
+        itemCount: result.items.length,
+        duplicateCount: result.dedup.duplicateCount,
+        archiveErrors: result.archiveErrors,
+        isoDate: result.isoDate,
+      },
+    },
+  );
+}
+
 // --- helpers ------------------------------------------------------------
 
 // Parse + validate a fetcherKind body field. Returns null when
