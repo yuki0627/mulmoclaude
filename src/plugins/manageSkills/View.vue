@@ -7,8 +7,8 @@
       <div>
         <h2 class="text-lg font-semibold text-gray-800">Skills</h2>
         <p class="text-xs text-gray-400 mt-0.5">
-          {{ skills.length }} available · click one to view · "Run" sends its
-          SKILL.md as a message
+          {{ skills.length }} available · click one to view · "Run" invokes it
+          as /&lt;name&gt;
         </p>
       </div>
     </div>
