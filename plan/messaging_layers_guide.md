@@ -34,9 +34,15 @@ more platforms:
    so the Telegram bot was technically working but producing "ghost
    sessions" invisible to the rest of the system.
 
-The messaging transport design introduces a cushion between "talking to an
-external messaging platform" and "invoking the agent" so these concerns
-live in exactly one place.
+The first instinct is to solve this with an in-process abstraction layer —
+a shared `relayMessage()` function that all platform adapters call. That
+helps with duplication, but every platform's code, dependencies, and
+failure modes still live inside the MulmoClaude server process. A bad
+Telegram API response could crash the whole server. Every bridge update
+requires a server restart.
+
+The real fix is **process isolation**: bridges run as separate processes
+and talk to MulmoClaude via HTTP, just like the Web UI does.
 
 ---
 
@@ -44,45 +50,54 @@ live in exactly one place.
 
 ```
 ┌────────────────────────────────────────────────────────────┐
-│ Layer 1: External platforms                                    │
-│   Telegram / Slack / LINE / WhatsApp / Twitter                 │
-│   (services we don't own — we have to speak their protocol)    │
+│ Layer 1: External platforms                                │
+│   Telegram / LINE / WhatsApp / Slack / Twitter             │
+│   (services we don't own — we speak their protocol)        │
 └─────────────┬──────────────────────────────────────────────┘
               │ HTTP APIs / webhooks
 ┌─────────────▼──────────────────────────────────────────────┐
-│ Layer 2: Transport adapters (per-platform)                     │
-│   server/transports/telegram/                                  │
-│   server/transports/slack/                                     │
-│   server/transports/line/ …                                    │
-│   Speaks one platform's protocol, and ONLY that protocol.     │
+│ Layer 2: Bridge processes (out-of-process, per platform)   │
+│   bridges/telegram/     ← child process of MulmoClaude     │
+│   bridges/line/         ← child process of MulmoClaude     │
+│   bridges/slack/ …      ← child process of MulmoClaude     │
+│   Speaks one platform's protocol, and ONLY that protocol.  │
+│   Stateless — knows nothing about sessions or roles.       │
 └─────────────┬──────────────────────────────────────────────┘
-              │ shared MessagingTransport interface
+              │ HTTP: POST /api/chat/{transportId}/{externalChatId}
 ┌─────────────▼──────────────────────────────────────────────┐
-│ Layer 3: Shared relay / chat-state / commands                  │
-│   server/transports/relay.ts                                   │
-│   server/transports/chat-state.ts                              │
-│   server/transports/commands.ts                                │
-│   Platform-agnostic glue between Layer 2 and Layer 4.          │
+│ Layer 3: Chat Service API + state (server-side)            │
+│   server/chat-service/index.ts    ← HTTP endpoints         │
+│   server/chat-service/chat-state.ts  ← session pointer     │
+│   server/chat-service/commands.ts    ← /reset, /role, etc. │
+│   Receives raw text, manages sessions, invokes the agent.  │
 └─────────────┬──────────────────────────────────────────────┘
               │ startChat() — existing public entry point
 ┌─────────────▼──────────────────────────────────────────────┐
-│ Layer 4: MulmoClaude core (already exists, not modified)       │
-│   startChat() — session creation, jsonl persistence,           │
-│                 background agent launch, post-processing       │
-│   runAgent() — Claude CLI subprocess orchestration             │
-│   session-store — in-memory sessionId → state                  │
-│   pub/sub — session event distribution                         │
+│ Layer 4: MulmoClaude core (already exists, not modified)   │
+│   startChat() — session creation, jsonl persistence,       │
+│                 background agent launch, post-processing   │
+│   runAgent() — Claude CLI subprocess orchestration         │
+│   session-store — in-memory sessionId → state              │
+│   pub/sub — session event distribution                     │
 └─────────────┬──────────────────────────────────────────────┘
               │ subprocess calls
 ┌─────────────▼──────────────────────────────────────────────┐
-│ Layer 5: Claude CLI + workspace                                │
-│   claude (Anthropic Agent SDK CLI)                             │
-│   ~/mulmoclaude/ — files are the source of truth               │
+│ Layer 5: Claude CLI + workspace                            │
+│   claude (Anthropic Agent SDK CLI)                         │
+│   ~/mulmoclaude/ — files are the source of truth           │
 └────────────────────────────────────────────────────────────┘
 ```
 
 Layers 4 and 5 exist today. Layers 2 and 3 are what `messaging_transports.md`
 proposes to build.
+
+**The critical boundary is between Layer 2 and Layer 3.** It's an HTTP
+API across a process boundary. This means:
+
+- A bridge crash doesn't take down the server
+- A bridge can be restarted without restarting MulmoClaude
+- A bridge can be developed in any language
+- Adding a new bridge requires **zero server changes**
 
 ---
 
@@ -102,53 +117,100 @@ These are services we **don't control**. Each has its own:
 Our code **conforms** to each of these — we can't change them. Everything
 above this layer is under our control.
 
-### Layer 2 — Transport adapters
+### Layer 2 — Bridge processes
 
-Per-platform code. Each directory (`telegram/`, `slack/`, …) contains
-everything specific to one platform:
+Per-platform code running as **separate child processes** of MulmoClaude.
+Each bridge is a small, self-contained program:
 
 ```
-server/transports/telegram/
-  index.ts   ← MessagingTransport implementation + init()
-  poll.ts    ← "Ask Telegram for new messages every 5s" loop, registered
-                as a task with the task manager
+bridges/telegram/
+  index.ts   ← Poll loop: getUpdates → POST to Chat Service API → sendMessage
   api.ts     ← Telegram API wrappers (sendMessage, getUpdates, sendTyping)
-  types.ts   ← Telegram-specific response types
 ```
 
-**Layer 2's two responsibilities, and nothing else:**
+**A bridge's entire job:**
 
-1. **Inbound**: parse a platform-specific message → build a normalized
-   request → hand it to Layer 3
-2. **Outbound**: receive a reply from Layer 3 → format for the platform →
-   call the platform's API
+1. **Inbound**: receive a message from the platform → extract chat ID
+   and text → `POST /api/chat/{transportId}/{chatId}` with `{ text }`
+2. **Outbound**: receive the response → send it back via the platform's
+   API
 
-**What Layer 2 does NOT know about:**
+**What a bridge does NOT know about:**
 
+- Session IDs (the server manages the active session pointer)
+- Roles (the server handles `/role` commands)
+- Commands (the server parses `/reset`, `/help`, etc.)
 - `runAgent()` or `startChat()`
-- Session IDs, role management, command parsing
 - Pub/sub channels
 - The workspace filesystem
+- Any other bridge's existence
 
-If a platform's API changes (Telegram adds a new field, LINE deprecates
-an endpoint), **only that platform's Layer 2 directory changes**. Every
-other layer stays untouched.
+Here's the Telegram bridge in its entirety:
 
-### Layer 3 — Shared relay / chat-state / commands
+```ts
+const API_URL = process.env.MULMOCLAUDE_API_URL!;
+const TRANSPORT_ID = process.env.MULMOCLAUDE_TRANSPORT_ID!;
+const BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN!;
 
-This is where the five-way duplication from the naive design collapses
-into one copy. Three sub-concerns:
+let offset = 0;
 
-#### 3a. `chat-state.ts` — who is this conversation?
+async function poll() {
+  const updates = await telegramGetUpdates(BOT_TOKEN, offset);
+  for (const update of updates) {
+    offset = update.update_id + 1;
+    const chatId = String(update.message.chat.id);
+    const text = update.message.text?.trim();
+    if (!text) continue;
 
-Every external chat gets mapped to a MulmoClaude session, persisted as a
-JSON file per chat:
+    await telegramSendTyping(BOT_TOKEN, chatId);
+
+    const res = await fetch(
+      `${API_URL}/api/chat/${TRANSPORT_ID}/${chatId}`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ text }),
+      },
+    );
+    const { reply } = await res.json();
+
+    await telegramSendMessage(BOT_TOKEN, chatId, reply);
+  }
+}
+
+setInterval(poll, 5000);
+```
+
+~30 lines of logic. If Telegram changes their API, **only this file
+changes**. The server, other bridges, and the Web UI are completely
+unaffected.
+
+### Layer 3 — Chat Service API + state (server-side)
+
+This is the brain. When a bridge sends
+`POST /api/chat/telegram/123 { text: "hello" }`, Layer 3:
+
+1. Looks up chat state for `telegram/123` on disk
+2. If no state exists, creates a new session `telegram-123-{timestamp}`
+3. Checks if the text is a command (`/reset`, `/role`, `/help`, etc.)
+   - If so, executes it and returns the result immediately
+4. If not a command, calls `startChat()` with the active session ID
+5. Subscribes to pub/sub for session events
+6. Collects text chunks into a complete reply
+7. Returns `{ reply: "..." }` to the bridge
+
+Three sub-modules:
+
+#### 3a. `chat-state.ts` — the active session pointer
+
+Every external chat gets mapped to one active MulmoClaude session,
+persisted as a JSON file:
 
 ```json
 // ~/mulmoclaude/transports/telegram/chats/123.json
 {
   "externalChatId": "123",
-  "sessionId": "abc-def",
+  "sessionId": "telegram-123-1713100000",
   "roleId": "general",
   "claudeSessionId": "xyz-789",
   "startedAt": "2026-04-14T12:00:00Z",
@@ -156,43 +218,42 @@ JSON file per chat:
 }
 ```
 
-The state store hides the filesystem details behind a small API:
+The state store API:
 
-- `get(externalChatId)` — load or return null
-- `set(state)` — persist (atomic write)
-- `reset(externalChatId, roleId?)` — create a fresh session (new ID),
-  make it active. The old session is **not deleted** — it stays in the
-  sidebar for reference
-- `connect(externalChatId, chatSessionId)` — point this chat at an
-  existing MulmoClaude session. This is how `/connect` from the Web UI
-  works (see "Session model" below)
-- `delete(externalChatId)` — remove the mapping
+- `get(transportId, externalChatId)` — load or return null
+- `set(transportId, state)` — persist (atomic write)
+- `reset(transportId, externalChatId, roleId?)` — create a fresh
+  session (new ID), move the pointer. The old session is **not deleted**
+  — it stays in the sidebar for reference
+- `connect(transportId, chatSessionId)` — point this transport at an
+  existing MulmoClaude session (called from the Web UI's "Connect to
+  Telegram" action)
 
 **Session ID format**: `{transportId}-{externalChatId}-{timestamp}`
 (e.g. `telegram-123-1713100000`). This makes the origin visible in the
 Web UI sidebar at a glance.
 
-Path safety is enforced via `resolveWithinRoot()` (shared with the file
-explorer) so a malicious external ID can't escape the transport directory.
+Path safety is enforced via `resolveWithinRoot()` so a malicious
+external ID can't escape the transport directory.
 
-#### 3b. `commands.ts` — slash commands
+#### 3b. `commands.ts` — slash commands (server-side)
 
-A user typing `/role artist` or `/reset` should behave the same on
-Telegram, LINE, Slack, WhatsApp. One implementation, called by all
-Layer 2 adapters:
+A user typing `/role artist` or `/reset` gets the same behavior
+regardless of which platform they're on. The server handles all commands
+— bridges just forward raw text:
 
 ```ts
-const result = await handleCommand(text, chatState);
-if (result) {
-  // command recognized — send result.reply back via Layer 2
-  if (result.nextState) await chatStateStore.set(result.nextState);
-  return result.reply;
+// Inside the Chat Service API handler:
+const command = parseCommand(text);
+if (command) {
+  const result = await executeCommand(command, chatState);
+  if (result.nextState) await chatStateStore.set(transportId, result.nextState);
+  return res.json({ reply: result.reply });
 }
-// not a command — fall through to relay
+// Not a command — fall through to startChat()
 ```
 
-If a platform needs a unique command (`/slack-thread`, say), it can wrap
-or extend this handler without forking it.
+Available commands: `/reset`, `/help`, `/roles`, `/role <id>`, `/status`.
 
 #### 3c. Session model — one pointer per chat
 
@@ -200,96 +261,44 @@ MulmoClaude's Web UI supports multiple sessions (visible in the sidebar),
 but a messaging app is a single continuous thread. How do we bridge
 these two worlds?
 
-The answer: **each messaging chat has exactly one "active session
-pointer"**. This pointer is just the `sessionId` field in the chat-state
-JSON file. Both the messaging app and the Web UI can change what it
-points to:
+**Each messaging chat has exactly one "active session pointer"**, managed
+entirely by the server. The bridge never sees session IDs.
 
 ```
 Telegram chat 123
-  ┌──────────────────────────────┐
-  │ active session pointer:      │
-  │   sessionId = "telegram-123-1713100000"  ──────► jsonl, sidebar, etc.
-  │                              │
-  │ Previous sessions:           │
-  │   (still in sidebar,         │
-  │    just not "active" here)   │
-  └──────────────────────────────┘
+  ┌──────────────────────────────────────────┐
+  │ active session pointer:                  │
+  │   sessionId = "telegram-123-1713100000"  │───► jsonl, sidebar, etc.
+  │                                          │
+  │ Previous sessions:                       │
+  │   (still in sidebar,                     │
+  │    just not "active" here)               │
+  └──────────────────────────────────────────┘
 ```
 
-**From the messaging app:**
+**From the messaging app (via bridge → Chat Service API):**
 
-- First message ever → creates `telegram-{chatId}-{timestamp}`, sets
-  the pointer
-- Subsequent messages → continue the same session via the pointer
-- `/reset` → creates a **new** session, moves the pointer. The old
-  session stays in the sidebar — it's not deleted
-- `/role artist` → creates a new session with a different role, moves
-  the pointer
+- First message ever → server creates `telegram-{chatId}-{timestamp}`,
+  sets the pointer
+- Subsequent messages → server routes to the same session via the pointer
+- `/reset` → server creates a **new** session, moves the pointer. The
+  old session stays in the sidebar — it's not deleted
+- `/role artist` → server creates a new session with a different role,
+  moves the pointer
 
 **From the Web UI:**
 
 - Any messaging session appears in the sidebar like a normal session.
   The user can open it and continue the conversation from the browser
-- `/connect telegram` (or a "Connect to Telegram" button) → takes the
-  currently-open browser session and makes it the active session for
-  the Telegram chat. This calls `POST /api/transports/telegram/connect`
-  which updates the pointer in the chat-state file
+- "Connect to Telegram" (calls `POST /api/chat/telegram/connect`) →
+  reassigns the pointer to the currently-open browser session
 
-**Why this matters:** without this model, you get "ghost sessions" that
-the Web UI can't see, or messaging chats that can't continue browser
-conversations. The pointer model means sessions are just normal
-MulmoClaude sessions — the pointer is a lightweight indirection that
-both sides can manipulate.
-
-#### 3d. `relay.ts` — the bridge to the agent
-
-The single function that non-command text flows through:
-
-```ts
-export async function relayMessage({
-  message,
-  chatState,
-  onText,
-  onDone,
-  onError,
-}: RelayMessageParams): Promise<RelayResult> {
-  // 1. Invoke Layer 4's public entry point
-  //    Note: claudeSessionId is NOT a parameter — startChat() reads it
-  //    from the session's meta file on disk automatically.
-  const result = await startChat({
-    chatSessionId: chatState.sessionId,
-    message,
-    roleId: chatState.roleId,
-  });
-
-  // 2. Subscribe to session events via pub/sub
-  const unsubscribe = subscribeToSession(sessionId, (event) => {
-    if (event.type === "text") onText?.(event.chunk);
-    if (event.type === "done") finalize();
-    if (event.type === "error") onError?.(event.message);
-  });
-
-  // 3. Await completion, collecting text into a full reply
-  const fullReply = await collectUntilDone();
-  unsubscribe();
-
-  // 4. Persist the updated claudeSessionId back to chat-state
-  await chatStateStore.set({
-    ...chatState,
-    claudeSessionId: /* from the agent's last event */,
-    updatedAt: new Date().toISOString(),
-  });
-
-  return { kind: "success", reply: fullReply };
-}
-```
-
-**This is the function that PR #106 should have had but didn't.** The
-naive `runAgent()` call becomes a `startChat()` call, and pub/sub event
-collection takes the place of iterating agent events manually. Every
-benefit of `startChat()` (jsonl, session-store, journal triggers,
-chat-index) flows through automatically.
+**Why the server owns this, not the bridge:** the `/connect` flow
+originates from the Web UI and needs to update the pointer. If the
+pointer lived in the bridge, the Web UI would need a way to talk to
+the bridge — adding complexity. With the pointer on the server, both
+the bridge (via Chat Service API) and the Web UI (via the same API)
+can manipulate it through a single interface.
 
 ### Layer 4 — MulmoClaude core (existing)
 
@@ -317,8 +326,8 @@ startChat()
 
 The Web UI uses this same entry point — the only difference is how the
 caller subscribes to the resulting events (WebSocket in the browser,
-in-process subscriber for Layer 3 relay). **Same agent, same session, same
-lifecycle hooks.**
+in-process pub/sub subscriber for Layer 3's Chat Service API). **Same
+agent, same session, same lifecycle hooks.**
 
 This is why adding Telegram doesn't require modifying the agent code: the
 agent is downstream of `startChat()`, and `startChat()` doesn't care who
@@ -331,8 +340,8 @@ The actual intelligence and the actual storage. `runAgent()` spawns
 (`~/mulmoclaude/`) is the database — wiki pages, todos, calendar, chat
 jsonl, etc. all live as files.
 
-Messaging transports don't interact with this layer directly. They don't
-need to — Layer 4's `startChat()` covers everything they need to do.
+Bridges don't interact with this layer at all. They don't even know it
+exists — Layer 3's Chat Service API covers everything.
 
 ---
 
@@ -347,25 +356,22 @@ Sending a text message from your phone triggers this sequence:
 [Telegram's server]
   │  Queues the message for the bot account
   ▼
-[Layer 2: telegram/poll.ts]
-  │  Polling task fires every 5s, calls getUpdates
+[Layer 2: telegram bridge process]
+  │  Poll fires, calls getUpdates
   │  Gets {chatId: 123, text: "What's the weather today?"}
+  │  POST http://localhost:3001/api/chat/telegram/123
+  │       body: { text: "What's the weather today?" }
   ▼
-[Layer 3: chat-state.ts]
+[Layer 3: Chat Service API]
   │  Loads ~/mulmoclaude/transports/telegram/chats/123.json
-  │  → sessionId = "abc-def", role = "general"
-  ▼
-[Layer 3: commands.ts]
+  │  → sessionId = "telegram-123-1713100000", role = "general"
   │  Text doesn't start with "/" → not a command
-  ▼
-[Layer 3: relay.ts]
-  │  Calls startChat({ sessionId: "abc-def", message: "...", … })
-  │  Subscribes to session "abc-def" via pub/sub
+  │  Calls startChat({ chatSessionId: "telegram-123-...", message: "...", roleId: "general" })
   ▼
 [Layer 4: startChat]
-  │  Appends {type:"text", role:"user", message:"..."} to the session jsonl
+  │  Appends user message to the session jsonl
   │  Marks session running in session-store
-  │  Spawns runAgentInBackground() in the background
+  │  Spawns runAgentInBackground()
   ▼
 [Layer 5: Claude CLI subprocess]
   │  Receives prompt, decides to call the web_search plugin
@@ -373,17 +379,16 @@ Sending a text message from your phone triggers this sequence:
   │  Claude drafts a reply and emits text chunks
   ▼
 [Layer 4: pub/sub]
-  │  Each text chunk publishes to the "session:abc-def" channel
+  │  Each text chunk publishes to the "session:telegram-123-..." channel
   │  Final done event on completion
   ▼
-[Layer 3: relay.ts]
-  │  Subscriber collects chunks into fullReply = "Sunny with some clouds"
-  │  done event triggers finalize()
-  │  Persists updated claudeSessionId back to chat-state
-  │  Returns { kind: "success", reply: "Sunny with some clouds" }
+[Layer 3: Chat Service API]
+  │  In-process subscriber collects chunks into fullReply = "Sunny with some clouds"
+  │  Done event triggers finalize
+  │  Returns HTTP response: { reply: "Sunny with some clouds" }
   ▼
-[Layer 2: telegram/api.ts]
-  │  Calls telegramApi.sendMessage(chatId: 123, text: "Sunny…")
+[Layer 2: telegram bridge process]
+  │  Calls telegramSendMessage(chatId: 123, text: "Sunny…")
   ▼
 [Telegram's server]
   │  Delivers to the phone
@@ -392,9 +397,11 @@ Sending a text message from your phone triggers this sequence:
      "Sunny with some clouds"
 ```
 
-Thirteen steps — but only steps at Layers 2 and 3 are **new code**.
-Everything from "startChat" onwards already exists and is shared with
-the Web UI unchanged.
+Only the bridge process (Layer 2) and the Chat Service API (Layer 3) are
+**new code**. Everything from `startChat()` onwards already exists and is
+shared with the Web UI unchanged. The bridge process itself is ~30 lines
+of logic — it just shuttles text between Telegram's API and one HTTP
+endpoint.
 
 ---
 
@@ -407,26 +414,26 @@ session IDs, and they live at different layers with different lifetimes.
 ┌─────────────────────────────────────────────────┐
 │ Layer 3 chat-state (~/mulmoclaude/transports/…) │
 │   externalChatId: "123"                         │
-│   sessionId: "abc-def"        ──┐                │
-│   claudeSessionId: "xyz-789" ──┐ │                │
-└───────────────────────────────┼─┼───────────────┘
-                                │ │
-┌───────────────────────────────▼─┼───────────────┐
-│ Layer 4 session-store + jsonl   │                 │
-│   sessionId "abc-def"           │                 │
-│   Persistent — lives as long    │                 │
-│   as the jsonl file exists.     │                 │
-│   Shared between Telegram and   │                 │
-│   the Web UI (same sidebar).    │                 │
-└─────────────────────────────────┼───────────────┘
+│   sessionId: "telegram-123-…"     ──┐            │
+│   claudeSessionId: "xyz-789" ──┐  │             │
+└──────────────────────────────┼──┼──────────────┘
+                               │  │
+┌──────────────────────────────┼──▼──────────────┐
+│ Layer 4 session-store + jsonl   │               │
+│   sessionId "telegram-123-…"    │               │
+│   Persistent — lives as long    │               │
+│   as the jsonl file exists.     │               │
+│   Shared between the bridge     │               │
+│   and the Web UI (same sidebar).│               │
+└─────────────────────────────────┼──────────────┘
                                   │
-┌─────────────────────────────────▼───────────────┐
-│ Layer 5 Claude CLI process                       │
-│   claudeSessionId "xyz-789"                      │
-│   Volatile — held in the claude CLI's internal   │
-│   conversation state. Disappears on CLI restart, │
-│   TTL expiry, or crash.                          │
-└──────────────────────────────────────────────────┘
+┌─────────────────────────────────▼──────────────┐
+│ Layer 5 Claude CLI process                      │
+│   claudeSessionId "xyz-789"                     │
+│   Volatile — held in the claude CLI's internal  │
+│   conversation state. Disappears on CLI restart,│
+│   TTL expiry, or crash.                         │
+└─────────────────────────────────────────────────┘
 ```
 
 - **`sessionId`** is the MulmoClaude identity of the conversation. It
@@ -441,9 +448,11 @@ When `claudeSessionId` becomes stale (CLI restarted between messages,
 process crashed, TTL elapsed), the CLI returns `"No conversation found
 with session ID: xyz-789"`. The `sessionId` is still intact — we just
 need to drop the stale claudeSessionId and let the CLI start a new
-conversation. This is issue #211 territory, and the fail-over should
-live in Layer 3's `relay.ts` so every transport benefits from it
-automatically.
+conversation. This recovery logic lives in Layer 3's Chat Service API
+so every transport benefits automatically.
+
+**Bridges never see either session ID.** They send text and get text
+back. The two-ID complexity is entirely contained within Layers 3-5.
 
 ---
 
@@ -474,35 +483,71 @@ Bypassing them means messages appear to "work" (the bot replies) but:
 
 `startChat()` exists specifically because these responsibilities are
 non-trivial. **The rule of thumb: any new caller that wants to invoke
-the agent must go through `startChat()`.** Transports are just one more
-kind of caller.
+the agent must go through `startChat()`.** The Chat Service API is that
+caller — and bridges are one step further removed, talking only to the
+API.
+
+---
+
+## Why out-of-process bridges, not in-process adapters
+
+The first version of this plan had all bridges running inside the
+MulmoClaude server process. The shift to out-of-process happened because:
+
+1. **Failure isolation.** If the Telegram API returns garbage and the
+   parsing code throws, only the Telegram bridge crashes. MulmoClaude,
+   the Web UI, and every other bridge keep running. The bridge manager
+   can restart it automatically.
+
+2. **Independent development.** A bridge can be its own npm package or
+   even its own repository. Adding a LINE bridge doesn't require a PR
+   to the MulmoClaude core repo. Anyone can write a bridge in any
+   language — it just needs to call one HTTP endpoint.
+
+3. **Independent deployment.** Update the Telegram bridge without
+   restarting the server. The server never touches platform-specific
+   code, so it never needs to change for bridge updates.
+
+4. **Simpler server.** Zero platform imports, zero platform types, zero
+   platform error handling in the server. The Chat Service API is a
+   handful of routes. The bridge manager is ~50 lines of child-process
+   spawning.
+
+5. **User experience is unchanged.** The bridge manager auto-spawns
+   bridges based on `.env` variables. The user still just runs
+   `yarn dev`. Bridges appear as child processes, and graceful
+   shutdown kills them automatically.
+
+The trade-off is the bridge can't call `startChat()` directly — it
+goes through HTTP. But `startChat()` is already behind an HTTP endpoint
+(`POST /api/agent`) for the Web UI, so this is the same pattern. The
+HTTP overhead is negligible compared to the agent execution time.
 
 ---
 
 ## Summary — what to remember
 
-1. **Layers exist so platform code doesn't duplicate agent orchestration.**
-   PR #106's mistake was direct `runAgent()` calls, which bypassed all
-   the lifecycle hooks that `startChat()` provides.
-2. **Layer 2 is per-platform and trivial.** Adding a new platform means
-   writing one directory under `server/transports/<name>/` that
-   implements `MessagingTransport` and does nothing but talk the
-   platform's wire protocol.
-3. **Layer 3 is where shared logic lives.** `chat-state.ts` (mapping),
-   `commands.ts` (slash commands), `relay.ts` (bridge to `startChat()`),
-   and the session model (one active pointer per chat). Write once,
-   reuse across transports.
+1. **Bridges are separate processes.** They talk to one HTTP endpoint
+   and know nothing about MulmoClaude internals. ~30 lines of logic
+   per bridge.
+2. **The server owns all state.** Session pointers, roles, commands,
+   chat history — all managed by the Chat Service API. Bridges are
+   stateless.
+3. **Layer 3 (Chat Service API) is where the new server code lives.**
+   `chat-state.ts` (session pointer), `commands.ts` (slash commands),
+   `index.ts` (HTTP routes). Write once, serves all bridges.
 4. **One chat = one active session pointer.** A messaging chat always
    points to exactly one MulmoClaude session. `/reset` creates a new
    session and moves the pointer. `/connect` from the Web UI reassigns
    the pointer to an existing browser session. Old sessions are never
    deleted — they remain in the sidebar.
-5. **Layer 4 is the Web UI's existing entry point.** Messaging
-   transports don't modify it — they just call `startChat()` like the
-   Web UI does.
+5. **Layer 4 is untouched.** Bridges invoke the agent via the Chat
+   Service API, which calls `startChat()` internally — the same entry
+   point the Web UI uses.
 6. **Two session IDs, two layers.** `sessionId` = persistent, lives in
    Layer 4's jsonl. `claudeSessionId` = volatile, lives in Layer 5's CLI
    process. Recovery when the volatile one dies belongs in Layer 3.
-7. **The Web UI and messaging transports share everything below Layer
-   3.** A session started on Telegram appears in the Web UI sidebar
-   automatically, because session-store doesn't care who the caller was.
+   Bridges never see either ID.
+7. **Adding a new platform = writing a bridge.** No server changes.
+   The bridge just needs to speak the platform's protocol and POST
+   text to `/api/chat/{transportId}/{externalChatId}`.

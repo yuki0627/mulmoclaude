@@ -22,19 +22,19 @@ The messaging transport layer turns MulmoClaude into a **remote-accessible perso
 
 ### Session Model — Bridging Messaging and Web UI
 
-MulmoClaude's web UI supports multiple sessions (visible in the sidebar), but a messaging app is a single continuous thread. The session model resolves this tension with a simple rule: **each messaging chat has exactly one "active session pointer"**, and both sides can change what it points to.
+MulmoClaude's web UI supports multiple sessions (visible in the sidebar), but a messaging app is a single continuous thread. The session model resolves this tension with a simple rule: **each messaging chat has exactly one "active session pointer"** managed by the server, and both sides can change what it points to.
 
 **How it works:**
 
-1. **First message from Telegram** → creates a new session `telegram-{chatId}-{timestamp}`. This becomes the active session for that chat. The session ID is persisted to disk.
+1. **First message from Telegram** → server creates a new session `telegram-{chatId}-{timestamp}`. This becomes the active session for that chat.
 2. **Subsequent messages** → continue the same active session. The agent has full conversation context.
 3. **View from Web UI** → the messaging session appears in the sidebar like any other session. The user can open it, read the history, and continue the conversation from the browser.
-4. **`/reset` in the messaging app** → creates a fresh session `telegram-{chatId}-{newTimestamp}` and makes it the new active session. The old session remains in the sidebar (not deleted).
+4. **`/reset` in the messaging app** → server creates a fresh session `telegram-{chatId}-{newTimestamp}` and makes it the new active session. The old session remains in the sidebar (not deleted).
 5. **`/connect telegram` in the Web UI** → takes the currently-open browser session and makes it the active session for the Telegram chat. This is how you "hand off" a browser conversation to your phone.
 
 **Key properties:**
 - Sessions are normal MulmoClaude sessions — accessible from both the messaging app and the web UI at all times
-- The active session pointer is just a field in the transport's chat state file on disk
+- The active session pointer lives on the server — bridges never see session IDs
 - Old sessions are never deleted by pointer changes — they stay in the sidebar for reference
 - The session naming convention (`telegram-xxx`, `line-xxx`) makes the origin visible in the sidebar
 
@@ -55,103 +55,112 @@ Rich visual output — plugin views (spreadsheets, charts, images, wiki pages, s
 
 ## 2) Context and Problem
 
-PR #106 proposed a Telegram integration that directly called `runAgent()` in an infinite polling loop. The review identified several issues: no structured logging, a 507-line monolith, no path safety, no graceful shutdown, and tight coupling to Telegram. Meanwhile, users want the same capability for Slack, Twitter/X, LINE, and WhatsApp.
+PR #106 proposed a Telegram integration that directly called `runAgent()` in an infinite polling loop inside the server process. The review identified several issues: no structured logging, a 507-line monolith, no path safety, no graceful shutdown, and tight coupling to Telegram.
 
-We need a **transport-agnostic messaging layer** — a solid foundation that any messaging platform can plug into without duplicating agent orchestration, session management, or chat persistence logic.
+Meanwhile, users want the same capability for Slack, Twitter/X, LINE, and WhatsApp. Building all of these as in-process adapters would couple every platform's code, dependencies, and failure modes to the MulmoClaude server.
 
-### Current Architecture
+### Key Insight — The Web UI Is Already a "Bridge"
 
-The web UI already follows a clean pattern:
-
-1. `POST /api/agent` calls `startChat()` → validates, persists user message, calls `runAgentInBackground()`
-2. `runAgentInBackground()` iterates `runAgent()` events, publishes each via `pushSessionEvent()` to pub/sub
-3. Client subscribes to `session.{chatSessionId}` on the WebSocket and renders events
-
-The key insight: **`startChat()` is the right entry point**, not `runAgent()`. It handles session metadata, JSONL persistence, session-store registration, and post-processing (journal, chat-index, wiki-backlinks). Calling `runAgent()` directly bypasses all of this.
+The web UI already communicates with MulmoClaude via HTTP (`POST /api/agent`) and WebSocket (pub/sub). It doesn't call `startChat()` directly — it calls the REST API. A Telegram bridge can do exactly the same thing. The server doesn't need to know about Telegram at all — it just needs to expose a clean Chat Service API, and external processes handle the platform-specific protocol.
 
 ---
 
 ## 3) Design Goals and Non-Goals
 
 ### Goals
-1. **Transport-agnostic core** — A `MessagingBridge` abstraction that any platform (Telegram, Slack, Twitter/X, LINE, WhatsApp) can implement
-2. **Reuse `startChat()`** — All transports go through the same code path as the web UI
-3. **Use the task manager** — Polling loops run as registered tasks with proper lifecycle (start/stop/restart)
-4. **Per-transport state** — Each transport manages its own connection state (bot tokens, polling offsets, webhook secrets) independently
-5. **Per-chat session mapping** — Map external chat IDs to MulmoClaude sessions, stored in `workspace/transports/{name}/`
-6. **Structured logging** — All transports use `server/logger/`
+1. **Out-of-process bridges** — Each platform adapter runs as a separate process, communicating with MulmoClaude only via the Chat Service API
+2. **Bridges are stateless** — All session state (active session pointer, role, chat history) lives on the server. Bridges are dumb pipes
+3. **Server owns all business logic** — Session creation, role switching, `/reset`, command parsing — all handled by the server. Bridges forward raw text
+4. **Child process management** — MulmoClaude auto-spawns bridge processes based on `.env` config, so the user just runs `yarn dev`
+5. **Zero platform code in the server** — No `server/transports/telegram/`. The server exposes an API; bridges consume it
+6. **Independent development** — A bridge can be its own npm package, even its own repo. Adding a new bridge requires zero server changes
 
 ### Non-Goals
 1. Rich media bridging (images, files, embeds) — text-only for Phase 0; future phases can extend
 2. Two-way tool result rendering in external platforms — visual plugin output stays in the web UI
-3. Real-time WebSocket forwarding to external platforms — transports poll pub/sub or use callbacks
-4. Admin UI for managing transports — configuration is via `.env` / workspace config files
+3. Admin UI for managing bridges — configuration is via `.env`
+4. Bridge-side state — bridges must not cache session IDs, roles, or conversation state
 
 ---
 
 ## 4) Architecture
 
-### 4.1 Transport Interface
+### Overview
 
-```ts
-// server/transports/types.ts
-
-/** A messaging transport bridges an external platform to MulmoClaude. */
-export interface MessagingTransport {
-  /** Unique ID, e.g. "telegram", "slack", "twitter" */
-  readonly id: string;
-
-  /** Human-readable name */
-  readonly name: string;
-
-  /**
-   * Called once at server startup. The transport should:
-   * - Validate its configuration (env vars, tokens)
-   * - Register any needed tasks with the task manager
-   * - Return true if enabled, false if not configured
-   */
-  init(ctx: TransportContext): Promise<boolean>;
-
-  /**
-   * Graceful shutdown — stop polling, close connections, clean up.
-   */
-  shutdown(): Promise<void>;
-}
-
-export interface TransportContext {
-  /** Task manager for registering polling tasks */
-  taskManager: ITaskManager;
-
-  /** Express router for registering webhook endpoints */
-  router: express.Router;
-
-  /** Server port for internal API calls (if needed) */
-  port: number;
-}
+```
+MulmoClaude server (single process)
+  ├─ Express (existing Web UI API)
+  ├─ Chat Service API (new — thin layer over startChat + chat-state)
+  ├─ Chat state store (server-side, per transport)
+  │
+  ├─ child process: telegram-bridge
+  ├─ child process: line-bridge
+  ├─ child process: slack-bridge
+  └─ ...
 ```
 
-### 4.2 Chat State (transport-agnostic)
+The bridges are **completely separate processes**. They share no memory, no imports, no types with the server. They communicate exclusively via HTTP.
 
-Each transport maps external chat IDs to MulmoClaude sessions. The mapping is stored in the workspace:
+### 4.1 Chat Service API (server-side)
+
+The API that bridges call. Two endpoints handle the core flow:
+
+```
+POST /api/chat/:transportId/:externalChatId
+  Body: { text: string }
+  Response: { reply: string }
+
+  The server:
+  1. Looks up the active session for this transport+chatId
+  2. If none exists, creates a new session (e.g. "telegram-123-1713100000")
+  3. Checks if text is a command (/reset, /role, /roles, /help, /status)
+     - If command: executes it, returns the result as reply
+  4. If not a command: calls startChat() with the active session
+  5. Subscribes to pub/sub, collects text events
+  6. Returns the full agent reply as response
+```
+
+```
+POST /api/chat/:transportId/connect
+  Body: { chatSessionId: string }
+  Response: { ok: true }
+
+  Reassigns the active session pointer for a transport.
+  Called from the Web UI's "Connect to Telegram" action.
+```
+
+```
+GET /api/chat/transports
+  Response: { transports: [{ id: "telegram", enabled: true }, ...] }
+
+  Lists registered transports and their status.
+  Used by the Web UI to show "Connect to..." options.
+```
+
+**What the bridge sees:** Send text, get reply. That's it. The bridge never sees session IDs, role IDs, or any internal state.
+
+### 4.2 Chat State (server-side)
+
+The server manages all chat state. One JSON file per external chat, stored in the workspace:
 
 ```
 ~/mulmoclaude/transports/
   telegram/
-    chats/{chatId}.json    ← per-chat state
+    chats/{chatId}.json
+  line/
+    chats/{userId}.json
   slack/
     chats/{channelId}.json
-  twitter/
-    chats/{dmId}.json
 ```
 
 ```ts
-// server/transports/chat-state.ts
+// server/chat-service/chat-state.ts
 
 export interface TransportChatState {
   /** External platform's chat/channel/DM ID */
   externalChatId: string;
 
-  /** MulmoClaude session ID */
+  /** Active MulmoClaude session ID */
   sessionId: string;
 
   /** Active role ID */
@@ -163,406 +172,325 @@ export interface TransportChatState {
   /** ISO timestamps */
   startedAt: string;
   updatedAt: string;
-
-  /** Transport-specific metadata (polling offset, thread ID, etc.) */
-  extra?: Record<string, unknown>;
 }
-
-/**
- * Read/write chat state for a transport.
- * Uses resolveWithinRoot() for path safety.
- */
-export function createChatStateStore(transportId: string): ChatStateStore;
 ```
 
-The `ChatStateStore` provides:
-- `get(externalChatId)` — read state, return null if not found
-- `set(state)` — write state
-- `reset(externalChatId, roleId?)` — create a fresh session (new ID), make it active. Old session is not deleted
-- `connect(externalChatId, chatSessionId)` — point this chat at an existing MulmoClaude session (for `/connect` from Web UI)
-- `delete(externalChatId)` — remove state file
+Operations:
+- `get(transportId, externalChatId)` — read state, return null if not found
+- `set(transportId, state)` — write state
+- `reset(transportId, externalChatId, roleId?)` — create a fresh session, move the pointer. Old session stays in sidebar
+- `connect(transportId, chatSessionId)` — point this transport at an existing session
+- Path safety via `resolveWithinRoot()` for all file operations
 
-**Session ID format**: `{transportId}-{externalChatId}-{timestamp}` (e.g. `telegram-12345-1713100000`). This makes the origin visible in the Web UI sidebar.
+**Session ID format**: `{transportId}-{externalChatId}-{timestamp}` (e.g. `telegram-123-1713100000`).
 
-### 4.3 Message Relay (transport-agnostic)
+### 4.3 Command Handling (server-side)
 
-The core relay function bridges any transport to `startChat()`:
-
-```ts
-// server/transports/relay.ts
-
-export interface RelayMessageParams {
-  /** The text message from the external platform */
-  message: string;
-
-  /** Transport chat state (contains sessionId, roleId) */
-  chatState: TransportChatState;
-
-  /** Called with each text chunk as the agent streams */
-  onText?: (chunk: string) => void;
-
-  /** Called when the agent finishes */
-  onDone?: (fullReply: string) => void;
-
-  /** Called on error */
-  onError?: (error: string) => void;
-}
-
-/**
- * Sends a message through startChat() and collects the response.
- *
- * 1. Calls startChat() with the mapped sessionId
- * 2. Subscribes to session events via pub/sub
- * 3. Collects text events into a full reply
- * 4. Updates claudeSessionId in chat state
- * 5. Returns the full text reply
- */
-export async function relayMessage(
-  params: RelayMessageParams,
-): Promise<RelayResult>;
-
-export type RelayResult =
-  | { kind: "success"; reply: string; claudeSessionId?: string }
-  | { kind: "error"; error: string }
-  | { kind: "busy" }; // session already running (409)
-```
-
-This replaces the pattern from PR #106 where each transport manually iterated `runAgent()` events. Every transport now gets session persistence, JSONL logging, journal triggers, and chat indexing for free.
-
-### 4.4 Command Handling (transport-agnostic)
-
-Common commands shared across all transports:
+The server parses and executes commands before they reach the agent. The bridge sends raw text; if it starts with `/`, the server handles it directly.
 
 | Command | Action |
 |---|---|
-| `/reset` | Create a fresh session, make it the active session for this chat |
-| `/help` | Show available commands |
-| `/roles` | List available roles |
+| `/reset` | Create a fresh session, make it active |
+| `/help` | Return list of available commands |
+| `/roles` | Return list of available roles |
 | `/role <id>` | Switch role and create a new session |
-| `/status` | Show current session ID, role, and last activity |
+| `/status` | Return current role and last activity |
+
+Since command handling is server-side, every platform gets the same behavior with zero bridge code.
+
+### 4.4 Bridge Process Management
+
+MulmoClaude spawns bridges as child processes at startup based on `.env` configuration:
 
 ```ts
-// server/transports/commands.ts
+// server/bridge-manager.ts
 
-export interface CommandResult {
-  /** Reply text to send back */
-  reply: string;
+export interface BridgeConfig {
+  /** Transport ID (e.g. "telegram") */
+  id: string;
 
-  /** Updated chat state (if changed) */
-  nextState?: TransportChatState;
+  /** Path to the bridge executable or script */
+  command: string;
+
+  /** Env var that enables this bridge (checked for non-empty value) */
+  enableEnvVar: string;
+
+  /** Extra env vars to pass to the bridge process */
+  envVars: string[];
 }
 
-/**
- * Parse and execute a slash command.
- * Returns null if the text is not a command.
- */
-export function handleCommand(
-  text: string,
-  chatState: TransportChatState,
-): Promise<CommandResult | null>;
-```
-
-Transports can add platform-specific commands by wrapping this.
-
-### 4.5 Connect API (Web UI → Messaging)
-
-The `/connect` command is initiated from the **Web UI**, not the messaging app. It reassigns the messaging chat's active session pointer to the currently-open browser session.
-
-```ts
-// POST /api/transports/:transportId/connect
-// Body: { chatSessionId: string }
-//
-// Updates the transport's chat state to point to the given session.
-// Returns 200 on success, 404 if transport not enabled or no chat state exists.
-```
-
-The Web UI exposes this via a "Connect to Telegram" (or LINE, etc.) action in the session header or context menu. Only transports that are currently enabled and have an existing chat state (i.e., the user has messaged from that platform at least once) are shown as options.
-
-### 4.6 Transport Registry
-
-```ts
-// server/transports/index.ts
-
-const transports: MessagingTransport[] = [];
-
-export function registerTransport(transport: MessagingTransport): void;
-
-/**
- * Called from server/index.ts at startup.
- * Initializes all registered transports.
- * Logs which are enabled/disabled.
- */
-export async function initTransports(ctx: TransportContext): Promise<void>;
-
-/**
- * Called on graceful server shutdown.
- */
-export async function shutdownTransports(): Promise<void>;
-```
-
----
-
-## 5) Telegram Transport (Phase 0 reference implementation)
-
-```ts
-// server/transports/telegram/index.ts
-
-export const telegramTransport: MessagingTransport = {
-  id: "telegram",
-  name: "Telegram",
-
-  async init(ctx) {
-    const token = process.env.TELEGRAM_BOT_TOKEN?.trim();
-    if (!token) return false;
-
-    // Register a polling task with the task manager
-    ctx.taskManager.registerTask({
-      id: "telegram-poll",
-      description: "Poll Telegram for new messages",
-      schedule: { type: "interval", intervalMs: 5_000 },
-      run: () => pollOnce(token, ctx.port),
-    });
-
-    return true;
+const BRIDGE_CONFIGS: BridgeConfig[] = [
+  {
+    id: "telegram",
+    command: "node ./bridges/telegram/index.js",
+    enableEnvVar: "TELEGRAM_BOT_TOKEN",
+    envVars: ["TELEGRAM_BOT_TOKEN", "TELEGRAM_ALLOWED_CHAT_IDS"],
   },
-
-  async shutdown() {
-    // Task manager handles stopping the task
+  {
+    id: "line",
+    command: "node ./bridges/line/index.js",
+    enableEnvVar: "LINE_CHANNEL_ACCESS_TOKEN",
+    envVars: ["LINE_CHANNEL_ACCESS_TOKEN", "LINE_CHANNEL_SECRET"],
   },
-};
+  // ...
+];
 ```
 
-### Polling via Task Manager
-
-Instead of an infinite `for (;;)` loop, the Telegram transport registers a **5-second interval task**. Each tick calls `getUpdates` with a short timeout (1-2s) and processes any new messages. The task manager handles lifecycle, error logging, and graceful shutdown.
+At startup:
 
 ```ts
-// server/transports/telegram/poll.ts
+// server/index.ts
+import { startBridges, stopBridges } from "./bridge-manager.js";
+
+app.listen(PORT, "0.0.0.0", () => {
+  startBridges(PORT);  // checks env vars, spawns enabled bridges
+});
+
+process.on("SIGTERM", async () => {
+  await stopBridges();  // sends SIGTERM to children, waits for exit
+  server.close();
+});
+```
+
+Each child process receives:
+- `MULMOCLAUDE_API_URL=http://localhost:{PORT}` — the Chat Service API URL
+- `MULMOCLAUDE_TRANSPORT_ID=telegram` — its transport identity
+- Platform-specific env vars (bot tokens, secrets)
+
+If a child process crashes, the bridge manager logs the error and optionally restarts it (configurable).
+
+### 4.5 What a Bridge Looks Like
+
+A bridge is a simple, self-contained program. Here's the Telegram bridge as an example:
+
+```ts
+// bridges/telegram/index.ts
+
+const API_URL = process.env.MULMOCLAUDE_API_URL!;
+const TRANSPORT_ID = process.env.MULMOCLAUDE_TRANSPORT_ID!;
+const BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN!;
 
 let offset = 0;
 
-export async function pollOnce(token: string, port: number): Promise<void> {
-  const updates = await telegramApi(token, "getUpdates", {
-    timeout: 2,
-    offset,
-    allowed_updates: ["message"],
-  });
-
+async function poll() {
+  const updates = await telegramGetUpdates(BOT_TOKEN, offset);
   for (const update of updates) {
     offset = update.update_id + 1;
-    await handleTelegramUpdate(update, port);
+    const chatId = String(update.message.chat.id);
+    const text = update.message.text?.trim();
+    if (!text) continue;
+
+    // Send typing indicator
+    await telegramSendTyping(BOT_TOKEN, chatId);
+
+    // Call MulmoClaude — this is the ONLY server interaction
+    const res = await fetch(`${API_URL}/api/chat/${TRANSPORT_ID}/${chatId}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ text }),
+    });
+    const { reply } = await res.json();
+
+    // Send reply back to Telegram
+    await telegramSendMessage(BOT_TOKEN, chatId, reply);
   }
 }
+
+// Poll loop
+setInterval(poll, 5000);
 ```
 
-### Telegram-Specific Files
-
-```
-server/transports/telegram/
-  index.ts       ← MessagingTransport implementation
-  poll.ts        ← pollOnce + offset management
-  api.ts         ← telegramApi(), sendMessage(), sendTyping()
-  types.ts       ← Telegram API types (TelegramUpdate, TelegramMessage, etc.)
-```
-
-### Access Control
-
-The `TELEGRAM_ALLOWED_CHAT_IDS` env var restricts which Telegram chats can interact. This is implemented in `handleTelegramUpdate` — checked before any relay or command processing.
+That's the entire bridge. ~30 lines of actual logic. It knows nothing about sessions, roles, commands, or MulmoClaude internals. The access control (`TELEGRAM_ALLOWED_CHAT_IDS`) can live in the bridge (filter before calling the API) or on the server (reject unknown chat IDs) — bridge-side is simpler since it avoids unnecessary API calls.
 
 ---
 
-## 6) Other Transports (sketched)
+## 5) Platform-Specific Bridge Notes
 
-### Slack
+### Telegram
 
-- **Auth**: `SLACK_BOT_TOKEN` + `SLACK_SIGNING_SECRET`
-- **Ingress**: Webhook endpoint (`POST /api/transports/slack/events`) or Socket Mode
-- **Mapping**: Slack channel/thread ID -> MulmoClaude session
-- **Task**: If using Socket Mode, register a reconnect-on-failure task; if webhooks, no polling needed
-- **Constraint**: Slack requires a 3-second ACK for webhook events; long agent runs need a deferred response pattern (ACK immediately, post reply later via `chat.postMessage`)
-
-### Twitter/X
-
-- **Auth**: OAuth 2.0 app credentials + user token
-- **Ingress**: Polling DMs via task manager interval, or Account Activity API webhooks
-- **Mapping**: DM conversation ID -> MulmoClaude session
-- **Constraint**: 280-char limit for public replies — `splitMessage()` with smaller chunk size. DMs allow up to 10,000 chars. Rate limits are strict (app-level + user-level)
+- **Ingress**: Long polling (`getUpdates`)
+- **Bridge complexity**: Minimal — poll loop + send message
+- **Access control**: `TELEGRAM_ALLOWED_CHAT_IDS` env var, checked in bridge before API call
+- **No public URL needed** — polling works behind NAT
 
 ### LINE
 
-- **Auth**: `LINE_CHANNEL_ACCESS_TOKEN` + `LINE_CHANNEL_SECRET`
-- **Ingress**: Webhook endpoint (`POST /api/transports/line/webhook`). LINE pushes events; no polling needed
-- **Mapping**: LINE user ID or group/room ID -> MulmoClaude session
-- **Signature verification**: Every webhook request must be verified using HMAC-SHA256 with the channel secret — reject unverified requests
-- **Reply vs Push**: LINE distinguishes "reply" (free, must use a `replyToken` within 1 minute of the event) and "push" (costs message quota, can be sent anytime). For agent responses that may take longer than ~30s, use push messages as a fallback
-- **Constraint**: 5,000-char limit per text message bubble; max 5 bubbles per reply. Long responses need `splitMessage()` with LINE-specific limits
+- **Ingress**: Webhook — LINE pushes events to the bridge
+- **Bridge complexity**: Low — HTTP server + HMAC-SHA256 signature verification
+- **The bridge runs its own HTTP server** (e.g. port 3002) to receive LINE webhooks. MulmoClaude's bridge manager spawns it; LINE's webhook URL points to it (via ngrok or reverse proxy)
+- **Reply vs Push**: LINE's `replyToken` expires in 1 minute. If the agent takes longer, the bridge falls back to push messages
 
-### WhatsApp (via Cloud API)
+### WhatsApp (Cloud API)
 
-- **Auth**: `WHATSAPP_PHONE_NUMBER_ID` + `WHATSAPP_ACCESS_TOKEN` + `WHATSAPP_VERIFY_TOKEN` (for webhook verification)
-- **Ingress**: Webhook endpoint (`POST /api/transports/whatsapp/webhook`) + GET verification endpoint. Meta sends events via webhook; no polling needed
-- **Mapping**: WhatsApp phone number -> MulmoClaude session
-- **Webhook verification**: Meta sends a GET with `hub.mode`, `hub.verify_token`, `hub.challenge` — must echo the challenge back if token matches
-- **24-hour messaging window**: WhatsApp only allows free-form replies within 24 hours of the user's last message. After that, only pre-approved template messages can be sent. The transport should track the last user message timestamp and warn if the window is closing
-- **Constraint**: 4,096-char limit per text message. Must mark incoming messages as "read" via the API to show blue ticks
-- **Note**: Requires a Meta Business account and app review for production use; development mode works with up to 5 phone numbers
+- **Ingress**: Webhook — Meta pushes events to the bridge
+- **Bridge complexity**: Low-medium — HTTP server + Meta's webhook verification handshake
+- **24-hour window**: The bridge should track when the last user message arrived. If >24h, only template messages are allowed. Simplest approach: just let the API call fail and return the error to the user
+- **Read receipts**: Bridge marks messages as "read" on receipt
+
+### Slack
+
+- **Ingress**: Socket Mode (preferred, no public URL) or webhook
+- **Bridge complexity**: Medium — Slack's event format is more complex, and the 3-second ACK requirement means the bridge must ACK immediately and post the reply later via `chat.postMessage`
+- **Thread mapping**: Slack threads map naturally to sessions
+
+### Twitter/X
+
+- **Ingress**: Polling DMs via API
+- **Bridge complexity**: Medium — OAuth 2.0 flow, strict rate limits
+- **DM character limit**: 10,000 chars (not the 280-char public tweet limit)
+
+---
+
+## 6) Webhook Bridges and Ingress
+
+Some platforms (LINE, WhatsApp, Slack in webhook mode) push events to an HTTP endpoint. These bridges run their own small HTTP server:
+
+```
+Internet
+  │
+  ├─ LINE webhook ──────► line-bridge (port 3002) ──► MulmoClaude API (port 3001)
+  ├─ WhatsApp webhook ──► whatsapp-bridge (port 3003) ──► MulmoClaude API (port 3001)
+  │
+  └─ Telegram polling ◄── telegram-bridge ──────────► MulmoClaude API (port 3001)
+```
+
+- Polling bridges (Telegram, Twitter/X) only need outbound HTTP — works behind NAT
+- Webhook bridges need a public URL for the platform to push to — use ngrok for development, reverse proxy for production
+- Each webhook bridge listens on its own port, configured via env var (e.g. `LINE_BRIDGE_PORT=3002`)
+- The bridge manager passes these port assignments as env vars
 
 ---
 
 ## 7) Integration with Server
 
-### Startup (server/index.ts)
+### Server-Side Files
 
-```ts
-import { initTransports } from "./transports/index.js";
-
-// After task manager is created and started:
-await initTransports({ taskManager, port: PORT });
+```
+server/
+  chat-service/
+    index.ts            ← Chat Service API routes
+    chat-state.ts       ← Per-transport chat state store
+    commands.ts         ← Server-side command handler
+  bridge-manager.ts     ← Child process lifecycle (spawn, restart, shutdown)
 ```
 
-### Shutdown
+No `server/transports/` directory. No platform-specific code in the server at all.
 
-```ts
-import { shutdownTransports } from "./transports/index.js";
+### Bridge Files (separate from server)
 
-process.on("SIGTERM", async () => {
-  await shutdownTransports();
-  taskManager.stop();
-  server.close();
-});
+```
+bridges/
+  telegram/
+    index.ts            ← Poll loop + Telegram API calls
+    api.ts              ← Telegram Bot API wrappers
+  line/
+    index.ts            ← Webhook HTTP server + LINE API calls
+    api.ts              ← LINE Messaging API wrappers
+  slack/
+    index.ts            ← Socket Mode or webhook + Slack API calls
+  whatsapp/
+    index.ts            ← Webhook HTTP server + WhatsApp Cloud API calls
+  twitter/
+    index.ts            ← DM polling + Twitter API calls
+```
+
+### Workspace Storage
+
+```
+~/mulmoclaude/transports/
+  telegram/chats/       ← Per-chat state JSON files (managed by server)
+  line/chats/
+  slack/chats/
+  whatsapp/chats/
+  twitter/chats/
 ```
 
 ### Environment
 
 ```env
-# .env.example additions
+# .env — bridges are auto-spawned when their token env var is present
+
+# Telegram (polling — no public URL needed)
 # TELEGRAM_BOT_TOKEN=your_token
 # TELEGRAM_ALLOWED_CHAT_IDS=123,456
-# TELEGRAM_DEFAULT_ROLE_ID=general
-# SLACK_BOT_TOKEN=xoxb-...
-# SLACK_SIGNING_SECRET=...
+
+# LINE (webhook — needs public URL)
 # LINE_CHANNEL_ACCESS_TOKEN=...
 # LINE_CHANNEL_SECRET=...
+# LINE_BRIDGE_PORT=3002
+
+# WhatsApp (webhook — needs public URL)
 # WHATSAPP_PHONE_NUMBER_ID=...
 # WHATSAPP_ACCESS_TOKEN=...
-# WHATSAPP_VERIFY_TOKEN=my_secret_verify_token
+# WHATSAPP_VERIFY_TOKEN=my_secret
+# WHATSAPP_BRIDGE_PORT=3003
+
+# Slack (Socket Mode preferred — no public URL needed)
+# SLACK_BOT_TOKEN=xoxb-...
+# SLACK_APP_TOKEN=xapp-...
+
+# Twitter/X (polling — no public URL needed)
+# TWITTER_API_KEY=...
+# TWITTER_API_SECRET=...
+# TWITTER_ACCESS_TOKEN=...
+# TWITTER_ACCESS_SECRET=...
 ```
 
 ---
 
-## 8) File Layout
+## 8) Implementation Phases
 
-```
-server/transports/
-  types.ts              ← MessagingTransport, TransportContext interfaces
-  index.ts              ← Registry: registerTransport, initTransports, shutdownTransports
-  chat-state.ts         ← ChatStateStore: read/write/reset per-transport chat state
-  relay.ts              ← relayMessage(): bridge any transport to startChat()
-  commands.ts           ← Shared slash command handler (/start, /help, /roles, etc.)
-  telegram/
-    index.ts            ← telegramTransport implementation
-    poll.ts             ← Long-polling via task manager
-    api.ts              ← Telegram Bot API client
-    types.ts            ← Telegram-specific types
-  slack/                ← (future)
-  twitter/              ← (future)
-  line/                 ← (future)
-  whatsapp/             ← (future)
-```
-
-Webhook routes (for platforms that push events):
-
-```
-server/routes/transports.ts   ← Express router mounting webhook endpoints
-  POST /api/transports/line/webhook
-  POST /api/transports/whatsapp/webhook
-  GET  /api/transports/whatsapp/webhook   ← Meta verification
-  POST /api/transports/slack/events       ← (if using webhooks)
-```
-
-Workspace storage:
-
-```
-~/mulmoclaude/transports/
-  telegram/chats/       ← Per-chat state JSON files
-  slack/chats/          ← (future)
-  twitter/chats/        ← (future)
-  line/chats/           ← (future)
-  whatsapp/chats/       ← (future)
-```
-
----
-
-## 9) Implementation Phases
-
-### Phase 0: Foundation + Telegram
-1. Create `server/transports/types.ts` — interfaces
-2. Create `server/transports/chat-state.ts` — state store with `resolveWithinRoot()`, `reset()`, `connect()`
-3. Create `server/transports/relay.ts` — bridge to `startChat()` + pub/sub subscription
-4. Create `server/transports/commands.ts` — shared `/reset`, `/help`, `/roles`, `/role`, `/status`
-5. Create `server/transports/index.ts` — registry + init/shutdown
-6. Create `server/transports/telegram/` — reference implementation using the above
-7. Wire into `server/index.ts` — call `initTransports()` after task manager starts
-8. Add `POST /api/transports/:transportId/connect` route — allows Web UI to reassign a session to a messaging chat
-9. Add `.env.example` entries
-10. Update `README.md` with Telegram setup section
-11. Add unit tests: `test/transports/test_chat-state.ts`, `test/transports/test_commands.ts`, `test/transports/test_relay.ts`
+### Phase 0: Chat Service API + Telegram Bridge
+1. Create `server/chat-service/chat-state.ts` — state store with `resolveWithinRoot()`
+2. Create `server/chat-service/commands.ts` — server-side `/reset`, `/help`, `/roles`, `/role`, `/status`
+3. Create `server/chat-service/index.ts` — `POST /api/chat/:transportId/:externalChatId`, `POST /api/chat/:transportId/connect`, `GET /api/chat/transports`
+4. Create `server/bridge-manager.ts` — child process spawning based on env vars, restart on crash, graceful shutdown
+5. Create `bridges/telegram/` — polling bridge (~50 lines of logic)
+6. Wire into `server/index.ts` — mount chat-service routes, call `startBridges()` after server listen
+7. Add `.env.example` entries
+8. Update `README.md` with setup instructions
+9. Unit tests: `test/chat-service/test_chat-state.ts`, `test/chat-service/test_commands.ts`
+10. Integration test: mock Telegram API, verify round-trip through Chat Service API
 
 ### Phase 0.5: Web UI Connect Support
-1. Add `GET /api/transports` route — returns list of enabled transports with their chat state
-2. Add "Connect to {transport}" action in session header/context menu (only shown for enabled transports that have an existing chat)
-3. Show transport badge (e.g. Telegram icon) on sessions in the sidebar whose IDs start with a transport prefix
+1. Add "Connect to {transport}" action in session header/context menu (calls `POST /api/chat/:transportId/connect`)
+2. Show transport badge on sidebar sessions whose IDs start with a transport prefix
+3. Use `GET /api/chat/transports` to determine which transports are available
 
-### Phase 1: Slack
-1. Create `server/transports/slack/` using the same foundation
-2. Add webhook route or Socket Mode support
+### Phase 1: LINE Bridge
+1. Create `bridges/line/` — webhook HTTP server + LINE API
+2. Add `LINE_*` env vars to bridge manager config
+3. Document ngrok setup for development
 
-### Phase 2: LINE
-1. Create `server/transports/line/` — webhook-based, no polling
-2. Add `POST /api/transports/line/webhook` route with HMAC-SHA256 signature verification
-3. Implement reply-token-first strategy with push-message fallback for slow responses
+### Phase 2: Slack Bridge
+1. Create `bridges/slack/` — Socket Mode (no public URL needed)
+2. Handle Slack's deferred response pattern (ACK immediately, reply later)
 
-### Phase 3: WhatsApp
-1. Create `server/transports/whatsapp/` — webhook-based, no polling
-2. Add webhook routes (GET for verification, POST for events)
-3. Implement 24-hour window tracking in chat state
-4. Handle message read receipts
+### Phase 3: WhatsApp Bridge
+1. Create `bridges/whatsapp/` — webhook HTTP server + Meta Cloud API
+2. Handle webhook verification handshake
+3. Document Meta Business account setup
 
-### Phase 4: Twitter/X
-1. Create `server/transports/twitter/` using the same foundation
-2. Handle OAuth flow + DM polling
-
----
-
-## 10) Ingress Patterns: Polling vs Webhook
-
-The five platforms split into two ingress patterns. The `MessagingTransport` interface supports both via `TransportContext`:
-
-| Pattern | Platforms | Mechanism |
-|---|---|---|
-| **Polling** | Telegram, Twitter/X | Register an interval task via `ctx.taskManager` |
-| **Webhook** | LINE, WhatsApp, Slack | Register an Express route via `ctx.router` |
-
-**Polling transports** call the platform API on a timer. The task manager handles scheduling, error logging, and shutdown. Simple, no public URL needed — works behind NAT.
-
-**Webhook transports** receive HTTP pushes from the platform. They register routes under `/api/transports/{name}/` during `init()`. Each platform has its own signature verification (HMAC-SHA256 for LINE, SHA-256 for Slack, Meta's verify-token handshake for WhatsApp) — this is **not** shared, since each scheme differs. Webhooks require the server to be publicly reachable (ngrok for development, reverse proxy for production).
-
-Both patterns converge at `relayMessage()` — once an incoming message is parsed and the transport chat state is loaded, the same relay function handles agent invocation and response collection.
+### Phase 4: Twitter/X Bridge
+1. Create `bridges/twitter/` — DM polling + Twitter API
+2. Handle OAuth flow
 
 ---
 
-## 11) Key Design Decisions
+## 9) Key Design Decisions
 
 | Decision | Rationale |
 |---|---|
+| Out-of-process bridges | True failure isolation, independent versioning, zero platform code in server |
+| Server owns all state | Bridges are stateless dumb pipes — simplest possible bridge, no state sync issues |
+| Bridges don't see session IDs | Maximum decoupling — server handles all session logic internally |
+| Chat Service API over HTTP | Bridges are just HTTP clients — language-agnostic, testable with curl |
+| Child process spawning | User still just runs `yarn dev` — bridge lifecycle is managed automatically |
 | 1 chat = 1 active session pointer | Messaging apps have one thread; the pointer resolves the multi-session mismatch cleanly |
 | `/reset` creates, `/connect` reassigns | Both sides can change what the pointer targets; old sessions are never lost |
 | Sessions are normal MulmoClaude sessions | No special "transport session" type — accessible from both messaging and Web UI |
 | Session ID encodes origin (`telegram-xxx`) | Visible in sidebar, easy to filter, no metadata lookup needed |
-| Use `startChat()` not `runAgent()` | Gets session persistence, JSONL, journal, chat-index for free |
-| Task manager for polling | Proper lifecycle management, no infinite loops, graceful shutdown |
-| Transport-agnostic relay | Telegram, Slack, LINE, WhatsApp, Twitter all use the same relay function |
+| Commands parsed server-side | Every platform gets identical command behavior with zero bridge code |
+| `startChat()` as the internal entry point | Gets session persistence, JSONL, journal, chat-index for free |
 | Workspace storage for chat state | Consistent with MulmoClaude's "workspace is the database" philosophy |
 | `resolveWithinRoot()` for all paths | Prevents path traversal from external chat IDs |
-| Shared command handler | `/reset`, `/help`, `/roles`, `/status` work identically across all transports |
-| Pub/sub subscription for event collection | Reuses existing infrastructure instead of re-iterating `runAgent()` |
