@@ -24,7 +24,13 @@ export const GITHUB_API_BASE = "https://api.github.com";
 // The slug doubles as a URL path segment: rejecting `..` / `/`
 // / whitespace defends against a user-supplied (or LLM-suggested)
 // `github_repo` that would craft a malicious request URL.
-const SEGMENT_RE = /^[A-Za-z0-9][A-Za-z0-9._-]{0,99}$/;
+// Owner must start with an alphanumeric (GitHub usernames /
+// org names can't begin with a dot).
+const OWNER_SEGMENT_RE = /^[A-Za-z0-9][A-Za-z0-9._-]{0,99}$/;
+// Repo can start with a dot — GitHub has the special `.github`
+// repository used for org-wide community health files, so the
+// repo-name regex is slightly looser than the owner one.
+const REPO_SEGMENT_RE = /^[A-Za-z0-9.][A-Za-z0-9._-]{0,99}$/;
 
 export interface RepoSlug {
   owner: string;
@@ -39,7 +45,10 @@ export function parseRepoSlug(raw: string): RepoSlug | null {
   const parts = raw.trim().split("/");
   if (parts.length !== 2) return null;
   const [owner, repo] = parts;
-  if (!SEGMENT_RE.test(owner) || !SEGMENT_RE.test(repo)) return null;
+  if (!OWNER_SEGMENT_RE.test(owner) || !REPO_SEGMENT_RE.test(repo)) return null;
+  // Reject path-traversal-ish repo names even though the regex
+  // would accept them (`.`, `..` can both start with a dot).
+  if (repo === "." || repo === "..") return null;
   if (owner.endsWith(".") || repo.endsWith(".")) return null;
   return { owner, repo };
 }

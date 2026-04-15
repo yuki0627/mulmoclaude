@@ -121,8 +121,12 @@ function parseRssItem(raw: Record<string, unknown>): ParsedFeedItem | null {
   // read both `content:encoded` (prefixed, the common case)
   // and a bare `encoded` key as a fallback for parsers that
   // stripped the namespace.
-  const summary = readString(raw.description);
+  // Fall back to content when <description> is absent so
+  // content-only feeds (fairly common among tech blogs) don't
+  // end up with a null summary — the summarizer intentionally
+  // drops `content` so title-only items would otherwise slip in.
   const content = readString(raw["content:encoded"]) ?? readString(raw.encoded);
+  const summary = readString(raw.description) ?? content;
   if (!title) return null;
   return {
     feedId: guid ?? link ?? null,
@@ -178,8 +182,11 @@ function parseAtomEntry(raw: Record<string, unknown>): ParsedFeedItem | null {
   const published =
     readString(raw.published) ?? readString(raw.updated) ?? null;
   const publishedAt = published ? normalizeDate(published) : null;
-  const summary = readString(raw.summary);
+  // Same fallback story as RSS 2.0: content-only Atom entries
+  // (e.g. GitHub-generated feeds) should still surface in the
+  // summary step rather than be silently title-only.
   const content = readString(raw.content);
+  const summary = readString(raw.summary) ?? content;
   if (!title) return null;
   return {
     feedId: id ?? link ?? null,

@@ -936,7 +936,15 @@ async function maybeSeedRoleDefault(session: ActiveSession): Promise<void> {
   if (session.roleId !== "sourceManager") return;
   try {
     const res = await fetch("/api/sources");
-    if (!res.ok) return;
+    if (!res.ok) {
+      if (session.toolResults.length === 0) {
+        pushErrorMessage(
+          session,
+          `Could not preload sources (HTTP ${res.status}). Ask Claude to list them, or check the server log.`,
+        );
+      }
+      return;
+    }
     const body = (await res.json()) as { sources?: unknown[] };
     const result: ToolResultComplete = {
       uuid: uuidv4(),
@@ -950,9 +958,16 @@ async function maybeSeedRoleDefault(session: ActiveSession): Promise<void> {
     if (session.toolResults.length > 0) return;
     session.toolResults.push(result);
     session.selectedResultUuid = result.uuid;
-  } catch {
+  } catch (err) {
     // Non-fatal: the Add / Rebuild buttons remain reachable via
-    // chat as soon as the user sends any message.
+    // chat as soon as the user sends any message. Still surface
+    // a visible hint so the blank canvas isn't a mystery.
+    if (session.toolResults.length === 0) {
+      pushErrorMessage(
+        session,
+        `Could not preload sources: ${err instanceof Error ? err.message : String(err)}`,
+      );
+    }
   }
 }
 

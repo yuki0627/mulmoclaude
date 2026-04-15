@@ -236,6 +236,7 @@
 <script setup lang="ts">
 import { computed, onMounted, ref, watch } from "vue";
 import { marked } from "marked";
+import DOMPurify from "dompurify";
 import type { ToolResultComplete } from "gui-chat-protocol/vue";
 import type { ManageSourceData, RebuildSummary, Source } from "./index";
 
@@ -345,8 +346,17 @@ function buildRegisterPayload(d: DraftState): RegisterPayload | string {
       if (!/^https?:\/\//i.test(primary)) {
         return "RSS feed URL must start with http:// or https://";
       }
+      let hostname: string;
+      try {
+        hostname = new URL(primary).hostname;
+      } catch {
+        return "RSS feed URL is not a valid URL.";
+      }
+      if (!hostname) {
+        return "RSS feed URL must include a host.";
+      }
       return {
-        title: title || new URL(primary).hostname,
+        title: title || hostname,
         url: primary,
         fetcherKind: "rss",
         fetcherParams: { rss_url: primary },
@@ -456,6 +466,29 @@ if (
 ) {
   lastRebuild.value = props.selectedResult.data.lastRebuild;
 }
+
+// Re-sync the local mirrors when the caller selects a different
+// manageSource result (e.g. a new tool_result from the LLM). The
+// existing "never overwrite fresher in-View state" guard still
+// applies — we only accept the prop value when it's strictly
+// newer than what the View has.
+watch(
+  () => props.selectedResult.uuid,
+  () => {
+    const incoming = props.selectedResult.data;
+    if (!incoming) return;
+    // Replace the source list wholesale — the prop's snapshot is
+    // authoritative when the user switches between results.
+    localSources.value = incoming.sources ?? [];
+    const nextRebuild = incoming.lastRebuild;
+    if (
+      nextRebuild &&
+      (!lastRebuild.value || nextRebuild.isoDate >= lastRebuild.value.isoDate)
+    ) {
+      lastRebuild.value = nextRebuild;
+    }
+  },
+);
 
 function kindLabel(kind: Source["fetcherKind"]): string {
   switch (kind) {
@@ -582,7 +615,15 @@ function todayIsoDate(): string {
   return `${y}-${m}-${d}`;
 }
 
+// Monotonically-increasing token so concurrent loadBrief() calls
+// (mount + rebuild + prop watch racing on slow networks) can drop
+// stale responses that resolve after a newer one has already
+// settled the state. Without this, an older fetch finishing last
+// would clobber the latest brief.
+let briefLoadToken = 0;
+
 async function loadBrief(isoDate: string): Promise<void> {
+  const token = ++briefLoadToken;
   briefLoading.value = true;
   briefError.value = "";
   briefDate.value = isoDate;
@@ -592,6 +633,7 @@ async function loadBrief(isoDate: string): Promise<void> {
     const res = await fetch(
       `/api/files/content?path=${encodeURIComponent(relPath)}`,
     );
+    if (token !== briefLoadToken) return;
     if (!res.ok) {
       if (res.status === 404) {
         briefMarkdown.value = "";
@@ -602,15 +644,17 @@ async function loadBrief(isoDate: string): Promise<void> {
       throw new Error(`HTTP ${res.status}`);
     }
     const body = (await res.json()) as { content?: string; kind?: string };
+    if (token !== briefLoadToken) return;
     briefMarkdown.value = body.content ?? "";
     if (!briefMarkdown.value.trim()) {
       briefError.value = "Today's brief is empty.";
     }
   } catch (err) {
+    if (token !== briefLoadToken) return;
     briefError.value =
       err instanceof Error ? err.message : "Failed to load brief";
   } finally {
-    briefLoading.value = false;
+    if (token === briefLoadToken) briefLoading.value = false;
   }
 }
 
@@ -633,7 +677,11 @@ function stripTrailingJsonBlock(markdown: string): string {
 const briefHtml = computed(() => {
   if (!briefMarkdown.value) return "";
   const body = stripTrailingJsonBlock(briefMarkdown.value);
-  return marked(body) as string;
+  // marked() preserves raw HTML embedded in the markdown (RSS
+  // content:encoded blocks often carry tracking pixels, iframes,
+  // inline <script> from scraped sources). Sanitize before
+  // binding to v-html.
+  return DOMPurify.sanitize(marked(body) as string);
 });
 
 // Load on mount — try today's brief first, then last rebuild's date

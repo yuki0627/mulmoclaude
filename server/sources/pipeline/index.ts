@@ -29,8 +29,10 @@
 // write an empty daily file.
 import "../fetchers/registerAll.js";
 
+import { existsSync } from "fs";
 import { listSources } from "../registry.js";
 import { readManyStates, writeManyStates } from "../sourceState.js";
+import { dailyNewsPath } from "../paths.js";
 import {
   getFetcher as registryGetFetcher,
   type FetcherDeps,
@@ -146,14 +148,17 @@ export async function runSourcesPipeline(
   if (eligible.length === 0) {
     // Write an empty-day daily file so it's clear the pipeline
     // ran. Archive append is a no-op. State untouched.
+    //
+    // But: if a previous pass today already produced a non-empty
+    // brief, don't clobber it. A same-day rerun with nothing due
+    // (all sources still in backoff / on "weekly" schedule) would
+    // otherwise wipe the morning's brief when re-triggered in the
+    // afternoon.
     onProgress("write-empty");
-    const emptyMarkdown = await summarizeFn([]);
-    const dailyPath = await writeDailyFile(
-      workspaceRoot,
-      isoDate,
-      emptyMarkdown,
-      [],
-    );
+    const existingPath = dailyNewsPath(workspaceRoot, isoDate);
+    const dailyPath = existsSync(existingPath)
+      ? existingPath
+      : await writeDailyFile(workspaceRoot, isoDate, await summarizeFn([]), []);
     return {
       plannedCount: 0,
       outcomes: [],

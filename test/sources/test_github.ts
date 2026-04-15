@@ -45,6 +45,20 @@ describe("parseRepoSlug — accepts real repo shapes", () => {
       repo: "bar",
     });
   });
+
+  it("accepts the special `.github` community-health repo", () => {
+    // GitHub documents `<owner>/.github` as the default
+    // community-health defaults repo for organizations, so the
+    // repo segment is allowed to start with a dot.
+    assert.deepEqual(parseRepoSlug("anthropics/.github"), {
+      owner: "anthropics",
+      repo: ".github",
+    });
+    assert.deepEqual(parseRepoSlug("github/.github"), {
+      owner: "github",
+      repo: ".github",
+    });
+  });
 });
 
 describe("parseRepoSlug — rejects malformed / unsafe input", () => {
@@ -61,8 +75,17 @@ describe("parseRepoSlug — rejects malformed / unsafe input", () => {
   });
 
   it("rejects segments starting with a non-alphanumeric character", () => {
+    // Owners can never start with a dot. The `.github` exemption
+    // is a repo-only thing.
     assert.equal(parseRepoSlug(".hidden/bar"), null);
     assert.equal(parseRepoSlug("foo/-start-with-dash"), null);
+  });
+
+  it("rejects bare '.' / '..' repo names (path traversal)", () => {
+    // The repo-segment regex allows leading dots (for `.github`),
+    // so the guard has to explicitly reject the traversal shapes.
+    assert.equal(parseRepoSlug("foo/."), null);
+    assert.equal(parseRepoSlug("foo/.."), null);
   });
 
   it("rejects segments ending with a dot (Windows path issue)", () => {

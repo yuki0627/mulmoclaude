@@ -7,9 +7,15 @@
 //
 // Adding a new fetcher kind in phase 2 / 3 / later:
 //   1. Create `server/sources/fetchers/<new-kind>.ts` exporting
-//      a `SourceFetcher`.
+//      a `SourceFetcher` and calling `registerFetcher(...)` at
+//      the bottom so the module self-registers on import.
 //   2. Add the string to `FETCHER_KINDS` in `../types.ts`.
-//   3. Register it in the `FETCHERS` table below.
+//   3. **Add a side-effect import for the new module to
+//      `./registerAll.ts`.** Production entry points import that
+//      barrel; without this step the pipeline still resolves
+//      `getFetcher(kind)` to `null` and your fetcher never runs.
+//   4. Add a case to `test/sources/test_fetcherRegistration.ts`
+//      so regressions fail a unit test.
 // No other framework change is required.
 
 import type { HttpFetcherDeps } from "../httpFetcher.js";
