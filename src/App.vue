@@ -226,11 +226,8 @@
             rows="2"
             class="flex-1 bg-white border border-gray-300 rounded px-3 py-2 text-sm text-gray-900 placeholder-gray-400 disabled:opacity-50 disabled:cursor-not-allowed resize-none"
             :disabled="isRunning"
-            @keydown.enter="
-              !$event.isComposing && !$event.shiftKey
-                ? (sendMessage(), $event.preventDefault())
-                : undefined
-            "
+            @compositionend="onCompositionEnd"
+            @keydown.enter="onTextareaEnter"
           />
           <button
             data-testid="send-btn"
@@ -629,6 +626,23 @@ const { roles, currentRoleId, currentRole, refreshRoles } = useRoles();
 
 const userInput = ref("");
 const activePane = ref<"sidebar" | "main">("sidebar");
+
+// IME composition tracking. Safari fires `compositionend` BEFORE the
+// confirming Enter's `keydown`, so by the time the keydown handler
+// runs both `event.isComposing` and a flag set on `compositionend`
+// have already flipped to false. Recording the timestamp lets us
+// suppress the immediately-following Enter without relying on the
+// deprecated `keyCode === 229` check.
+let lastCompositionEndAt = 0;
+function onCompositionEnd() {
+  lastCompositionEndAt = Date.now();
+}
+function onTextareaEnter(event: KeyboardEvent) {
+  if (event.isComposing || event.shiftKey) return;
+  if (Date.now() - lastCompositionEndAt < 200) return;
+  event.preventDefault();
+  sendMessage();
+}
 
 const { sessions, showHistory, fetchSessions, toggleHistory } =
   useSessionHistory();
