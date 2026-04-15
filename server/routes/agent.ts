@@ -182,6 +182,15 @@ export async function startChat(
     hasUnread: persistedHasUnread,
   });
 
+  // Broadcast the user message so other tabs viewing this session
+  // see the input in real time. Must come after getOrCreateSession
+  // so the session exists in the store.
+  pushSessionEvent(chatSessionId, {
+    type: "text",
+    source: "user",
+    message,
+  });
+
   // Register abort callback and mark running. If the session is
   // already running, reject with 409 Conflict.
   const abortController = new AbortController();
