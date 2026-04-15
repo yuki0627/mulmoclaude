@@ -38,13 +38,13 @@
     <div class="flex-1 overflow-y-auto">
       <div
         v-if="sources.length === 0"
-        class="p-6 text-sm text-gray-500 italic"
+        class="flex items-center justify-center h-full p-6 text-center text-sm text-gray-500 italic"
         data-testid="sources-empty"
       >
         No sources registered yet. Ask Claude to register one — e.g. “register
         the Hacker News RSS feed”.
       </div>
-      <ul v-else class="divide-y divide-gray-100">
+      <ul v-else class="divide-y divide-gray-100 border-b border-gray-100">
         <li
           v-for="source in sources"
           :key="source.slug"
@@ -103,6 +103,43 @@
           </button>
         </li>
       </ul>
+
+      <!-- Today's brief. Auto-fetched on mount and refreshed after
+           every Rebuild. Rendered as markdown so lists / headings
+           feel like a document, not a dump. -->
+      <div
+        v-if="sources.length > 0 && (briefLoading || briefHtml || briefError)"
+        class="p-4"
+        data-testid="sources-brief"
+      >
+        <div class="flex items-baseline justify-between mb-2">
+          <h3 class="text-sm font-semibold text-gray-800">
+            Today's brief
+            <span v-if="briefDate" class="text-xs text-gray-400 font-normal">
+              ({{ briefDate }})
+            </span>
+          </h3>
+          <button
+            v-if="briefFilePath"
+            class="text-[11px] text-gray-500 hover:text-gray-700"
+            :title="briefFilePath"
+          >
+            {{ briefFilePath }}
+          </button>
+        </div>
+        <div v-if="briefLoading" class="text-xs text-gray-500 italic">
+          Loading today's brief…
+        </div>
+        <div
+          v-else-if="briefError"
+          class="text-xs text-gray-500 italic"
+          data-testid="sources-brief-empty"
+        >
+          {{ briefError }}
+        </div>
+        <!-- eslint-disable-next-line vue/no-v-html -->
+        <div v-else class="markdown-content" v-html="briefHtml" />
+      </div>
     </div>
 
     <div
@@ -122,7 +159,8 @@
 </template>
 
 <script setup lang="ts">
-import { computed, ref } from "vue";
+import { computed, onMounted, ref, watch } from "vue";
+import { marked } from "marked";
 import type { ToolResultComplete } from "gui-chat-protocol/vue";
 import type { ManageSourceData, RebuildSummary, Source } from "./index";
 
@@ -248,7 +286,7 @@ async function rebuild(): Promise<void> {
     flash(
       `Rebuild complete: ${summary.itemCount} items from ${summary.plannedCount} sources.`,
     );
-    await refreshList();
+    await Promise.all([refreshList(), loadBrief(summary.isoDate)]);
   } catch (err) {
     flash(
       `Rebuild failed: ${err instanceof Error ? err.message : String(err)}`,
@@ -258,4 +296,84 @@ async function rebuild(): Promise<void> {
     busy.value = null;
   }
 }
+
+// --- today's brief -------------------------------------------------------
+
+// Fetched markdown (rendered via marked() into briefHtml below). Null
+// while idle; "" after a confirmed empty/404 so the template can show
+// a friendly message instead of a stuck spinner.
+const briefMarkdown = ref<string | null>(null);
+const briefError = ref("");
+const briefLoading = ref(false);
+const briefDate = ref("");
+const briefFilePath = ref("");
+
+// Build `news/daily/YYYY/MM/DD.md` from an ISO date. Local-time
+// matches how the pipeline writes the file (see toLocalIsoDate).
+function dailyPathFor(isoDate: string): string {
+  const [y, m, d] = isoDate.split("-");
+  return `news/daily/${y}/${m}/${d}.md`;
+}
+
+function todayIsoDate(): string {
+  const now = new Date();
+  const y = now.getFullYear();
+  const m = String(now.getMonth() + 1).padStart(2, "0");
+  const d = String(now.getDate()).padStart(2, "0");
+  return `${y}-${m}-${d}`;
+}
+
+async function loadBrief(isoDate: string): Promise<void> {
+  briefLoading.value = true;
+  briefError.value = "";
+  briefDate.value = isoDate;
+  const relPath = dailyPathFor(isoDate);
+  briefFilePath.value = relPath;
+  try {
+    const res = await fetch(
+      `/api/files/content?path=${encodeURIComponent(relPath)}`,
+    );
+    if (!res.ok) {
+      if (res.status === 404) {
+        briefMarkdown.value = "";
+        briefError.value =
+          "No brief written for this date yet. Click Rebuild now.";
+        return;
+      }
+      throw new Error(`HTTP ${res.status}`);
+    }
+    const body = (await res.json()) as { content?: string; kind?: string };
+    briefMarkdown.value = body.content ?? "";
+    if (!briefMarkdown.value.trim()) {
+      briefError.value = "Today's brief is empty.";
+    }
+  } catch (err) {
+    briefError.value =
+      err instanceof Error ? err.message : "Failed to load brief";
+  } finally {
+    briefLoading.value = false;
+  }
+}
+
+const briefHtml = computed(() => {
+  if (!briefMarkdown.value) return "";
+  return marked(briefMarkdown.value) as string;
+});
+
+// Load on mount — try today's brief first, then last rebuild's date
+// if different (tool result may have been produced earlier in the day
+// but the user only just opened this canvas).
+onMounted(() => {
+  const initial = lastRebuild.value?.isoDate ?? todayIsoDate();
+  loadBrief(initial);
+});
+
+// Re-fetch when the selected result brings a new rebuild summary
+// (e.g. the LLM triggered another rebuild).
+watch(
+  () => props.selectedResult.data?.lastRebuild?.isoDate,
+  (next) => {
+    if (next && next !== briefDate.value) loadBrief(next);
+  },
+);
 </script>

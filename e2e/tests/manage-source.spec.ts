@@ -73,6 +73,15 @@ async function setupSourceSession(page: Page) {
         ],
       }),
   );
+
+  // The View auto-fetches today's brief on mount. Stub as 404 so
+  // the "no brief" error-state path runs cleanly without polluting
+  // the test log with unhandled-route warnings.
+  await page.route(
+    (url) => url.pathname === "/api/files/content",
+    (route) =>
+      route.fulfill({ status: 404, json: { error: "not found" } }),
+  );
 }
 
 test.describe("manageSource plugin", () => {
