@@ -37,7 +37,6 @@
 // doesn't rewrite the user's notes.
 
 import fsp from "node:fs/promises";
-import path from "node:path";
 import {
   isFetcherKind,
   isSourceSchedule,
