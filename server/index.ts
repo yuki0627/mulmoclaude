@@ -21,6 +21,8 @@ import pdfRoutes from "./api/routes/pdf.js";
 import filesRoutes from "./api/routes/files.js";
 import configRoutes from "./api/routes/config.js";
 import skillsRoutes from "./api/routes/skills.js";
+import { createNotificationsRouter } from "./api/routes/notifications.js";
+import type { NotificationDeps } from "./events/notifications.js";
 import { createChatService } from "./api/chat-service/index.js";
 import { onSessionEvent } from "./events/session-store/index.js";
 import { getRole, loadAllRoles } from "./workspace/roles.js";
@@ -139,6 +141,22 @@ const chatService = createChatService({
   tokenProvider: getCurrentToken,
 });
 app.use(chatService.router);
+
+// Notifications router. The route file needs the pub-sub publisher
+// (only created inside `startRuntimeServices` after `app.listen`) and
+// the chat-service push handle (available at module scope). We mount
+// the router now so it sits behind the same bearer middleware as
+// every other /api route, and back-fill the pub-sub dep once
+// `startRuntimeServices` has it. Calls that arrive before fill-in
+// (impossible in practice — the HTTP server isn't listening yet)
+// would no-op on publish but still queue the bridge push.
+const notificationDeps: NotificationDeps = {
+  publish: () => {
+    /* replaced by startRuntimeServices */
+  },
+  pushToBridge: chatService.pushToBridge,
+};
+app.use(createNotificationsRouter(notificationDeps));
 app.use(mcpToolsRouter);
 
 if (env.isProduction) {
@@ -296,6 +314,10 @@ function startRuntimeServices(httpServer: ReturnType<typeof app.listen>): void {
 
   // --- Pub/Sub ---
   const pubsub = createPubSub(httpServer);
+  // Back-fill the notifications router with the live publisher (see
+  // module-scope placeholder above).
+  notificationDeps.publish = (channel, payload) =>
+    pubsub.publish(channel, payload);
 
   // --- Chat socket transport (Phase A of #268) ---
   chatService.attachSocket(httpServer);
