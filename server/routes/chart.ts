@@ -4,6 +4,7 @@ import path from "path";
 import { WORKSPACE_DIRS, WORKSPACE_PATHS } from "../workspace-paths.js";
 import { slugify } from "../utils/slug.js";
 import { errorMessage } from "../utils/errors.js";
+import { API_ROUTES } from "../../src/config/apiRoutes.js";
 
 const router = Router();
 
@@ -71,7 +72,7 @@ function isValidChartEntry(value: unknown): value is ChartEntry {
 }
 
 router.post(
-  "/present-chart",
+  API_ROUTES.chart.present,
   async (
     req: Request<object, unknown, PresentChartBody>,
     res: Response<PresentChartResponse>,
