@@ -1,5 +1,6 @@
 import * as readline from "readline";
 import { io, Socket } from "socket.io-client";
+import { CHAT_SOCKET_EVENTS } from "../../server/chat-service/socket.js";
 import { readBridgeToken, TOKEN_FILE_PATH } from "./token.js";
 
 const API_URL = process.env.MULMOCLAUDE_API_URL ?? "http://localhost:3001";
@@ -69,7 +70,7 @@ function installSocketLogging(socket: Socket): void {
   // the message into their platform's send API (Telegram
   // sendMessage etc.); the CLI prints it so the human operator can
   // see scheduled / event-driven messages arrive.
-  socket.on("push", (event: PushEvent) => {
+  socket.on(CHAT_SOCKET_EVENTS.push, (event: PushEvent) => {
     console.log(`\n[push] ${event.chatId}: ${event.message}\n`);
   });
 }
@@ -79,7 +80,7 @@ function send(socket: Socket, text: string): Promise<MessageAck> {
     socket
       .timeout(REPLY_TIMEOUT_MS)
       .emit(
-        "message",
+        CHAT_SOCKET_EVENTS.message,
         { externalChatId: CHAT_ID, text },
         (err: Error | null, ack: MessageAck | undefined) => {
           if (err) {
