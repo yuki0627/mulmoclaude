@@ -242,6 +242,57 @@ Every HTTP call to `/api/*` requires `Authorization: Bearer <token>`. Layered on
 
 ---
 
+## Notifications (PoC scaffold)
+
+A one-shot, delayed **push fan-out** that lands on every open Web tab *and* every connected bridge simultaneously. Scaffolding for the in-app notification center (#144) and external-channel notifications (#142) — the endpoint and fan-out are stable, the UI / persistence layers land in those issues.
+
+### Trigger
+
+```bash
+curl -X POST http://localhost:3001/api/notifications/test \
+  -H "Authorization: Bearer $(cat ~/mulmoclaude/.session-token)" \
+  -H "Content-Type: application/json" \
+  -d '{"message":"hello from curl","delaySeconds":5}'
+# → 202 { "firesAt": "2026-04-16T15:37:42.123Z", "delaySeconds": 5 }
+```
+
+Body fields (all optional):
+
+| Field | Default | Effect |
+|---|---|---|
+| `message` | `"Test notification"` | Text delivered to both targets. |
+| `delaySeconds` | `60`, capped at `3600` | Timer length. Non-numeric / NaN falls back to the default; negative clamps to `0`; fractional floors. |
+| `transportId` | `"cli"` | Bridge target for `chatService.pushToBridge`. |
+| `chatId` | `"notifications"` | Bridge chat slot. |
+
+### Fan-out at fire time
+
+```text
+setTimeout elapses
+  ├─ pubsub.publish(PUBSUB_CHANNELS.notifications, { message, firedAt })  → Web
+  └─ chatService.pushToBridge(transportId, chatId, message)               → Bridge (offline-queued)
+```
+
+Web subscribers listen on `PUBSUB_CHANNELS.notifications` (`src/config/pubsubChannels.ts`). Bridges receive via the Phase B push socket (`yarn cli` prints `[push] notifications: hello …`).
+
+### Observing the PoC end-to-end
+
+1. `yarn dev` (server + Vite)
+2. In a second terminal: `yarn cli`
+3. In a third terminal: fire the curl above with `delaySeconds: 5`
+4. After 5 s: CLI prints `[push] notifications: hello from curl`; browser DevTools → Network → `/ws/pubsub` frame shows an inbound `notifications` event
+
+### Scope caveats
+
+- **No UI**: the Web side has no visible toast yet — lives in #144.
+- **No persistence**: `setTimeout` is in-memory; a server restart before the delay elapses drops the push.
+- **One bridge per call**: `pushToBridge` targets a single `transportId`. Fan-out to every connected bridge is deferred until a caller needs it.
+- **One-shot only**: no repeat / snooze / dedup. Production triggers should go through the notification center once #144 lands.
+
+Full motivation + file plan: `plans/feat-notification-push-scaffold.md`. Implementation: `server/events/notifications.ts` (scheduler) + `server/api/routes/notifications.ts` (HTTP wrapper).
+
+---
+
 ## Centralized constants (`as const` modules)
 
 Cross-module string literals (endpoint paths, tool names, role IDs, etc.) are defined once and imported everywhere. A typo in an import key fails typecheck; a typo in a raw string literal silently produces a runtime 404 or broken channel.
