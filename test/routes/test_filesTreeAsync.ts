@@ -1,5 +1,5 @@
 // Unit tests for the async tree walk + shallow-listing helpers
-// extracted from `server/routes/files.ts` in #200.
+// extracted from `server/api/routes/files.ts` in #200.
 //
 // Both helpers are pure in the sense that they take an absolute path
 // + relative path and return a TreeNode — no Express coupling — so we

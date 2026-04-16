@@ -24,7 +24,7 @@ import { join } from "node:path";
 // NB: we intentionally do NOT import registerAll here. The pipeline
 // module itself is responsible for importing it, so these tests
 // verify that too — if someone removes the bootstrap import from
-// `server/sources/pipeline/index.ts`, this file fails before any of
+// `server/workspace/sources/pipeline/index.ts`, this file fails before any of
 // the realistic HTTP routing even runs.
 import { runSourcesPipeline } from "../../server/workspace/sources/pipeline/index.js";
 import { writeSource } from "../../server/workspace/sources/registry.js";

@@ -1,6 +1,6 @@
 // Route-level checks for /api/config.
 //
-// The route logic itself is a thin wrapper around server/config.ts —
+// The route logic itself is a thin wrapper around server/system/config.ts —
 // load/save/validate. These tests cover:
 //   - GET returns the current settings wrapped in { settings }
 //   - PUT /config/settings validates shape + persists + returns the

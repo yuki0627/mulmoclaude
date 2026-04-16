@@ -1,4 +1,4 @@
-// Unit tests for the pure helpers in `server/routes/sources.ts`.
+// Unit tests for the pure helpers in `server/api/routes/sources.ts`.
 // End-to-end HTTP tests would need supertest (not in the dep
 // tree) — pinning the validators + slug derivation table-driven
 // gives good coverage without that.
