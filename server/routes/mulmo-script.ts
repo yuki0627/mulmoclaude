@@ -1,7 +1,6 @@
 import { Router, Request, Response } from "express";
 import fs from "fs";
 import path from "path";
-import { workspacePath } from "../workspace.js";
 import { WORKSPACE_PATHS } from "../workspace-paths.js";
 import {
   getFileObject,
@@ -35,6 +34,17 @@ import { API_ROUTES } from "../../src/config/apiRoutes.js";
 
 const router = Router();
 const storiesDir = path.resolve(WORKSPACE_PATHS.stories);
+
+// The downloadMovie handler expects "stories/<rel>" (historical
+// convention, independent of the on-disk location). After #284 the
+// physical directory moved under artifacts/, so we can't return
+// path.relative(workspacePath, ...) any more — that now begins with
+// "artifacts/stories/". Re-rooting the path at storiesDir keeps the
+// wire format stable.
+function toStoryRef(absolutePath: string): string {
+  const rel = path.relative(storiesDir, absolutePath).split(path.sep).join("/");
+  return rel ? `stories/${rel}` : "stories";
+}
 
 // Lazily realpath the stories dir on first use. We can't realpath at
 // module load because the directory may not exist yet (it's created
@@ -221,8 +231,7 @@ router.get(
         return;
       }
 
-      const relPath = path.relative(workspacePath, outputPath);
-      res.json({ moviePath: relPath });
+      res.json({ moviePath: toStoryRef(outputPath) });
     } catch (err) {
       serverError(res, errorMessage(err));
     }
@@ -575,8 +584,7 @@ router.post(
           return;
         }
 
-        const relPath = path.relative(workspacePath, outputPath);
-        send({ type: "done", moviePath: relPath });
+        send({ type: "done", moviePath: toStoryRef(outputPath) });
       } finally {
         removeSessionProgressCallback(onProgress);
       }

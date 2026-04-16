@@ -241,14 +241,26 @@ function buildInlinedHelpFiles(
   rolePrompt: string,
   workspacePath: string,
 ): string[] {
-  const matches = rolePrompt.match(/helps\/[\w.-]+\.md/g) ?? [];
+  // Match either legacy `helps/<name>.md` or post-#284
+  // `config/helps/<name>.md` references in role prompts. Both
+  // resolve to the same on-disk file under `config/helps/`.
+  const matches = rolePrompt.match(/(?:config\/)?helps\/[\w.-]+\.md/g) ?? [];
   const unique = [...new Set(matches)];
   return unique
-    .map((rel) => {
-      const fullPath = join(workspacePath, rel);
+    .map((ref) => {
+      // Strip an optional leading `config/` so the on-disk lookup
+      // always goes through `WORKSPACE_DIRS.helps` (which already
+      // resolves to `config/helps`).
+      const name = ref.replace(/^config\//, "").replace(/^helps\//, "");
+      const fullPath = join(workspacePath, WORKSPACE_DIRS.helps, name);
       if (!existsSync(fullPath)) return null;
       const content = readFileSync(fullPath, "utf-8").trim();
-      return content ? `### ${rel}\n\n${content}` : null;
+      // Keep the heading anchored to the canonical post-#284 path
+      // so the LLM reading the inlined block can't accidentally
+      // Read() the stale legacy location.
+      return content
+        ? `### ${WORKSPACE_DIRS.helps}/${name}\n\n${content}`
+        : null;
     })
     .filter((s): s is string => s !== null);
 }

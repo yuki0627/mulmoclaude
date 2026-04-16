@@ -31,7 +31,6 @@ import fs from "fs";
 import fsp from "fs/promises";
 import os from "os";
 import path from "path";
-import { spawnSync } from "child_process";
 
 // ─── Constants ──────────────────────────────────────────────────
 
@@ -203,10 +202,14 @@ export function rewriteProseText(text: string): {
   let out = text;
   let rewrites = 0;
   for (const { from, to } of DIR_MIGRATIONS) {
-    // Match at a word-break (start of line / whitespace / punctuation)
-    // before the prefix so "../wiki/" isn't mis-rewritten but
-    // "wiki/foo" (start of line) and " wiki/foo " (bounded) both are.
-    const re = new RegExp(`(^|[^A-Za-z0-9_-])${escapeRe(from)}/`, "g");
+    // Match only at a true prose boundary: start-of-text or a
+    // non-path-like character. Explicitly exclude `/`, `.`, and `:`
+    // so we don't re-migrate already-relative paths (`../wiki/`),
+    // URLs (`https://example.com/wiki/`), or chains like
+    // `data/wiki/` (post-#284 canonical) → `data/data/wiki/`.
+    // The rewrite must be idempotent because users may re-run the
+    // script or hand-edit memory.md after migration.
+    const re = new RegExp(`(^|[^A-Za-z0-9_./:-])${escapeRe(from)}/`, "g");
     out = out.replace(re, (_m, boundary: string) => {
       rewrites++;
       return `${boundary}${to}/`;
@@ -238,8 +241,17 @@ function assertWorkspaceSane(): void {
   }
   // Bail if someone has already partially migrated (e.g. both old
   // chat/ and new conversations/chat/ present) — ambiguous state.
+  // Both DIR_MIGRATIONS and FILE_MIGRATIONS targets must be absent;
+  // otherwise moveFiles() could overwrite a hand-edited file later
+  // in the run after other moves have already succeeded.
   const collisions: string[] = [];
   for (const { to } of DIR_MIGRATIONS) {
+    const target = path.join(WORKSPACE_ROOT, to);
+    if (exists(target)) {
+      collisions.push(to);
+    }
+  }
+  for (const { to } of FILE_MIGRATIONS) {
     const target = path.join(WORKSPACE_ROOT, to);
     if (exists(target)) {
       collisions.push(to);
@@ -258,16 +270,21 @@ function backupWorkspace(): string {
   const backup = `${WORKSPACE_ROOT}.backup-${timestamp()}`;
   log(`Backing up ${WORKSPACE_ROOT} → ${backup}`);
   if (isDryRun) return backup;
-  // rsync is available on macOS + Linux. Use archive mode to preserve
-  // permissions / symlinks. Trailing slash on source → copy contents
-  // INTO backup dir (which we want).
-  const result = spawnSync(
-    "rsync",
-    ["-a", "--", `${WORKSPACE_ROOT}/`, `${backup}/`],
-    { stdio: "inherit" },
-  );
-  if (result.status !== 0) {
-    die(`rsync failed with exit code ${result.status}`);
+  // `fs.cpSync` with `recursive: true` is cross-platform (macOS,
+  // Linux, Windows) and available in Node >= 16.7. Previously we
+  // shelled out to `rsync`, which isn't installed by default on
+  // Windows. `preserveTimestamps` keeps mtimes so subsequent journal
+  // passes treat the backup identically to the original workspace if
+  // anyone ever reuses it as `WORKSPACE_ROOT` for recovery.
+  try {
+    fs.cpSync(WORKSPACE_ROOT, backup, {
+      recursive: true,
+      preserveTimestamps: true,
+      errorOnExist: true,
+      force: false,
+    });
+  } catch (err) {
+    die(`Backup copy failed: ${err instanceof Error ? err.message : err}`);
   }
   return backup;
 }

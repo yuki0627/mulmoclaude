@@ -264,7 +264,13 @@ async function writeDailySummaryForDate(
   // into true-relative links from the daily summary's location
   // before writing to disk. Same treatment below for topic files.
   const [yearPart, monthPart, dayPart] = date.split("-");
-  const dailyFileWsPath = `summaries/daily/${yearPart}/${monthPart}/${dayPart}.md`;
+  const dailyFileWsPath = path.posix.join(
+    WORKSPACE_DIRS.summaries,
+    "daily",
+    yearPart,
+    monthPart,
+    `${dayPart}.md`,
+  );
   const content = rewriteWorkspaceLinks(dailyFileWsPath, rawMarkdown);
   await writeDailySummary(workspaceRoot, date, content);
 }

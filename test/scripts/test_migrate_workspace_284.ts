@@ -156,6 +156,33 @@ describe("rewriteProseText", () => {
     const { value } = rewriteProseText("go to wiki/pages/");
     assert.equal(value, "go to data/wiki/pages/");
   });
+
+  it("is idempotent: re-running on already-migrated prose is a no-op", () => {
+    // CodeRabbit caught this: the old boundary class allowed `/` as a
+    // left boundary, so `data/wiki/foo.md` → `data/data/wiki/foo.md`
+    // on a second run. Multiple call sites already persist migrated
+    // paths to disk, so the script MUST stay idempotent.
+    const alreadyMigrated =
+      "See data/wiki/foo.md and conversations/summaries/_index.md.";
+    const first = rewriteProseText(alreadyMigrated);
+    assert.equal(first.rewrites, 0);
+    assert.equal(first.value, alreadyMigrated);
+    // Second pass over the first output should also produce zero
+    // rewrites — defends against the fixed bug reappearing.
+    const second = rewriteProseText(first.value);
+    assert.equal(second.rewrites, 0);
+    assert.equal(second.value, alreadyMigrated);
+  });
+
+  it("does NOT rewrite URLs or relative paths that happen to contain a legacy prefix", () => {
+    // `/` must be excluded from the left-boundary class so neither
+    // `../wiki/...` nor `https://example.com/wiki/...` get mangled.
+    const input =
+      "Relative link: ../wiki/foo.md\nExternal: https://example.com/wiki/foo\nLeading dot: ./wiki/bar";
+    const { value, rewrites } = rewriteProseText(input);
+    assert.equal(rewrites, 0);
+    assert.equal(value, input);
+  });
 });
 
 describe("invariants", () => {

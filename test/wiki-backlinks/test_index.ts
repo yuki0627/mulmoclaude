@@ -12,6 +12,18 @@ import { WORKSPACE_DIRS } from "../../server/workspace-paths.js";
 
 const SID = "3e0382cb-f02f-4f5b-a9a3-a71e50d7ad0c";
 
+// Relative path from a wiki page (data/wiki/pages/) to the chat jsonl
+// (conversations/chat/). Derived from WORKSPACE_DIRS so the layout
+// rename in #284 — or any future rename — only needs one source-of-
+// truth update.
+const EXPECTED_BACKLINK_HREF = path.posix.join(
+  "..",
+  "..",
+  "..",
+  WORKSPACE_DIRS.chat,
+  `${SID}.jsonl`,
+);
+
 async function setMtime(filePath: string, mtimeMs: number): Promise<void> {
   const secs = mtimeMs / 1000;
   await utimes(filePath, secs, secs);
@@ -55,7 +67,7 @@ describe("maybeAppendWikiBacklinks (driver)", () => {
     const updated = await readFile(filePath, "utf-8");
     assert.ok(updated.includes(BACKLINKS_MARKER));
     assert.ok(updated.includes(`[session 3e0382cb]`));
-    assert.ok(updated.includes(`../../../conversations/chat/${SID}.jsonl`));
+    assert.ok(updated.includes(EXPECTED_BACKLINK_HREF));
   });
 
   it("skips a page whose mtime is older than the turn start", async () => {
@@ -91,7 +103,7 @@ describe("maybeAppendWikiBacklinks (driver)", () => {
       BACKLINKS_MARKER,
       "## History",
       "",
-      `- [session 3e0382cb](../../chat/${SID}.jsonl)`,
+      `- [session 3e0382cb](${EXPECTED_BACKLINK_HREF})`,
       "",
     ].join("\n");
     await writeFile(filePath, original, "utf-8");

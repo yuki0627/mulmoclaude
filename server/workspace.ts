@@ -27,14 +27,31 @@ fs.mkdirSync(workspacePath, { recursive: true });
 // new sessions to empty dirs and leave the old data stranded.
 //
 // Full migration is a one-shot operation (`scripts/migrate-workspace-284.ts`).
+// The list must cover every DIR_MIGRATIONS.from entry in that script;
+// a workspace that has ANY of these present still needs migration.
 const LEGACY_TOP_LEVEL_DIRS_PRE_284 = [
   "HTMLs",
+  "calendar",
   "charts",
+  "chat",
   "configs",
+  "contacts",
   "helps",
+  "html",
+  "images",
   "markdowns",
+  "news",
+  "roles",
+  "scheduler",
+  "scripts",
+  "searches",
+  "sources",
+  "spreadsheets",
   "stories",
   "summaries",
+  "todos",
+  "transports",
+  "wiki",
 ] as const;
 
 function assertPost284Layout(): void {
