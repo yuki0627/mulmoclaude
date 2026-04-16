@@ -201,13 +201,14 @@ Every HTTP call to `/api/*` requires `Authorization: Bearer <token>`. Layered on
 
 **Dev-mode escape hatch**: setting `MULMOCLAUDE_AUTH_TOKEN=…` before `yarn dev:client` makes the Vite plugin use that value instead of reading the file. Used by `e2e/playwright.config.ts` to inject a predictable token in E2E; also handy for debugging without a running server. Production (Express serving built HTML) never reads env — the in-memory token from `generateAndWriteToken()` is the sole source.
 
-**Current scope** (Phase 1, #272): Vue client and the Express middleware. **Not yet covered**: `bridges/cli` — it talks to `/api/*` without credentials and will now 401 until Phase 2 wires it to the same token file. Track at #272.
+**Current scope** (#272 Phase 1+2): Vue client, Express middleware, and the CLI bridge (`yarn cli`). The bridge reads the same `.session-token` file (or `MULMOCLAUDE_AUTH_TOKEN` env var) on startup and attaches the header to its `fetch` calls.
 
 **Files**
 - `server/auth/token.ts` — generate / write / unlink
 - `server/auth/bearerAuth.ts` — Express middleware
 - `src/utils/api.ts` — `setAuthToken()` + header injection (no call site changes needed; `apiFetch` auto-attaches)
 - `vite.config.ts` — `mulmoclaudeAuthTokenPlugin` for dev HTML substitution
+- `bridges/cli/token.ts` — bridge-side resolver (env var → file)
 
 ---
 

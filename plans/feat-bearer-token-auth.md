@@ -1,4 +1,4 @@
-# Bearer token auth for all HTTP server-client endpoints (#272 Phase 1)
+# Bearer token auth for all HTTP server-client endpoints (#272 Phase 1+2)
 
 ## Motivation
 
@@ -12,7 +12,7 @@ local-process isolation broken.
 Bearer token auth closes this gap: only clients that know the
 per-startup-generated token can reach `/api/*`.
 
-## Scope — Phase 1 only
+## Scope — Phase 1+2
 
 Covered in this PR:
 
@@ -24,14 +24,19 @@ Covered in this PR:
 6. Prod: Express serves `client/index.html` with token substituted at request time
 7. `src/utils/api.ts` already has `setAuthToken()` scaffolding (#279) — wire it
    up from `src/main.ts` bootstrap
-8. Unit tests + E2E smoke test (401 on missing token)
-9. Docs in `docs/developer.md`
+8. `bridges/cli` reads the same token file (or `MULMOCLAUDE_AUTH_TOKEN` env
+   var) at startup and attaches the header to its `fetch` calls. Handles a
+   401 response (server restarted → stale in-memory token) with a
+   helpful "re-run the bridge" message.
+9. Unit tests + E2E smoke test (token present in meta, Authorization header
+   on boot fetch) + bridge-token unit tests
+10. Docs in `docs/developer.md`
 
-**Deferred to follow-up PRs:**
-- Phase 2: bridges/cli integration (env var `MULMOCLAUDE_AUTH_TOKEN` or read
-  token file directly). Issue #272 step 7.
-- Phase 3: token rotation endpoint, bridge/UI token split, `.env` override for
-  fixed test tokens.
+**Deferred to follow-up PRs (Phase 3+)**:
+- Token rotation endpoint (`POST /api/auth/rotate`)
+- Bridge/UI token split (bridges get a read-only subset)
+- `.env` override for fixed test tokens (separate from the dev-only
+  `MULMOCLAUDE_AUTH_TOKEN` already supported)
 
 ## Design decisions
 
@@ -116,11 +121,8 @@ right types. The Vite plugin and middleware use narrow explicit types.
 
 ## Rollout / compatibility
 
-This PR is a **breaking change** for any bridge / external client that hits
-`/api/*` without credentials. In this repo, only the Vue client and the
-existing `bridges/cli` call `/api/*`; Phase 2 will fix the CLI bridge. Until
-then, running the CLI bridge against this server will 401. Docs call this
-out explicitly.
-
-Existing users running `yarn dev` see no change — same endpoints, token
-injected transparently.
+This PR is a **breaking change** for any external client that hits `/api/*`
+without credentials. In this repo all internal consumers (Vue client +
+`bridges/cli`) are updated in the same PR, so no component is broken mid-
+flight. Users running `yarn dev` or `yarn cli` see no change — tokens are
+injected / read transparently.
