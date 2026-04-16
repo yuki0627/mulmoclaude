@@ -8,8 +8,7 @@
 // at a `mkdtempSync` directory without touching the real
 // ~/mulmoclaude.
 
-import { mkdir, readdir, readFile, rename, writeFile } from "node:fs/promises";
-import { randomUUID } from "node:crypto";
+import { readdir, readFile } from "node:fs/promises";
 import {
   defaultSummarize,
   loadJsonlInput,
@@ -17,13 +16,13 @@ import {
 } from "./summarizer.js";
 import {
   chatDirFor,
-  indexDirFor,
   indexEntryPathFor,
   manifestPathFor,
   sessionJsonlPathFor,
   sessionMetaPathFor,
 } from "./paths.js";
 import type { ChatIndexEntry, ChatIndexManifest } from "./types.js";
+import { writeJsonAtomic } from "../utils/file.js";
 import { DEFAULT_ROLE_ID } from "../../src/config/roles.js";
 
 // Freshness throttle: a session whose existing index entry is
@@ -98,11 +97,13 @@ async function writeManifestAtomic(
   workspaceRoot: string,
   m: ChatIndexManifest,
 ): Promise<void> {
-  await mkdir(indexDirFor(workspaceRoot), { recursive: true });
-  const target = manifestPathFor(workspaceRoot);
-  const tmp = `${target}.${randomUUID()}.tmp`;
-  await writeFile(tmp, JSON.stringify(m, null, 2), "utf-8");
-  await rename(tmp, target);
+  // `uniqueTmp` belt-and-suspenders: the in-process mutex above
+  // already serializes callers, but a unique tmp name means the
+  // rename can't collide even if a stray .tmp file is left behind
+  // by a previous crashed run.
+  await writeJsonAtomic(manifestPathFor(workspaceRoot), m, {
+    uniqueTmp: true,
+  });
 }
 
 // Read, mutate, and write the manifest under the in-process lock
@@ -231,12 +232,7 @@ export async function indexSession(
   // Per-session file is written first so partial progress survives
   // a crash between the two writes: the next run can still observe
   // the fresh entry via isFresh and skip it.
-  await mkdir(indexDirFor(workspaceRoot), { recursive: true });
-  await writeFile(
-    indexEntryPathFor(workspaceRoot, sessionId),
-    JSON.stringify(entry, null, 2),
-    "utf-8",
-  );
+  await writeJsonAtomic(indexEntryPathFor(workspaceRoot, sessionId), entry);
 
   // Upsert into manifest under the in-process lock: replace any
   // prior entry with the same id, sort newest-first by startedAt.
