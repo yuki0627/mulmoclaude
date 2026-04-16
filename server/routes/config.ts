@@ -11,7 +11,7 @@ import {
   type McpConfigFile,
   type McpServerEntry,
 } from "../config.js";
-import { badRequest } from "../utils/httpError.js";
+import { badRequest, serverError } from "../utils/httpError.js";
 
 // Public surface of /api/config. GET returns the full config tree so
 // the client can render every section in one request. PUT surfaces are
