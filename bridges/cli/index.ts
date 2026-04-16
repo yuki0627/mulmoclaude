@@ -19,7 +19,7 @@ function prompt(): void {
 
     try {
       const res = await fetch(
-        `${API_URL}/api/chat/${TRANSPORT_ID}/${CHAT_ID}`,
+        `${API_URL}/api/transports/${TRANSPORT_ID}/chats/${CHAT_ID}`,
         {
           method: "POST",
           headers: { "Content-Type": "application/json" },
