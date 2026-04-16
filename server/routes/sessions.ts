@@ -8,6 +8,7 @@ import { readManifest } from "../chat-index/indexer.js";
 import { resolveWithinRoot } from "../utils/fs.js";
 import type { ChatIndexEntry } from "../chat-index/types.js";
 import { markRead, getSession } from "../session-store/index.js";
+import { EVENT_TYPES } from "../../src/types/events.js";
 
 interface SessionMeta {
   roleId: string;
@@ -174,14 +175,14 @@ router.get(
                 const entry = JSON.parse(line);
                 // Skip legacy metadata entries now stored in .json
                 if (
-                  entry.type === "session_meta" ||
-                  entry.type === "claude_session_id"
+                  entry.type === EVENT_TYPES.sessionMeta ||
+                  entry.type === EVENT_TYPES.claudeSessionId
                 )
                   return null;
                 // For presentMulmoScript results, re-read the script from disk
                 if (
                   entry.source === "tool" &&
-                  entry.type === "tool_result" &&
+                  entry.type === EVENT_TYPES.toolResult &&
                   entry.result?.toolName === "presentMulmoScript" &&
                   entry.result?.data?.filePath
                 ) {
@@ -234,7 +235,7 @@ router.get(
       ).filter(Boolean);
       // Prepend metadata as session_meta entry for the frontend
       const result = meta
-        ? [{ type: "session_meta", ...meta }, ...entries]
+        ? [{ type: EVENT_TYPES.sessionMeta, ...meta }, ...entries]
         : entries;
       res.json(result);
     } catch {
