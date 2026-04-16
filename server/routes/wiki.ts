@@ -9,10 +9,9 @@ import { API_ROUTES } from "../../src/config/apiRoutes.js";
 
 const router = Router();
 
-const wikiDir = () => WORKSPACE_PATHS.wiki;
-const pagesDir = () => path.join(wikiDir(), "pages");
-const indexFile = () => path.join(wikiDir(), "index.md");
-const logFile = () => path.join(wikiDir(), "log.md");
+const pagesDir = () => WORKSPACE_PATHS.wikiPages;
+const indexFile = () => WORKSPACE_PATHS.wikiIndex;
+const logFile = () => WORKSPACE_PATHS.wikiLog;
 
 function readFileOrEmpty(filePath: string): string {
   try {

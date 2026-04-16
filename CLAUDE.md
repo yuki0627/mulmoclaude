@@ -52,19 +52,21 @@ SSE from `POST /api/agent`: `{ type: "status" | "tool_result" | "error", ... }`.
 
 ### Workspace
 
-Hard-coded to `~/mulmoclaude/` (see `server/workspace.ts:11`). There is **no `WORKSPACE_PATH` env override**; changing the location requires a code edit or a symlink. Full directory layout is documented in [`docs/developer.md`](docs/developer.md#workspace-layout-mulmoclaude); the short version:
+Hard-coded to `~/mulmoclaude/` (see `server/workspace.ts`). There is **no `WORKSPACE_PATH` env override**; changing the location requires a code edit or a symlink. Post-#284 the layout is grouped into four top-level buckets — full reference in [`docs/developer.md`](docs/developer.md#workspace-layout-mulmoclaude). Short version:
 
 ```text
 ~/mulmoclaude/
-  chat/           ← session ToolResults (one .jsonl per session)
-  chat/index/     ← per-session title/summary cache (chat indexer)
-  todos/          ← todo items
-  calendar/       ← calendar events
-  wiki/           ← wiki pages + assets
-  configs/        ← web Settings UI (settings.json, mcp.json)
-  summaries/      ← journal output (daily/ + topics/ + archive/)
-  memory.md       ← distilled facts always loaded as context
+  config/              ← settings.json, mcp.json, roles/, helps/
+  conversations/       ← chat/, chat/index/, memory.md, summaries/
+  data/                ← wiki/, todos/, calendar/, contacts/,
+                         scheduler/, sources/, transports/
+  artifacts/           ← charts/, documents/, html/, html-scratch/,
+                         images/, news/, spreadsheets/, stories/
 ```
+
+Pre-#284 workspaces must run `yarn tsx scripts/migrate-workspace-284.ts --execute` (preceded by `--dry-run`) once before the server will start.
+
+**Always reach for constants** (`WORKSPACE_PATHS.<key>` / `WORKSPACE_DIRS.<key>` / `WORKSPACE_FILES.<key>` from `server/workspace-paths.ts`) when composing workspace paths — never hardcode a literal. A rename is one-file edit there; hardcoded literals turn it into a grep-and-edit across the server.
 
 ### Routing (vue-router, history mode)
 

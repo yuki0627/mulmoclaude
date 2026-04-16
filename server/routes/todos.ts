@@ -1,5 +1,4 @@
 import { Router, Request, Response } from "express";
-import path from "path";
 import { WORKSPACE_PATHS } from "../workspace-paths.js";
 import { loadJsonFile, saveJsonFile } from "../utils/file.js";
 import { dispatchTodos, type TodosActionInput } from "./todosHandlers.js";
@@ -50,9 +49,8 @@ export interface TodoItem {
   order?: number; // sort key within the same status column
 }
 
-const todosFile = (): string => path.join(WORKSPACE_PATHS.todos, "todos.json");
-const columnsFile = (): string =>
-  path.join(WORKSPACE_PATHS.todos, "columns.json");
+const todosFile = (): string => WORKSPACE_PATHS.todosItems;
+const columnsFile = (): string => WORKSPACE_PATHS.todosColumns;
 
 function loadColumns(): StatusColumn[] {
   return normalizeColumns(

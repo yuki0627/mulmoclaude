@@ -54,7 +54,7 @@ export async function maybeAppendWikiBacklinks(
   if (!opts.chatSessionId) return;
   const workspaceRoot = opts.workspaceRoot ?? defaultWorkspacePath;
   const deps: WikiBacklinksDeps = { ...defaultDeps, ...(opts.deps ?? {}) };
-  const pagesDir = path.join(workspaceRoot, WORKSPACE_DIRS.wiki, "pages");
+  const pagesDir = path.join(workspaceRoot, WORKSPACE_DIRS.wikiPages);
 
   const files = await listPageFiles(pagesDir, deps);
   if (files.length === 0) return;

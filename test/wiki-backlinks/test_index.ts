@@ -38,7 +38,7 @@ describe("maybeAppendWikiBacklinks (driver)", () => {
   });
 
   it("appends backlink to a page modified during the turn", async () => {
-    const pagesDir = path.join(workspaceRoot, WORKSPACE_DIRS.wiki, "pages");
+    const pagesDir = path.join(workspaceRoot, WORKSPACE_DIRS.wikiPages);
     await mkdir(pagesDir, { recursive: true });
 
     const filePath = path.join(pagesDir, "topic.md");
@@ -59,7 +59,7 @@ describe("maybeAppendWikiBacklinks (driver)", () => {
   });
 
   it("skips a page whose mtime is older than the turn start", async () => {
-    const pagesDir = path.join(workspaceRoot, WORKSPACE_DIRS.wiki, "pages");
+    const pagesDir = path.join(workspaceRoot, WORKSPACE_DIRS.wikiPages);
     await mkdir(pagesDir, { recursive: true });
 
     const oldPath = path.join(pagesDir, "old.md");
@@ -79,7 +79,7 @@ describe("maybeAppendWikiBacklinks (driver)", () => {
   });
 
   it("does not rewrite a file whose content is already up-to-date (dedupe)", async () => {
-    const pagesDir = path.join(workspaceRoot, WORKSPACE_DIRS.wiki, "pages");
+    const pagesDir = path.join(workspaceRoot, WORKSPACE_DIRS.wikiPages);
     await mkdir(pagesDir, { recursive: true });
 
     const filePath = path.join(pagesDir, "already.md");
@@ -116,7 +116,7 @@ describe("maybeAppendWikiBacklinks (driver)", () => {
   });
 
   it("continues past one failed file and updates the rest", async () => {
-    const pagesDir = path.join(workspaceRoot, WORKSPACE_DIRS.wiki, "pages");
+    const pagesDir = path.join(workspaceRoot, WORKSPACE_DIRS.wikiPages);
     await mkdir(pagesDir, { recursive: true });
 
     const okPath = path.join(pagesDir, "ok.md");
@@ -146,7 +146,7 @@ describe("maybeAppendWikiBacklinks (driver)", () => {
   });
 
   it("no-op on empty chatSessionId (defensive)", async () => {
-    const pagesDir = path.join(workspaceRoot, WORKSPACE_DIRS.wiki, "pages");
+    const pagesDir = path.join(workspaceRoot, WORKSPACE_DIRS.wikiPages);
     await mkdir(pagesDir, { recursive: true });
     const filePath = path.join(pagesDir, "defensive.md");
     await writeFile(filePath, "# Defensive\n", "utf-8");

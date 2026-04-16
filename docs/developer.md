@@ -157,30 +157,50 @@ Three independent Node processes cooperate at runtime:
 
 ## Workspace layout (`~/mulmoclaude/`)
 
-`initWorkspace()` creates / refreshes this on every server start (`server/workspace.ts`). Everything is plain files tracked in a private git repo:
+`initWorkspace()` creates / refreshes this on every server start (`server/workspace.ts`). Everything is plain files tracked in a private git repo, grouped into four top-level buckets by purpose (issue #284):
 
 ```text
 ~/mulmoclaude/
-  chat/               session ToolResults (.jsonl per session)
-  chat/index/         per-session title/summary cache
-  todos/              todos.json + columns.json
-  calendar/           calendar events
-  contacts/           contact records
-  scheduler/          scheduled tasks
-  roles/              user-defined role overrides
-  stories/            mulmo scripts
-  images/             generated / edited images
-  markdowns/          markdown documents
-  spreadsheets/       .xlsx files
-  configs/            settings.json, mcp.json (web Settings UI)
-  helps/              synced from server/helps/ at every boot
-  memory.md           always-loaded agent context
+  config/             # app configuration
+    settings.json     (web Settings UI — extraAllowedTools)
+    mcp.json          (Claude CLI --mcp-config compatible)
+    roles/            user-defined role overrides
+    helps/            synced from server/helps/ at every boot
+  conversations/      # chat + distilled context
+    chat/             session ToolResults (one .jsonl per session)
+    chat/index/       per-session title/summary cache
+    memory.md         always-loaded agent context
+    summaries/        journal output (daily/, topics/, archive/)
+  data/               # user-managed content (the app treats these as authoritative)
+    wiki/             personal knowledge wiki (index.md, pages/, sources/, log.md)
+    todos/            todos.json + columns.json
+    calendar/         calendar events
+    contacts/         contact records
+    scheduler/        scheduled tasks (items.json)
+    sources/          information-source registry + state
+    transports/       per-chat messaging bridge state (future)
+  artifacts/          # LLM-generated output, mostly regenerable
+    charts/
+    documents/        (was markdowns/ pre-#284)
+    html/             persistent saved HTML (was HTMLs/ pre-#284)
+    html-scratch/     transient generate-and-preview buffer (was html/ pre-#284)
+    images/           generated / edited images
+    news/             daily news briefs
+    spreadsheets/     .xlsx files
+    stories/          mulmo scripts
   .session-token      bearer auth token (mode 0600, see Auth below)
   .git/               auto-init'd repo
   .mulmoclaude/       internal: per-session MCP config files
 ```
 
-The `configs/` dir is the home for the [web Settings UI](../README.md#configuring-additional-tools-web-settings) — `settings.json` carries `extraAllowedTools`, `mcp.json` follows Claude CLI's `--mcp-config` format so you can copy it between machines.
+Existing workspaces from before #284 need to run the one-shot migration script once before the server will start:
+
+```bash
+yarn tsx scripts/migrate-workspace-284.ts --dry-run   # preview
+yarn tsx scripts/migrate-workspace-284.ts --execute   # commit (backs up via rsync first)
+```
+
+The `config/` dir is the home for the [web Settings UI](../README.md#configuring-additional-tools-web-settings) — `settings.json` carries `extraAllowedTools`, `mcp.json` follows Claude CLI's `--mcp-config` format so you can copy it between machines.
 
 ---
 

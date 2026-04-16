@@ -67,9 +67,19 @@ export const WORKSPACE_DIRS = {
   configs: "config",
   roles: "config/roles",
   helps: "config/helps",
+  // Nested subdirs inside a top-level grouping. Kept here (rather
+  // than module-local constants) when multiple modules need to
+  // reference the same nested path — e.g. wiki/pages/ is used by
+  // the wiki route, the wiki-backlinks driver, and the system
+  // prompt hint.
+  wikiPages: "data/wiki/pages",
+  wikiSources: "data/wiki/sources",
 } as const;
 
-// File names at the workspace root (not under a subdirectory).
+// Well-known individual files. Values are workspace-relative paths.
+// Grouped alongside `WORKSPACE_DIRS` so cross-module callers use a
+// single source of truth (a rename needs one-file change here, not
+// a grep across server / tests).
 export const WORKSPACE_FILES = {
   memory: "conversations/memory.md",
   // Bearer auth token (#272). Written at server startup, mode 0600, read
@@ -79,6 +89,23 @@ export const WORKSPACE_FILES = {
   // shutdown; stale files after a crash are harmless since the next
   // startup regenerates and the in-memory token is the only one checked.
   sessionToken: ".session-token",
+  // Wiki metadata. Consumed by `server/routes/wiki.ts` (the API) and
+  // `server/agent/prompt.ts` (the system-prompt hint) — keep them
+  // here so a rename hits both.
+  wikiIndex: "data/wiki/index.md",
+  wikiLog: "data/wiki/log.md",
+  wikiSchema: "data/wiki/SCHEMA.md",
+  wikiSummary: "data/wiki/summary.md",
+  // Journal index for the summaries/ grouping. Read by the system
+  // prompt's `prependJournalPointer` to decide whether the journal
+  // is bootstrapped yet.
+  summariesIndex: "conversations/summaries/_index.md",
+  // Plugin data files. Currently each is written by one module, but
+  // name-here-so-future-consumers-can-import (tests, CLI tools,
+  // migration scripts).
+  todosItems: "data/todos/todos.json",
+  todosColumns: "data/todos/columns.json",
+  schedulerItems: "data/scheduler/items.json",
 } as const;
 
 // Absolute paths, built once at module load from `workspacePath`.
@@ -106,8 +133,20 @@ export const WORKSPACE_PATHS = {
   htmls: path.join(workspacePath, WORKSPACE_DIRS.htmls),
   html: path.join(workspacePath, WORKSPACE_DIRS.html),
   transports: path.join(workspacePath, WORKSPACE_DIRS.transports),
+  // nested subdirs
+  wikiPages: path.join(workspacePath, WORKSPACE_DIRS.wikiPages),
+  wikiSources: path.join(workspacePath, WORKSPACE_DIRS.wikiSources),
+  // files
   memory: path.join(workspacePath, WORKSPACE_FILES.memory),
   sessionToken: path.join(workspacePath, WORKSPACE_FILES.sessionToken),
+  wikiIndex: path.join(workspacePath, WORKSPACE_FILES.wikiIndex),
+  wikiLog: path.join(workspacePath, WORKSPACE_FILES.wikiLog),
+  wikiSchema: path.join(workspacePath, WORKSPACE_FILES.wikiSchema),
+  wikiSummary: path.join(workspacePath, WORKSPACE_FILES.wikiSummary),
+  summariesIndex: path.join(workspacePath, WORKSPACE_FILES.summariesIndex),
+  todosItems: path.join(workspacePath, WORKSPACE_FILES.todosItems),
+  todosColumns: path.join(workspacePath, WORKSPACE_FILES.todosColumns),
+  schedulerItems: path.join(workspacePath, WORKSPACE_FILES.schedulerItems),
 } as const;
 
 export type WorkspaceDirKey = keyof typeof WORKSPACE_DIRS;
