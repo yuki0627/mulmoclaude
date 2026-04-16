@@ -6,6 +6,7 @@ import { io as ioClient, Socket as ClientSocket } from "socket.io-client";
 import { Server as SocketServer } from "socket.io";
 import {
   attachChatSocket,
+  CHAT_SOCKET_EVENTS,
   CHAT_SOCKET_PATH,
 } from "../../server/chat-service/socket.ts";
 import { createPushQueue } from "../../server/chat-service/push-queue.ts";
@@ -100,7 +101,7 @@ function emitMessage(
   payload: unknown,
 ): Promise<{ ok: boolean; reply?: string; error?: string; status?: number }> {
   return new Promise((resolve) => {
-    client.emit("message", payload, resolve);
+    client.emit(CHAT_SOCKET_EVENTS.message, payload, resolve);
   });
 }
 

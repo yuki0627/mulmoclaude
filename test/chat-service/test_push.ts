@@ -5,6 +5,7 @@ import express from "express";
 import { io as ioClient, Socket as ClientSocket } from "socket.io-client";
 import {
   attachChatSocket,
+  CHAT_SOCKET_EVENTS,
   CHAT_SOCKET_PATH,
   type ChatSocketHandle,
 } from "../../server/chat-service/socket.ts";
@@ -101,7 +102,7 @@ function collectPushes(
         ),
       timeoutMs,
     );
-    socket.on("push", (ev: PushEvent) => {
+    socket.on(CHAT_SOCKET_EVENTS.push, (ev: PushEvent) => {
       received.push(ev);
       if (received.length >= count) {
         clearTimeout(timer);
@@ -160,7 +161,7 @@ describe("pushToBridge — live", () => {
     await waitConnect(cli);
 
     let received = false;
-    cli.on("push", () => {
+    cli.on(CHAT_SOCKET_EVENTS.push, () => {
       received = true;
     });
     harness.handle.pushToBridge("telegram", "chat-99", "not for cli");
@@ -224,7 +225,7 @@ describe("pushToBridge — offline queue + flush on reconnect", () => {
     // Second socket joins after the drain — should get nothing.
     const b = connectClient(harness.url);
     let bReceived = false;
-    b.on("push", () => {
+    b.on(CHAT_SOCKET_EVENTS.push, () => {
       bReceived = true;
     });
     await waitConnect(b);

@@ -61,7 +61,7 @@ changing the `pushToBridge` call site.
 
 Server → bridge, on `/ws/chat`:
 
-```
+```ts
 socket.emit("push", { chatId: string, message: string });
 ```
 

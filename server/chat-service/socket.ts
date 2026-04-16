@@ -35,6 +35,25 @@ import type { Logger } from "./types.js";
 
 export const CHAT_SOCKET_PATH = "/ws/chat";
 
+/**
+ * Custom socket.io events the chat transport defines. Keys mirror
+ * values so grep-and-rename is safe; the union type is what every
+ * on/emit site should reference instead of raw string literals.
+ * Socket.io built-ins (`connect`, `disconnect`, `connect_error`) are
+ * intentionally omitted — those are part of socket.io's own contract,
+ * not ours to rename.
+ */
+export const CHAT_SOCKET_EVENTS = {
+  /** bridge → server request (body: `{ externalChatId, text }`); ack
+   *  carries `{ ok, reply, error?, status? }`. */
+  message: "message",
+  /** server → bridge async push (Phase B of #268); body:
+   *  `{ chatId, message }`. */
+  push: "push",
+} as const;
+export type ChatSocketEvent =
+  (typeof CHAT_SOCKET_EVENTS)[keyof typeof CHAT_SOCKET_EVENTS];
+
 export type PushFn = (
   transportId: string,
   chatId: string,
@@ -124,7 +143,10 @@ export function attachChatSocket(
         count: queued.length,
       });
       for (const item of queued) {
-        socket.emit("push", { chatId: item.chatId, message: item.message });
+        socket.emit(CHAT_SOCKET_EVENTS.push, {
+          chatId: item.chatId,
+          message: item.message,
+        });
       }
     }
 
@@ -142,7 +164,7 @@ export function attachChatSocket(
     });
 
     socket.on(
-      "message",
+      CHAT_SOCKET_EVENTS.message,
       async (payload: MessagePayload, ack?: (reply: MessageAck) => void) => {
         if (typeof ack !== "function") {
           logger.warn("chat-service", "socket message missing ack", {
@@ -181,7 +203,7 @@ export function attachChatSocket(
     // about what socket.io actually knows.
     const hasLive = (io.sockets.adapter.rooms.get(room)?.size ?? 0) > 0;
     if (hasLive) {
-      io.to(room).emit("push", { chatId, message });
+      io.to(room).emit(CHAT_SOCKET_EVENTS.push, { chatId, message });
       return;
     }
     queue.enqueue(transportId, { chatId, message, enqueuedAt: Date.now() });
