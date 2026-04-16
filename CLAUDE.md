@@ -23,14 +23,45 @@ See `plan/mulmo_claude.md` for the full design plan.
 
 **IMPORTANT**: Always write error handling for all `fetch` calls. Handle both network errors (try/catch) and HTTP errors (`!response.ok`). Surface errors to the user in the UI where appropriate.
 
-## GitHub posts (gh pr comment / gh issue comment / PR body)
+## GitHub posts (gh pr comment / gh issue comment / PR body / issue body)
 
-**NEVER escape backticks with backslash** when writing the body for `gh pr comment`, `gh issue comment`, `gh pr create --body`, `gh issue create --body`, or any other GitHub-rendering surface.
+> **🚨 CRITICAL — NEVER escape backticks with backslash (`\``) in ANY `gh` command output.**
+> This rule applies to `gh pr comment`, `gh issue comment`, `gh pr create --body`, `gh issue create --body`, `gh api --field body=...`, and any other command whose output renders as GitHub Markdown.
+> **Every time this rule has been violated, the resulting issue / PR / comment was visually broken on GitHub.** This happened most recently on issues #335, #336, #337 (2026-04-16). The fix was a manual `sed` pass to strip all `\`` back to `` ` ``.
 
-- ✅ Correct: write ` ``` ` for fenced code blocks and `` ` `` for inline code, literally. Inside a bash heredoc (`<<'EOF'` with single quotes), backticks pass through unchanged.
-- ❌ Wrong: `\`\`\`` or `\``. These render as literal `\`\`\`` / `\`` on GitHub — backslash is visible, and markdown treats it as escaped so there's no code block at all.
+### The rule
 
-This happens repeatedly. If you're tempted to write `\`` inside a gh body, stop and check: the single-quoted heredoc (`<<'EOF' ... EOF`) doesn't interpret backticks, so they need zero escaping. Only escape if the heredoc is unquoted (`<<EOF`) — and the right fix there is to quote the heredoc, not add backslashes.
+- ✅ Correct: write `` ` `` for inline code and ` ``` ` for fenced code blocks, **literally, with zero escaping**.
+- ❌ Wrong: `\``, `\`\`\``. These render as **visible backslash + backtick** on GitHub — the markdown parser treats the backslash as a literal character, so there is no code formatting at all.
+
+### Why it keeps happening and how to stop
+
+The temptation to write `\`` comes from the shell: outside a heredoc, backticks trigger command substitution. But **every `gh` body in this repo MUST use a single-quoted heredoc** (`<<'EOF' ... EOF`). Inside a single-quoted heredoc the shell performs **zero interpolation** — backticks, `$`, `!`, and `\` are all passed through verbatim. So there is nothing to escape.
+
+```bash
+# CORRECT — single-quoted heredoc, backticks are literal
+gh issue create --body "$(cat <<'EOF'
+Use `createBridgeClient()` to connect.
+EOF
+)"
+
+# WRONG — unquoted heredoc, shell eats the backticks
+gh issue create --body "$(cat <<EOF
+Use `createBridgeClient()` to connect.
+EOF
+)"
+
+# ALSO WRONG — escaped backticks inside single-quoted heredoc
+gh issue create --body "$(cat <<'EOF'
+Use \`createBridgeClient()\` to connect.
+EOF
+)"
+```
+
+### Pre-send checklist (do this mentally before every `gh` call)
+
+1. Is the heredoc **single-quoted** (`<<'EOF'`)? If yes, proceed — no escaping needed.
+2. Does the body contain `\``? If yes, **STOP and remove every backslash before a backtick**. There is no scenario in a single-quoted heredoc where `\`` is correct.
 
 ## Architecture
 
