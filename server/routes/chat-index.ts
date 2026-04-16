@@ -12,6 +12,7 @@
 import { Router, Request, Response } from "express";
 import { backfillAllSessions } from "../chat-index/index.js";
 import { log } from "../logger/index.js";
+import { API_ROUTES } from "../../src/api-routes.js";
 
 interface RebuildResponse {
   total: number;
@@ -26,7 +27,7 @@ interface RebuildErrorResponse {
 const router = Router();
 
 router.post(
-  "/chat-index/rebuild",
+  API_ROUTES.chatIndex.rebuild,
   async (
     _req: Request,
     res: Response<RebuildResponse | RebuildErrorResponse>,

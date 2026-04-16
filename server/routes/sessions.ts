@@ -8,6 +8,7 @@ import { readManifest } from "../chat-index/indexer.js";
 import { resolveWithinRoot } from "../utils/fs.js";
 import type { ChatIndexEntry } from "../chat-index/types.js";
 import { markRead, getSession } from "../session-store/index.js";
+import { API_ROUTES } from "../../src/api-routes.js";
 
 interface SessionMeta {
   roleId: string;
@@ -73,7 +74,7 @@ const WINDOW_MS =
   (Number(process.env.SESSIONS_LIST_WINDOW_DAYS) || 90) * 86_400_000;
 
 router.get(
-  "/sessions",
+  API_ROUTES.sessions.list,
   async (_req: Request, res: Response<SessionSummary[]>) => {
     const chatDir = WORKSPACE_PATHS.chat;
     const manifest = await readManifest(workspacePath);
@@ -153,7 +154,7 @@ interface SessionErrorResponse {
 }
 
 router.get(
-  "/sessions/:id",
+  API_ROUTES.sessions.detail,
   async (
     req: Request<SessionIdParams>,
     res: Response<unknown[] | SessionErrorResponse>,
@@ -245,7 +246,7 @@ router.get(
 
 // Mark a session as read (clears the hasUnread flag in the session store).
 router.post(
-  "/sessions/:id/mark-read",
+  API_ROUTES.sessions.markRead,
   (req: Request<SessionIdParams>, res: Response<{ ok: boolean }>) => {
     const ok = markRead(req.params.id);
     res.json({ ok });

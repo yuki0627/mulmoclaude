@@ -18,6 +18,7 @@ import {
 } from "../skills/index.js";
 import type { Skill, SkillSummary } from "../skills/index.js";
 import { workspacePath } from "../workspace.js";
+import { API_ROUTES } from "../../src/api-routes.js";
 import { log } from "../logger/index.js";
 
 const router = Router();
@@ -51,7 +52,7 @@ interface DeleteSkillResponse {
 }
 
 router.get(
-  "/skills",
+  API_ROUTES.skills.list,
   async (_req: Request, res: Response<SkillsListResponse>) => {
     const skills = await discoverSkills({ workspaceRoot: workspacePath });
     res.json({
@@ -65,7 +66,7 @@ router.get(
 );
 
 router.get(
-  "/skills/:name",
+  API_ROUTES.skills.detail,
   async (
     req: Request<{ name: string }>,
     res: Response<SkillDetailResponse | ErrorResponse>,
@@ -81,7 +82,7 @@ router.get(
 );
 
 router.post(
-  "/skills",
+  API_ROUTES.skills.create,
   async (
     req: Request<object, unknown, SaveSkillBody>,
     res: Response<SaveSkillResponse | ErrorResponse>,
@@ -131,7 +132,7 @@ router.post(
 );
 
 router.delete(
-  "/skills/:name",
+  API_ROUTES.skills.remove,
   async (
     req: Request<{ name: string }>,
     res: Response<DeleteSkillResponse | ErrorResponse>,

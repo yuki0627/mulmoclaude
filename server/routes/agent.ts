@@ -21,6 +21,7 @@ import { maybeAppendWikiBacklinks } from "../wiki-backlinks/index.js";
 import { log } from "../logger/index.js";
 import { logBackgroundError } from "../utils/logBackgroundError.js";
 import { createArgsCache, recordToolEvent } from "../tool-trace/index.js";
+import { API_ROUTES } from "../../src/api-routes.js";
 
 const router = Router();
 const PORT = Number(process.env.PORT) || 3001;
@@ -49,7 +50,7 @@ interface OkResponse {
 }
 
 router.post(
-  "/internal/tool-result",
+  API_ROUTES.agent.internal.toolResult,
   async (
     req: Request<object, unknown, Record<string, unknown>>,
     res: Response<OkResponse>,
@@ -66,7 +67,7 @@ interface SwitchRoleBody {
 }
 
 router.post(
-  "/internal/switch-role",
+  API_ROUTES.agent.internal.switchRole,
   async (
     req: Request<object, unknown, SwitchRoleBody>,
     res: Response<OkResponse>,
@@ -86,7 +87,7 @@ interface CancelBody {
 }
 
 router.post(
-  "/agent/cancel",
+  API_ROUTES.agent.cancel,
   (req: Request<object, unknown, CancelBody>, res: Response<OkResponse>) => {
     const { chatSessionId } = req.body;
     if (!chatSessionId) {
@@ -251,7 +252,7 @@ interface AcceptedResponse {
 }
 
 router.post(
-  "/agent",
+  API_ROUTES.agent.run,
   async (
     req: Request<object, unknown, AgentBody>,
     res: Response<ErrorResponse | AcceptedResponse>,

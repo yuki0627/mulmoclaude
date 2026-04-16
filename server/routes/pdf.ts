@@ -7,6 +7,7 @@ import { errorMessage } from "../utils/errors.js";
 import { workspacePath } from "../workspace.js";
 import { resolveWithinRoot } from "../utils/fs.js";
 import { log } from "../logger/index.js";
+import { API_ROUTES } from "../../src/api-routes.js";
 
 const router = Router();
 
@@ -149,7 +150,7 @@ interface PdfMarkdownBody {
 }
 
 router.post(
-  "/pdf/markdown",
+  API_ROUTES.pdf.markdown,
   async (req: Request<object, unknown, PdfMarkdownBody>, res: Response) => {
     const { markdown, filename = "document.pdf", format = "Letter" } = req.body;
 
