@@ -141,18 +141,21 @@ export function cancelRun(chatSessionId: string): boolean {
   return true;
 }
 
-/** Clear the unread flag (called when a client views the session). */
-export function markRead(chatSessionId: string): boolean {
+/** Clear the unread flag (called when a client views the session).
+ *  Awaits the disk write so the caller can respond only after the
+ *  flag is actually persisted — avoids the race where the client
+ *  refetches before the write lands and sees the stale value. */
+export async function markRead(chatSessionId: string): Promise<boolean> {
   const session = store.get(chatSessionId);
   if (!session) {
     // No in-memory session — still persist to disk so the flag is
     // cleared for the next server restart / session listing.
-    persistHasUnread(chatSessionId, false);
-    return false;
+    await persistHasUnread(chatSessionId, false);
+    return true;
   }
   if (!session.hasUnread) return true;
   session.hasUnread = false;
-  persistHasUnread(chatSessionId, false);
+  await persistHasUnread(chatSessionId, false);
   notifySessionsChanged();
   return true;
 }
@@ -258,19 +261,21 @@ export function onSessionEvent(
 
 // ── Internal helpers ───────────────────────────────────────────
 
-function persistHasUnread(chatSessionId: string, hasUnread: boolean): void {
+async function persistHasUnread(
+  chatSessionId: string,
+  hasUnread: boolean,
+): Promise<void> {
   const metaFilePath = path.join(
     WORKSPACE_PATHS.chat,
     `${chatSessionId}.json`,
   );
-  readFile(metaFilePath, "utf-8")
-    .then((raw) => {
-      const meta = JSON.parse(raw);
-      return writeFile(metaFilePath, JSON.stringify({ ...meta, hasUnread }));
-    })
-    .catch(() => {
-      // Meta file missing or malformed — nothing to persist into.
-    });
+  try {
+    const raw = await readFile(metaFilePath, "utf-8");
+    const meta = JSON.parse(raw);
+    await writeFile(metaFilePath, JSON.stringify({ ...meta, hasUnread }));
+  } catch {
+    // Meta file missing or malformed — nothing to persist into.
+  }
 }
 
 function publishToSessionChannel(chatSessionId: string, data: unknown): void {
