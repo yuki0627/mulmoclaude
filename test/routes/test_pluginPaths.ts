@@ -1,7 +1,7 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
-import { isMarkdownPath } from "../../server/utils/markdown-store.js";
-import { isSpreadsheetPath } from "../../server/utils/spreadsheet-store.js";
+import { isMarkdownPath } from "../../server/utils/files/markdown-store.js";
+import { isSpreadsheetPath } from "../../server/utils/files/spreadsheet-store.js";
 
 // isMarkdownPath tests — the markdown-store counterpart to the
 // spreadsheet-store tests already in test/utils/test_spreadsheet-store.ts.
