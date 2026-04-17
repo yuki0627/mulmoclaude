@@ -16,18 +16,7 @@ import path from "path";
 import { workspacePath } from "../../workspace/paths.js";
 import { writeFileAtomic, writeFileAtomicSync } from "./atomic.js";
 import { log } from "../../system/logger/index.js";
-
-// Only ENOENT (file/dir doesn't exist) is silently swallowed.
-// EACCES, EPERM, EISDIR, and other unexpected errors are logged
-// and re-thrown so production failures are diagnosable.
-export function isEnoent(err: unknown): boolean {
-  return (
-    typeof err === "object" &&
-    err !== null &&
-    "code" in err &&
-    (err as { code: string }).code === "ENOENT"
-  );
-}
+import { isEnoent } from "./safe.js";
 
 function rethrowUnexpected(err: unknown, context: string): null {
   if (isEnoent(err)) return null;

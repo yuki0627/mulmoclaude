@@ -87,10 +87,10 @@ async function executeMergePlans(
     await writeTopicFile(plan.intoSlug, plan.newContent, workspaceRoot);
     for (const src of plan.fromSlugs) {
       // Only record the merge as successful if the source file
-      // actually moved. If moveToArchive fails (missing file, IO
+      // actually moved. If archiveTopic fails (missing file, IO
       // error) we leave the source out of the removed set so the
       // in-memory knownTopics state stays accurate.
-      if (!(await moveToArchive(workspaceRoot, src))) continue;
+      if (!(await archiveTopic(src, workspaceRoot))) continue;
       removed.add(src);
       mergedSlugs.push(src);
     }
@@ -106,7 +106,7 @@ async function executeArchives(
   for (const raw of rawSlugs) {
     const slug = slugify(raw);
     if (removed.has(slug)) continue;
-    if (!(await moveToArchive(workspaceRoot, slug))) continue;
+    if (!(await archiveTopic(slug, workspaceRoot))) continue;
     removed.add(slug);
     archivedSlugs.push(slug);
   }
@@ -189,11 +189,4 @@ async function loadTopicHeads(
     });
   }
   return out;
-}
-
-async function moveToArchive(
-  workspaceRoot: string,
-  slug: string,
-): Promise<boolean> {
-  return archiveTopic(slug, workspaceRoot);
 }

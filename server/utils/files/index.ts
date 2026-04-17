@@ -18,6 +18,8 @@ export {
 } from "./atomic.js";
 
 export {
+  isEnoent,
+  readTextSafeSync,
   statSafe,
   statSafeAsync,
   readDirSafe,
@@ -34,7 +36,6 @@ export {
 } from "./json.js";
 
 export {
-  isEnoent,
   resolveWorkspacePath,
   resolvePath,
   readWorkspaceText,

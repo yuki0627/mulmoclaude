@@ -6,7 +6,7 @@
 import fs from "fs";
 import path from "path";
 import { writeFileAtomic } from "./atomic.js";
-import { isEnoent } from "./workspace-io.js";
+import { isEnoent } from "./safe.js";
 import { log } from "../../system/logger/index.js";
 
 // ── Sync helpers ────────────────────────────────────────────────

@@ -1,10 +1,7 @@
 import { Router, Request, Response } from "express";
 import { WORKSPACE_DIRS } from "../../workspace/paths.js";
-import {
-  writeWorkspaceText,
-  ensureWorkspaceDir,
-} from "../../utils/files/workspace-io.js";
-import { slugify } from "../../utils/slug.js";
+import { writeWorkspaceText } from "../../utils/files/workspace-io.js";
+import { buildArtifactPath } from "../../utils/files/naming.js";
 import { errorMessage } from "../../utils/errors.js";
 import { badRequest, serverError } from "../../utils/httpError.js";
 import { API_ROUTES } from "../../../src/config/apiRoutes.js";
@@ -43,10 +40,12 @@ router.post(
     }
 
     try {
-      const slug = title ? slugify(title) : "page";
-      const fname = `${slug}-${Date.now()}.html`;
-      const filePath = `${WORKSPACE_DIRS.htmls}/${fname}`;
-      ensureWorkspaceDir(WORKSPACE_DIRS.htmls);
+      const filePath = buildArtifactPath(
+        WORKSPACE_DIRS.htmls,
+        title,
+        ".html",
+        "page",
+      );
       await writeWorkspaceText(filePath, html);
       res.json({
         message: `Saved HTML to ${filePath}`,

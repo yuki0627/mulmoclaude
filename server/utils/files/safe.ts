@@ -10,6 +10,16 @@
 import fs from "fs";
 import path from "path";
 
+/** Check if an error is ENOENT (file/dir not found). */
+export function isEnoent(err: unknown): boolean {
+  return (
+    typeof err === "object" &&
+    err !== null &&
+    "code" in err &&
+    (err as { code: string }).code === "ENOENT"
+  );
+}
+
 /** Read a text file by absolute path. Null on ENOENT. */
 export function readTextSafeSync(absPath: string): string | null {
   try {

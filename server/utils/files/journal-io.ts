@@ -13,7 +13,7 @@ import path from "node:path";
 import fsp from "node:fs/promises";
 import { workspacePath } from "../../workspace/paths.js";
 import { writeFileAtomic } from "./atomic.js";
-import { isEnoent } from "./workspace-io.js";
+import { isEnoent } from "./safe.js";
 import { log } from "../../system/logger/index.js";
 import {
   summariesRoot,

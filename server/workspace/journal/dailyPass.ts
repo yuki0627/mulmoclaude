@@ -547,7 +547,7 @@ async function loadSessionExcerptsByDate(
 
   const stat = await statUnder(
     workspaceRoot,
-    `${WORKSPACE_DIRS.chat}/${sessionId}.jsonl`,
+    path.posix.join(WORKSPACE_DIRS.chat, `${sessionId}.jsonl`),
   );
   const fallbackDate = toIsoDate(stat?.mtimeMs ?? Date.now());
 

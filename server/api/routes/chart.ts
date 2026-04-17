@@ -1,10 +1,7 @@
 import { Router, Request, Response } from "express";
 import { WORKSPACE_DIRS } from "../../workspace/paths.js";
-import {
-  writeWorkspaceText,
-  ensureWorkspaceDir,
-} from "../../utils/files/workspace-io.js";
-import { slugify } from "../../utils/slug.js";
+import { writeWorkspaceText } from "../../utils/files/workspace-io.js";
+import { buildArtifactPath } from "../../utils/files/naming.js";
 import { errorMessage } from "../../utils/errors.js";
 import { badRequest, serverError } from "../../utils/httpError.js";
 import { API_ROUTES } from "../../../src/config/apiRoutes.js";
@@ -97,10 +94,12 @@ router.post(
 
     try {
       const baseLabel = title ?? document.title ?? "chart";
-      const slug = slugify(baseLabel) || "chart";
-      const fname = `${slug}-${Date.now()}.chart.json`;
-      const filePath = `${WORKSPACE_DIRS.charts}/${fname}`;
-      ensureWorkspaceDir(WORKSPACE_DIRS.charts);
+      const filePath = buildArtifactPath(
+        WORKSPACE_DIRS.charts,
+        baseLabel,
+        ".chart.json",
+        "chart",
+      );
       await writeWorkspaceText(
         filePath,
         `${JSON.stringify(document, null, 2)}\n`,
