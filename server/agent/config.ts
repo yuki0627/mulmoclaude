@@ -376,10 +376,23 @@ export function buildDockerSpawnArgs(params: DockerSpawnArgsParams): string[] {
     "-i",
     "--cap-drop",
     "ALL",
+    // The entrypoint runs as root to fix /etc/passwd, chown
+    // /home/node, and chmod the SSH socket. These 5 capabilities are
+    // the minimum set it needs; setpriv drops them on exec so the
+    // actual Claude process runs with zero capabilities.
+    "--cap-add",
+    "CHOWN",
+    "--cap-add",
+    "FOWNER",
+    "--cap-add",
+    "DAC_OVERRIDE",
+    "--cap-add",
+    "SETUID",
+    "--cap-add",
+    "SETGID",
     // UID/GID are passed as env vars instead of `--user` so the
     // entrypoint (sandbox-entrypoint.sh) can run as root for setup
-    // (fix /etc/passwd, chmod SSH socket) then drop privileges via
-    // setpriv. See #259 for the full motivation.
+    // then drop privileges via setpriv. See #259.
     "-e",
     `HOST_UID=${uid}`,
     "-e",

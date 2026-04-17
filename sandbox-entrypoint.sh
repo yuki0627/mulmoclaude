@@ -87,4 +87,8 @@ fi
 # 4. Drop privileges and exec the actual command (typically `claude`).
 #    setpriv is part of util-linux, already present in node:22-slim.
 #    --init-groups initialises supplementary groups from /etc/group.
-exec setpriv --reuid="$TARGET_UID" --regid="$TARGET_GID" --init-groups -- "$@"
+#    --inh-caps=-all clears inheritable capabilities so the child
+#    process (claude) runs with zero capabilities even though the
+#    container was started with CHOWN/FOWNER/DAC_OVERRIDE/SETUID/SETGID
+#    for the entrypoint's setup steps.
+exec setpriv --reuid="$TARGET_UID" --regid="$TARGET_GID" --init-groups --inh-caps=-all -- "$@"
