@@ -112,7 +112,7 @@ describe("buildWikiContext", () => {
     const result = buildWikiContext(workspace);
     assert.ok(result !== null);
     assert.ok(result.includes("data/wiki/index.md"));
-    assert.ok(result.includes("wiki/pages/"));
+    assert.ok(result.includes("data/wiki/pages/"));
   });
 
   it("includes summary when summary.md exists", () => {
@@ -133,7 +133,7 @@ describe("buildWikiContext", () => {
     writeFileAt(workspace, WORKSPACE_FILES.wikiSchema, "# Schema");
     const result = buildWikiContext(workspace);
     assert.ok(result !== null);
-    assert.ok(result.includes("wiki/SCHEMA.md"));
+    assert.ok(result.includes("data/wiki/SCHEMA.md"));
   });
 
   it("falls back to layout hint when summary.md is empty", () => {
@@ -143,7 +143,7 @@ describe("buildWikiContext", () => {
     assert.ok(result !== null);
     assert.ok(!result.includes('<reference type="wiki-summary">'));
     assert.ok(result.includes("data/wiki/index.md"));
-    assert.ok(result.includes("wiki/pages/"));
+    assert.ok(result.includes("data/wiki/pages/"));
   });
 });
 
