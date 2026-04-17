@@ -8,7 +8,14 @@ export default defineConfig({
     baseURL: "http://localhost:5173",
     headless: true,
   },
-  projects: [{ name: "chromium", use: { browserName: "chromium" } }],
+  projects: [
+    { name: "chromium", use: { browserName: "chromium" } },
+    {
+      name: "webkit",
+      use: { browserName: "webkit" },
+      testMatch: "ime-enter.spec.ts",
+    },
+  ],
   webServer: {
     command: "yarn dev:client",
     port: 5173,
