@@ -13,6 +13,7 @@ import {
 } from "../../../src/config/pubsubChannels.js";
 import { log } from "../../system/logger/index.js";
 import { workspacePath } from "../../workspace/workspace.js";
+import { WORKSPACE_PATHS } from "../../workspace/paths.js";
 import { EVENT_TYPES } from "../../../src/types/events.js";
 
 // ── Types ──────────────────────────────────────────────────────
@@ -259,8 +260,7 @@ export function onSessionEvent(
 
 function persistHasUnread(chatSessionId: string, hasUnread: boolean): void {
   const metaFilePath = path.join(
-    workspacePath,
-    "chat",
+    WORKSPACE_PATHS.chat,
     `${chatSessionId}.json`,
   );
   readFile(metaFilePath, "utf-8")
