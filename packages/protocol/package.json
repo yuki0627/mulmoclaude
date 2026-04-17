@@ -16,9 +16,22 @@
   ],
   "scripts": {
     "build": "tsc",
-    "prepublishOnly": "yarn build",
+    "prepack": "yarn build",
     "typecheck": "tsc --noEmit"
   },
+  "publishConfig": {
+    "main": "./dist/index.js",
+    "types": "./dist/index.d.ts",
+    "exports": {
+      ".": {
+        "types": "./dist/index.d.ts",
+        "import": "./dist/index.js"
+      }
+    }
+  },
   "license": "MIT",
-  "author": "Receptron Team"
+  "author": "Receptron Team",
+  "devDependencies": {
+    "typescript": "^5.8.0"
+  }
 }
