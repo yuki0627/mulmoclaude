@@ -727,7 +727,7 @@ const rightSidebarRef = ref<InstanceType<typeof RightSidebar> | null>(null);
 // returns `{ skills: [...] }` flat, so `wrapData` lifts the payload
 // under `data` before the ToolResult reaches the View.
 const LAUNCHER_INVOKE_SPECS: Record<
-  "todos" | "scheduler" | "skills" | "wiki",
+  "todos" | "scheduler" | "skills" | "wiki" | "roles",
   {
     endpoint: string;
     method: "GET" | "POST";
