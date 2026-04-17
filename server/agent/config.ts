@@ -282,14 +282,48 @@ export function buildCliArgs(params: CliArgsParams): string[] {
 }
 
 /** JSON line to write to the Claude CLI's stdin when running in
- *  stream-json input mode. One line per user turn. */
-export function buildUserMessageLine(message: string): string {
+ *  stream-json input mode. One line per user turn.
+ *
+ *  When `imageDataUrl` is provided (a `data:image/…;base64,…`
+ *  string), the `content` becomes an array of content blocks so
+ *  Claude can see the image via vision. Without it, content is a
+ *  plain string (smaller payload, backward-compatible). */
+export function buildUserMessageLine(
+  message: string,
+  imageDataUrl?: string,
+): string {
+  const content = imageDataUrl
+    ? buildContentWithImage(message, imageDataUrl)
+    : message;
   return (
     JSON.stringify({
       type: "user",
-      message: { role: "user", content: message },
+      message: { role: "user", content },
     }) + "\n"
   );
+}
+
+function buildContentWithImage(
+  message: string,
+  dataUrl: string,
+): Array<Record<string, unknown>> {
+  const blocks: Array<Record<string, unknown>> = [];
+
+  // Parse data URL: data:image/png;base64,<data>
+  const match = dataUrl.match(/^data:(image\/[^;]+);base64,(.+)$/);
+  if (match) {
+    blocks.push({
+      type: "image",
+      source: {
+        type: "base64",
+        media_type: match[1],
+        data: match[2],
+      },
+    });
+  }
+
+  blocks.push({ type: "text", text: message });
+  return blocks;
 }
 
 export interface McpConfigPaths {

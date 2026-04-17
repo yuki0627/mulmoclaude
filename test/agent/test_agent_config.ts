@@ -523,6 +523,49 @@ describe("buildUserMessageLine", () => {
     const parsed = JSON.parse(line.trimEnd());
     assert.equal(parsed.message.content, "/shiritori");
   });
+
+  it("sends plain string content when no image is provided", () => {
+    const line = buildUserMessageLine("describe this");
+    const parsed = JSON.parse(line.trimEnd());
+    assert.equal(typeof parsed.message.content, "string");
+  });
+
+  it("sends content blocks array when imageDataUrl is provided", () => {
+    const dataUrl = "data:image/png;base64,iVBORw0KGgo=";
+    const line = buildUserMessageLine("what is this?", dataUrl);
+    const parsed = JSON.parse(line.trimEnd());
+    assert.ok(Array.isArray(parsed.message.content));
+    const blocks = parsed.message.content;
+    assert.equal(blocks.length, 2);
+    assert.equal(blocks[0].type, "image");
+    assert.equal(blocks[0].source.type, "base64");
+    assert.equal(blocks[0].source.media_type, "image/png");
+    assert.equal(blocks[0].source.data, "iVBORw0KGgo=");
+    assert.equal(blocks[1].type, "text");
+    assert.equal(blocks[1].text, "what is this?");
+  });
+
+  it("falls back to plain string when imageDataUrl is empty", () => {
+    const line = buildUserMessageLine("hello", "");
+    const parsed = JSON.parse(line.trimEnd());
+    assert.equal(typeof parsed.message.content, "string");
+    assert.equal(parsed.message.content, "hello");
+  });
+
+  it("falls back to plain string when imageDataUrl is undefined", () => {
+    const line = buildUserMessageLine("hello", undefined);
+    const parsed = JSON.parse(line.trimEnd());
+    assert.equal(typeof parsed.message.content, "string");
+  });
+
+  it("handles JPEG data URL correctly", () => {
+    const dataUrl = "data:image/jpeg;base64,/9j/4AAQ";
+    const line = buildUserMessageLine("analyze", dataUrl);
+    const parsed = JSON.parse(line.trimEnd());
+    const blocks = parsed.message.content;
+    assert.equal(blocks[0].source.media_type, "image/jpeg");
+    assert.equal(blocks[0].source.data, "/9j/4AAQ");
+  });
 });
 
 describe("buildCliArgs — extraAllowedTools", () => {

@@ -249,6 +249,7 @@ export async function startChat(
     metaFilePath,
     requestStartedAt,
     toolArgsCache: createArgsCache(),
+    imageDataUrl: selectedImageData,
   });
 
   return { kind: "started", chatSessionId };
@@ -299,6 +300,7 @@ interface BackgroundRunParams {
   metaFilePath: string;
   requestStartedAt: number;
   toolArgsCache: ReturnType<typeof createArgsCache>;
+  imageDataUrl: string | undefined;
 }
 
 // Per-event side-effect context passed to `handleAgentEvent`.
@@ -380,6 +382,7 @@ async function runAgentInBackground(
     metaFilePath,
     requestStartedAt,
     toolArgsCache,
+    imageDataUrl,
   } = params;
 
   const eventCtx: EventContext = {
@@ -408,6 +411,7 @@ async function runAgentInBackground(
         PORT,
         currentClaudeSessionId,
         abortSignal,
+        imageDataUrl,
       )) {
         if (
           failoverAttemptsRemaining > 0 &&
