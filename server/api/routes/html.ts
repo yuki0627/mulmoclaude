@@ -90,11 +90,8 @@ router.post(
       res.status(500).json({ message: "GEMINI_API_KEY is not set" });
       return;
     }
-    // eslint-disable-next-line no-useless-assignment
-    let existingHtml = "";
-    try {
-      existingHtml = (await readCurrentHtml()) ?? "";
-    } catch {
+    const existingHtml = await readCurrentHtml();
+    if (!existingHtml?.trim()) {
       res.status(400).json({
         message: "No HTML page has been generated yet. Use generateHtml first.",
       });
