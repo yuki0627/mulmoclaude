@@ -1,3 +1,4 @@
+import path from "path";
 import { Router, Request, Response } from "express";
 import { executeMindMap } from "@gui-chat-plugin/mindmap";
 import {
@@ -128,7 +129,13 @@ async function fillImagePlaceholders(markdown: string): Promise<string> {
     // GEMINI_API_KEY is set.
     filled = filled.replace(
       full,
-      url ? `![${prompt}](../${url})` : `*🖼️ Image: ${prompt}*`,
+      // `url` is workspace-relative (e.g. "artifacts/images/xxx.png").
+      // The document lives at "artifacts/documents/yyy.md". Compute a
+      // relative path from the document's directory so the markdown
+      // image reference resolves correctly.
+      url
+        ? `![${prompt}](${path.posix.relative(WORKSPACE_DIRS.markdowns, url)})`
+        : `*🖼️ Image: ${prompt}*`,
     );
   }
   return filled;
