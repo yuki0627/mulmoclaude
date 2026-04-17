@@ -1,13 +1,14 @@
-import path from "path";
-import fs from "fs";
 import {
   BUILTIN_ROLES,
   RoleSchema,
   type Role,
 } from "../../src/config/roles.js";
-import { WORKSPACE_PATHS } from "./paths.js";
-
-const rolesDir = WORKSPACE_PATHS.roles;
+import { WORKSPACE_DIRS } from "./paths.js";
+import {
+  readdirUnderSync,
+  readTextUnderSync,
+} from "../utils/files/workspace-io.js";
+import { workspacePath } from "./paths.js";
 
 function withSwitchRole(role: Role): Role {
   if (role.availablePlugins.includes("switchRole")) return role;
@@ -18,13 +19,15 @@ function withSwitchRole(role: Role): Role {
 }
 
 export function loadCustomRoles(): Role[] {
-  if (!fs.existsSync(rolesDir)) return [];
-  return fs
-    .readdirSync(rolesDir)
+  return readdirUnderSync(workspacePath, WORKSPACE_DIRS.roles)
     .filter((f) => f.endsWith(".json"))
     .flatMap((f) => {
       try {
-        const raw = fs.readFileSync(path.join(rolesDir, f), "utf-8");
+        const raw = readTextUnderSync(
+          workspacePath,
+          `${WORKSPACE_DIRS.roles}/${f}`,
+        );
+        if (!raw) return [];
         return [withSwitchRole(RoleSchema.parse(JSON.parse(raw)))];
       } catch {
         return [];

@@ -1,8 +1,8 @@
 import { Router, Request, Response } from "express";
-import fs from "fs";
 import fsp from "node:fs/promises";
 import path from "path";
 import { WORKSPACE_PATHS } from "../../workspace/paths.js";
+import { readTextSafeSync } from "../../utils/files/safe.js";
 import { getPageIndex } from "./wiki/pageIndex.js";
 import { badRequest } from "../../utils/httpError.js";
 import { API_ROUTES } from "../../../src/config/apiRoutes.js";
@@ -13,12 +13,8 @@ const pagesDir = () => WORKSPACE_PATHS.wikiPages;
 const indexFile = () => WORKSPACE_PATHS.wikiIndex;
 const logFile = () => WORKSPACE_PATHS.wikiLog;
 
-function readFileOrEmpty(filePath: string): string {
-  try {
-    return fs.existsSync(filePath) ? fs.readFileSync(filePath, "utf-8") : "";
-  } catch {
-    return "";
-  }
+function readFileOrEmpty(absPath: string): string {
+  return readTextSafeSync(absPath) ?? "";
 }
 
 export interface WikiPageEntry {

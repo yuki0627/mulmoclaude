@@ -183,6 +183,31 @@ export async function writeTextUnder(
   await writeFileAtomic(path.join(root, relPath), content);
 }
 
+/** Sync read text under a root. Null on ENOENT. */
+export function readTextUnderSync(
+  root: string,
+  relPath: string,
+): string | null {
+  try {
+    return fs.readFileSync(path.join(root, relPath), "utf-8");
+  } catch (err) {
+    return rethrowUnexpected(err, `readTextUnderSync(${relPath})`);
+  }
+}
+
+/** Sync readdir under a root. Empty on ENOENT. */
+export function readdirUnderSync(root: string, relPath: string): string[] {
+  try {
+    return fs.readdirSync(path.join(root, relPath));
+  } catch (err) {
+    if (isEnoent(err)) return [];
+    log.error("workspace-io", `readdirUnderSync(${relPath})`, {
+      error: String(err),
+    });
+    throw err;
+  }
+}
+
 /** Readdir under a root. Empty on ENOENT; rethrows unexpected. */
 export async function readdirUnder(
   root: string,

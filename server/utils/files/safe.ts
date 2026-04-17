@@ -10,6 +10,15 @@
 import fs from "fs";
 import path from "path";
 
+/** Read a text file by absolute path. Null on ENOENT. */
+export function readTextSafeSync(absPath: string): string | null {
+  try {
+    return fs.readFileSync(absPath, "utf-8");
+  } catch {
+    return null;
+  }
+}
+
 export function statSafe(absPath: string): fs.Stats | null {
   try {
     return fs.statSync(absPath);
