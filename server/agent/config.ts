@@ -5,6 +5,8 @@ import { mcpTools, isMcpToolEnabled } from "./mcp-tools/index.js";
 import { MCP_PLUGIN_NAMES } from "./plugin-names.js";
 import type { McpServerSpec } from "../system/config.js";
 import { getCurrentToken } from "../api/auth/token.js";
+import type { Attachment } from "../api/chat-service/types.js";
+import { isImageMime } from "../../bridges/_lib/mime.js";
 
 export const CONTAINER_WORKSPACE_PATH = "/home/node/mulmoclaude";
 
@@ -284,17 +286,36 @@ export function buildCliArgs(params: CliArgsParams): string[] {
 /** JSON line to write to the Claude CLI's stdin when running in
  *  stream-json input mode. One line per user turn.
  *
- *  When `imageDataUrl` is provided (a `data:image/…;base64,…`
- *  string), the `content` becomes an array of content blocks so
- *  Claude can see the image via vision. Without it, content is a
- *  plain string (smaller payload, backward-compatible). */
+ *  When `attachments` are provided, image/* entries become vision
+ *  content blocks and `content` becomes an array. Without
+ *  attachments, content is a plain string (smaller, backward-
+ *  compatible). Non-image MIME types are currently skipped — a
+ *  future phase can map PDF/docx to Claude Files API. */
 export function buildUserMessageLine(
   message: string,
-  imageDataUrl?: string,
+  attachments?: Attachment[],
 ): string {
-  const content = imageDataUrl
-    ? buildContentWithImage(message, imageDataUrl)
-    : message;
+  const all = attachments ?? [];
+  const imageAttachments = all.filter((a) => isImageMime(a.mimeType));
+  const skipped = all.length - imageAttachments.length;
+  if (skipped > 0) {
+    // Non-image attachments (PDF, docx, etc.) are not yet supported
+    // by the vision content-block path. Log so operators can see
+    // "I attached a PDF and nothing happened" in the file log.
+    const skippedTypes = all
+      .filter((a) => !isImageMime(a.mimeType))
+      .map((a) => a.mimeType);
+    // Using console.error as a lightweight debug hint — the
+    // structured logger isn't imported here (config.ts is import-
+    // light by design). The relay layer logs the full summary.
+    console.error(
+      `[agent] skipping ${skipped} non-image attachment(s): ${skippedTypes.join(", ")}`,
+    );
+  }
+  const content =
+    imageAttachments.length > 0
+      ? buildContentBlocks(message, imageAttachments)
+      : message;
   return (
     JSON.stringify({
       type: "user",
@@ -303,25 +324,21 @@ export function buildUserMessageLine(
   );
 }
 
-function buildContentWithImage(
+function buildContentBlocks(
   message: string,
-  dataUrl: string,
+  images: Attachment[],
 ): Array<Record<string, unknown>> {
   const blocks: Array<Record<string, unknown>> = [];
-
-  // Parse data URL: data:image/png;base64,<data>
-  const match = dataUrl.match(/^data:(image\/[^;]+);base64,(.+)$/);
-  if (match) {
+  for (const img of images) {
     blocks.push({
       type: "image",
       source: {
         type: "base64",
-        media_type: match[1],
-        data: match[2],
+        media_type: img.mimeType,
+        data: img.data,
       },
     });
   }
-
   blocks.push({ type: "text", text: message });
   return blocks;
 }

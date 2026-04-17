@@ -1,3 +1,5 @@
+import { mimeFromExtension, buildDataUrl } from "../_lib/mime.js";
+
 // Raw `fetch` wrapper for the Telegram Bot API. Only the two methods
 // the bridge actually uses (`getUpdates`, `sendMessage`) are exposed.
 //
@@ -16,11 +18,21 @@ export interface TelegramUpdate {
   message?: TelegramMessage;
 }
 
+export interface TelegramPhotoSize {
+  file_id: string;
+  file_unique_id: string;
+  width: number;
+  height: number;
+  file_size?: number;
+}
+
 export interface TelegramMessage {
   message_id: number;
   chat: TelegramChat;
   from?: TelegramUser;
   text?: string;
+  photo?: TelegramPhotoSize[];
+  caption?: string;
   date: number;
 }
 
@@ -55,6 +67,7 @@ export interface GetUpdatesOptions {
 export interface TelegramApi {
   getUpdates(opts?: GetUpdatesOptions): Promise<TelegramUpdate[]>;
   sendMessage(chatId: number, text: string): Promise<void>;
+  downloadPhoto(fileId: string): Promise<string>;
 }
 
 const DEFAULT_BASE = "https://api.telegram.org";
@@ -112,6 +125,37 @@ export function createTelegramApi(opts: TelegramApiOptions): TelegramApi {
           `sendMessage API error: ${body.description ?? "unknown"}`,
         );
       }
+    },
+
+    async downloadPhoto(fileId) {
+      const getFileRes = await fetchImpl(
+        `${base}/getFile?file_id=${encodeURIComponent(fileId)}`,
+      );
+      if (!getFileRes.ok) {
+        throw new Error(
+          `getFile failed: ${getFileRes.status} ${await safeText(getFileRes)}`,
+        );
+      }
+      const getFileBody = (await getFileRes.json()) as {
+        ok: boolean;
+        description?: string;
+        result?: { file_path?: string };
+      };
+      if (!getFileBody.ok || !getFileBody.result?.file_path) {
+        throw new Error(
+          `getFile API error: ${getFileBody.description ?? "no file_path"}`,
+        );
+      }
+      const fileUrl = `${baseUrl}/file/bot${opts.botToken}/${getFileBody.result.file_path}`;
+      const fileRes = await fetchImpl(fileUrl);
+      if (!fileRes.ok) {
+        throw new Error(`file download failed: ${fileRes.status}`);
+      }
+      const buffer = await fileRes.arrayBuffer();
+      const b64 = Buffer.from(buffer).toString("base64");
+      const ext = getFileBody.result.file_path.split(".").pop() ?? "";
+      const mediaType = mimeFromExtension(ext, "image/jpeg");
+      return buildDataUrl(mediaType, b64);
     },
   };
 }
