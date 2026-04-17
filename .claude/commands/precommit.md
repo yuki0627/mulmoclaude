@@ -101,8 +101,13 @@ Run `git diff --stat` and `git diff` first, then check every item below against 
 - [ ] No sensitive files staged (`.env`, credentials, API keys).
 - [ ] No unintended files (node_modules, .DS_Store, test-results/).
 
-## 12. Import Style
+## 12. Import Style & Module Boundaries
 
-- [ ] Top-level `import` for always-needed packages — no `await import()` unless conditional.
-- [ ] No unnecessary re-exports.
+- [ ] Top-level `import` only — `await import()` (dynamic import) is **prohibited** unless there is a documented reason (e.g., platform-specific optional dependency that must not be loaded unconditionally). If used, add a comment explaining why.
+- [ ] **No re-exports.** Each module exports its own symbols. NEVER create barrel files or `export { X } from "./other.js"` forwarding. Callers import from the canonical source directly.
 - [ ] Import from the canonical location (e.g., `server/utils/slug.ts` not a re-export in `sources/paths.ts`).
+
+## 13. Lint Suppression
+
+- [ ] **No `eslint-disable-line` or `eslint-disable-next-line`.** If the lint rule fires, fix the code — don't suppress. The only exception is `@typescript-eslint/no-explicit-any` in test mocks where the mock intentionally returns `as any` to satisfy a type constraint that doesn't matter for the test.
+- [ ] No `@ts-ignore` or `@ts-expect-error`.
