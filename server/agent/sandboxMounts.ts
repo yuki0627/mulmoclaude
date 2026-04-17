@@ -144,21 +144,47 @@ export interface SshAgentForwardResult {
   skippedReason: string | null;
 }
 
+// Docker Desktop for Mac exposes the host SSH agent through a
+// well-known magic socket inside the VM. Direct bind-mounting the
+// macOS $SSH_AUTH_SOCK (/private/tmp/…) fails with "operation not
+// supported" because Docker's Linux VM can't mkdir a Unix socket.
+// Using the magic path sidesteps the issue entirely and works on
+// Docker Desktop ≥ 2.3.0 (2020+).
+const DOCKER_DESKTOP_MAC_SSH_SOCK = "/run/host-services/ssh-auth.sock";
+
 /**
  * Return the docker argv fragment that forwards the host SSH agent
- * into the container. The agent socket is bind-mounted and
- * `SSH_AUTH_SOCK` is re-pointed so ssh / git pick it up.
+ * into the container. On macOS + Docker Desktop, the built-in
+ * magic socket is used instead of a raw bind-mount. On Linux, the
+ * host `$SSH_AUTH_SOCK` is bind-mounted directly.
  *
  * Skipped (empty args + reason) when:
  * - the flag is off
- * - $SSH_AUTH_SOCK isn't set (no agent running on host)
- * - the socket path doesn't exist on the host
+ * - $SSH_AUTH_SOCK isn't set (no agent running on host) — on
+ *   non-macOS only; macOS always has the magic socket available
+ *   when Docker Desktop is running, regardless of $SSH_AUTH_SOCK
  */
 export function sshAgentForwardArgs(
   enabled: boolean,
   sshAuthSock: string | undefined,
+  platform: typeof process.platform = process.platform,
 ): SshAgentForwardResult {
   if (!enabled) return { args: [], skippedReason: null };
+
+  // macOS + Docker Desktop: use the magic VM-internal socket.
+  if (platform === "darwin") {
+    return {
+      args: [
+        "-v",
+        `${DOCKER_DESKTOP_MAC_SSH_SOCK}:${SSH_AGENT_CONTAINER_SOCK}`,
+        "-e",
+        `SSH_AUTH_SOCK=${SSH_AGENT_CONTAINER_SOCK}`,
+      ],
+      skippedReason: null,
+    };
+  }
+
+  // Linux / other: bind-mount the host socket directly.
   if (!sshAuthSock || sshAuthSock.length === 0) {
     return {
       args: [],
