@@ -4,7 +4,7 @@
 
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
-import { isMarkdownPath } from "../../server/utils/markdown-store.js";
+import { isMarkdownPath } from "../../server/utils/files/markdown-store.js";
 
 describe("isMarkdownPath", () => {
   it("accepts a canonical workspace-relative markdown path", () => {
