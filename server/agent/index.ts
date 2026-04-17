@@ -44,6 +44,7 @@ function spawnClaude(
   }
   const sandboxAuth = resolveSandboxAuth({
     sshAgentForward: env.sandboxSshAgentForward,
+    sshAllowedHosts: env.sandboxSshAllowedHosts,
     configMountNames: env.sandboxMountConfigs,
     sshAuthSock: process.env.SSH_AUTH_SOCK,
   });

@@ -219,6 +219,11 @@ export interface ResolvedSandboxAuth {
 
 export interface ResolveSandboxAuthParams {
   sshAgentForward: boolean;
+  /** Comma-separated host whitelist for the SSH agent. Default
+   *  "github.com". Passed to the container as
+   *  `SANDBOX_SSH_ALLOWED_HOSTS` and consumed by the entrypoint
+   *  to generate a restrictive `~/.ssh/config`. */
+  sshAllowedHosts?: string;
   configMountNames: readonly string[];
   sshAuthSock?: string | undefined;
   home?: string;
@@ -261,10 +266,28 @@ export function resolveSandboxAuth(
     });
   }
 
-  const args = [...configMountArgs(parsed.resolved), ...sshResult.args];
+  // Pass the allowed-hosts whitelist to the container so the
+  // entrypoint can generate a restrictive ~/.ssh/config. Only
+  // included when SSH agent forward is actually active.
+  const sshAllowedHostsArgs =
+    sshResult.args.length > 0 && params.sshAllowedHosts
+      ? ["-e", `SANDBOX_SSH_ALLOWED_HOSTS=${params.sshAllowedHosts}`]
+      : [];
+
+  const args = [
+    ...configMountArgs(parsed.resolved),
+    ...sshResult.args,
+    ...sshAllowedHostsArgs,
+  ];
+  const allowedHostsSuffix =
+    sshResult.args.length > 0 && params.sshAllowedHosts
+      ? ` → hosts: ${params.sshAllowedHosts}`
+      : "";
   const appliedDescriptions = [
     ...parsed.resolved.map((s) => `${s.name} (${s.description})`),
-    ...(sshResult.args.length > 0 ? ["ssh-agent forward"] : []),
+    ...(sshResult.args.length > 0
+      ? [`ssh-agent forward${allowedHostsSuffix}`]
+      : []),
   ];
 
   if (appliedDescriptions.length > 0) {
