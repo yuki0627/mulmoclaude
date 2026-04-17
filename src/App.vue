@@ -225,6 +225,13 @@
         @dragover.prevent
         @drop="onDropImage"
       >
+        <div
+          v-if="imageError"
+          class="mb-2 text-xs text-red-600 bg-red-50 border border-red-200 rounded px-3 py-1.5"
+          data-testid="image-error"
+        >
+          {{ imageError }}
+        </div>
         <ChatImagePreview
           v-if="pastedImage"
           :src="pastedImage"
@@ -639,14 +646,17 @@ const { roles, currentRoleId, currentRole, refreshRoles } = useRoles();
 
 const userInput = ref("");
 const pastedImage = ref<string | null>(null);
+const imageError = ref<string | null>(null);
 const activePane = ref<"sidebar" | "main">("sidebar");
 
 const MAX_IMAGE_BYTES = 10 * 1024 * 1024; // 10 MB base64 limit
 
 function readImageFile(file: File): void {
+  imageError.value = null;
   if (!file.type.startsWith("image/")) return;
   if (file.size > MAX_IMAGE_BYTES) {
-    console.warn(`Image too large (${file.size} bytes). Max is 10 MB.`);
+    const sizeMB = (file.size / 1024 / 1024).toFixed(1);
+    imageError.value = `Image too large (${sizeMB} MB). Maximum is 10 MB.`;
     return;
   }
   const reader = new FileReader();
