@@ -16,10 +16,7 @@ import {
   serverError,
 } from "../../utils/httpError.js";
 import { API_ROUTES } from "../../../src/config/apiRoutes.js";
-import {
-  createRootFilter,
-  type GitignoreFilter,
-} from "../../utils/gitignore.js";
+import { GitignoreFilter } from "../../utils/gitignore.js";
 
 const router = Router();
 
@@ -460,8 +457,15 @@ router.get(
     res: Response<TreeNode | ErrorResponse>,
   ) => {
     try {
-      const rootFilter = createRootFilter(workspaceReal);
-      const tree = await buildTreeAsync(workspaceReal, "", rootFilter);
+      // Start with an empty filter — the workspace root's .gitignore
+      // is for git (excluding github/ from commits), NOT for the
+      // Files UI. Only .gitignore files inside subdirectories (e.g.
+      // github/mulmoclaude/.gitignore) are applied.
+      const tree = await buildTreeAsync(
+        workspaceReal,
+        "",
+        new GitignoreFilter(),
+      );
       res.json(tree);
     } catch (err) {
       res
@@ -499,9 +503,10 @@ router.get(
     }
     try {
       // Build the gitignore filter chain from workspace root down to
-      // the target directory so parent .gitignore rules are inherited.
-      const rootFilter = createRootFilter(workspaceReal);
-      let filter: GitignoreFilter = rootFilter;
+      // the target directory. Start empty (workspace root .gitignore
+      // is for git, not the UI) — only subdirectory .gitignore files
+      // (e.g. inside cloned repos) are applied.
+      let filter: GitignoreFilter = new GitignoreFilter();
       const segments = path
         .relative(workspaceReal, absPath)
         .split(path.sep)
