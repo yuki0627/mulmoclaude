@@ -139,42 +139,103 @@ export async function runDailyPass(
 
   // --- Phase 3: process each day -------------------------------------
   for (const date of orderedDays) {
-    const excerpts = dayBuckets.get(date) ?? [];
-    const dayOutcome = await processOneDay(
+    const dayResult = await processDayAndAdvance({
       workspaceRoot,
       date,
-      excerpts,
+      dayBuckets,
       existingTopics,
-      deps.summarize,
-    );
-    if (dayOutcome.kind === "skipped") {
-      result.skipped.push({ date, reason: dayOutcome.reason });
-      continue;
-    }
-
-    result.daysTouched.push(date);
-    result.topicsCreated.push(...dayOutcome.topicsCreated);
-    result.topicsUpdated.push(...dayOutcome.topicsUpdated);
-    for (const slug of dayOutcome.topicsTouched) newTopicsSeen.add(slug);
-
-    const justCompleted = computeJustCompletedSessions(
-      date,
-      excerpts,
+      summarize: deps.summarize,
       sessionToDays,
       dirtyMetaById,
-    );
-    if (justCompleted.length > 0) {
-      result.sessionsIngested.push(...justCompleted.map((m) => m.id));
+      newTopicsSeen,
+      nextState,
+    });
+    if (dayResult.skipped) {
+      result.skipped.push({ date, reason: dayResult.skipped });
+    } else {
+      result.daysTouched.push(date);
+      result.topicsCreated.push(...dayResult.topicsCreated);
+      result.topicsUpdated.push(...dayResult.topicsUpdated);
+      result.sessionsIngested.push(...dayResult.sessionsIngested);
     }
-    nextState = advanceJournalState(nextState, justCompleted, newTopicsSeen);
-
-    await persistStateAfterDay(workspaceRoot, nextState, date);
+    nextState = dayResult.nextState;
   }
 
   // --- Phase 4: memory extraction ------------------------------------
   await maybeExtractMemory(perSessionExcerpts, workspaceRoot, deps);
 
   return { nextState, result };
+}
+
+// --- Phase 3 helper: single-day processing + state advance -----------
+// Extracted from the Phase 3 for-loop to keep runDailyPass under
+// the sonarjs/cognitive-complexity threshold.
+
+interface ProcessDayInput {
+  workspaceRoot: string;
+  date: string;
+  dayBuckets: ReadonlyMap<string, SessionExcerpt[]>;
+  existingTopics: ExistingTopicSnapshot[];
+  summarize: Summarize;
+  sessionToDays: Map<string, Set<string>>;
+  dirtyMetaById: ReadonlyMap<string, SessionFileMeta>;
+  newTopicsSeen: Set<string>;
+  nextState: JournalState;
+}
+
+interface ProcessDayOutput {
+  skipped?: string;
+  topicsCreated: string[];
+  topicsUpdated: string[];
+  sessionsIngested: string[];
+  nextState: JournalState;
+}
+
+async function processDayAndAdvance(
+  input: ProcessDayInput,
+): Promise<ProcessDayOutput> {
+  const excerpts = input.dayBuckets.get(input.date) ?? [];
+  const dayOutcome = await processOneDay(
+    input.workspaceRoot,
+    input.date,
+    excerpts,
+    input.existingTopics,
+    input.summarize,
+  );
+  if (dayOutcome.kind === "skipped") {
+    return {
+      skipped: dayOutcome.reason,
+      topicsCreated: [],
+      topicsUpdated: [],
+      sessionsIngested: [],
+      nextState: input.nextState,
+    };
+  }
+
+  for (const slug of dayOutcome.topicsTouched) {
+    input.newTopicsSeen.add(slug);
+  }
+
+  const justCompleted = computeJustCompletedSessions(
+    input.date,
+    excerpts,
+    input.sessionToDays,
+    input.dirtyMetaById,
+  );
+  const sessionsIngested = justCompleted.map((m) => m.id);
+  const nextState = advanceJournalState(
+    input.nextState,
+    justCompleted,
+    input.newTopicsSeen,
+  );
+  await persistStateAfterDay(input.workspaceRoot, nextState, input.date);
+
+  return {
+    topicsCreated: dayOutcome.topicsCreated,
+    topicsUpdated: dayOutcome.topicsUpdated,
+    sessionsIngested,
+    nextState,
+  };
 }
 
 // --- Phase 4 helper: memory extraction -------------------------------
