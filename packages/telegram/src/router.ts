@@ -40,6 +40,8 @@ export interface RouterDeps {
 export interface MessageRouter {
   handleMessage(msg: TelegramMessage): Promise<void>;
   handlePush(ev: PushEvent): Promise<void>;
+  /** Called for each streaming text chunk from the server. */
+  handleTextChunk(chunk: string): void;
   /** For tests / debugging: chat IDs we've already sent the
    *  access-denied notice to. */
   deniedAlreadyNotified(): ReadonlySet<number>;
@@ -56,12 +58,67 @@ interface PhotoResult {
   failed: boolean;
 }
 
+// Minimum interval between editMessageText calls to avoid Telegram
+// rate limits. 1 second is conservative; Telegram allows ~30 edits
+// per minute per chat.
+const STREAM_EDIT_INTERVAL_MS = 1000;
+
 export function createMessageRouter(deps: RouterDeps): MessageRouter {
   const { api, allowlist, sendToMulmo } = deps;
   const log = deps.log ?? defaultLog;
 
   // One denial reply per chat per bridge lifetime — restart clears.
   const deniedAlreadyNotified = new Set<number>();
+
+  // Streaming state: while a relay is in flight, chunks accumulate
+  // here. A timer periodically flushes them via editMessageText.
+  let streamChatId: number | null = null;
+  let streamMessageId: number | null = null;
+  let streamAccumulated = "";
+  let streamDirty = false;
+  let streamTimer: ReturnType<typeof setInterval> | null = null;
+
+  function startStream(chatId: number): void {
+    streamChatId = chatId;
+    streamMessageId = null;
+    streamAccumulated = "";
+    streamDirty = false;
+    streamTimer = setInterval(flushStream, STREAM_EDIT_INTERVAL_MS);
+  }
+
+  function stopStream(): void {
+    if (streamTimer !== null) {
+      clearInterval(streamTimer);
+      streamTimer = null;
+    }
+    streamChatId = null;
+    streamMessageId = null;
+    streamAccumulated = "";
+    streamDirty = false;
+  }
+
+  function flushStream(): void {
+    if (!streamDirty || streamChatId === null) return;
+    streamDirty = false;
+    const chatId = streamChatId;
+    const text = streamAccumulated || "…";
+    if (streamMessageId === null) {
+      // First flush: send a new message
+      api
+        .sendMessage(chatId, text)
+        .then((msgId) => {
+          streamMessageId = msgId;
+        })
+        .catch((err) => {
+          log.error(`[telegram] stream sendMessage failed: ${String(err)}`);
+        });
+    } else {
+      // Subsequent flushes: edit existing message
+      api.editMessageText(chatId, streamMessageId, text).catch((err) => {
+        log.error(`[telegram] stream editMessage failed: ${String(err)}`);
+      });
+    }
+  }
 
   async function tryDownloadPhoto(msg: TelegramMessage): Promise<PhotoResult> {
     const hasPhoto = Array.isArray(msg.photo) && msg.photo.length > 0;
@@ -121,12 +178,30 @@ export function createMessageRouter(deps: RouterDeps): MessageRouter {
 
     // Surface the photo-drop so the user knows the image was lost.
     const messageText = resolveMessageText(text, failed);
+
+    // Start streaming: chunks will arrive via handleTextChunk and
+    // be sent/edited in the Telegram chat in real time.
+    startStream(chatId);
     const ack = await sendToMulmo(
       String(chatId),
       messageText,
       attachments.length > 0 ? attachments : undefined,
     );
-    await sendReply(chatId, ack);
+    // Final flush + capture the message id before stopStream clears it.
+    flushStream();
+    const sentMsgId = streamMessageId;
+    stopStream();
+
+    // If streaming sent the text, do a final edit with the full ack
+    // to catch any trailing chunks. If no streaming happened,
+    // send the full reply as a new message.
+    if (sentMsgId !== null && ack.ok) {
+      await api
+        .editMessageText(chatId, sentMsgId, ack.reply ?? "")
+        .catch(() => {});
+    } else if (sentMsgId === null) {
+      await sendReply(chatId, ack);
+    }
   }
 
   async function handleDenied(msg: TelegramMessage): Promise<void> {
@@ -170,6 +245,12 @@ export function createMessageRouter(deps: RouterDeps): MessageRouter {
       } catch (err) {
         log.error(`[telegram] push sendMessage failed: ${String(err)}`);
       }
+    },
+
+    handleTextChunk(chunk: string) {
+      if (streamChatId === null) return;
+      streamAccumulated += chunk;
+      streamDirty = true;
     },
 
     deniedAlreadyNotified() {

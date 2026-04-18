@@ -104,6 +104,11 @@ async function main(): Promise<void> {
       client.send(chatId, text, attachments),
   });
 
+  // Server → Telegram streaming text chunks (Phase C of #268).
+  client.onTextChunk((chunk) => {
+    router.handleTextChunk(chunk);
+  });
+
   // Server → Telegram async push (Phase B of #268).
   client.onPush((ev) => {
     router
