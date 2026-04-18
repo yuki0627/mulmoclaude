@@ -49,6 +49,7 @@ import { rewriteWorkspaceLinks } from "./linkRewrite.js";
 import { writeState, type JournalState } from "./state.js";
 import { log } from "../../system/logger/index.js";
 import { EVENT_TYPES } from "../../../src/types/events.js";
+import { extractAndAppendMemory } from "./memoryExtractor.js";
 
 // --- Constants ------------------------------------------------------
 
@@ -138,39 +139,141 @@ export async function runDailyPass(
 
   // --- Phase 3: process each day -------------------------------------
   for (const date of orderedDays) {
-    const excerpts = dayBuckets.get(date) ?? [];
-    const dayOutcome = await processOneDay(
+    const dayResult = await processDayAndAdvance({
       workspaceRoot,
       date,
-      excerpts,
+      dayBuckets,
       existingTopics,
-      deps.summarize,
-    );
-    if (dayOutcome.kind === "skipped") {
-      result.skipped.push({ date, reason: dayOutcome.reason });
-      continue;
-    }
-
-    result.daysTouched.push(date);
-    result.topicsCreated.push(...dayOutcome.topicsCreated);
-    result.topicsUpdated.push(...dayOutcome.topicsUpdated);
-    for (const slug of dayOutcome.topicsTouched) newTopicsSeen.add(slug);
-
-    const justCompleted = computeJustCompletedSessions(
-      date,
-      excerpts,
+      summarize: deps.summarize,
       sessionToDays,
       dirtyMetaById,
-    );
-    if (justCompleted.length > 0) {
-      result.sessionsIngested.push(...justCompleted.map((m) => m.id));
+      newTopicsSeen,
+      nextState,
+    });
+    if (dayResult.kind === "skipped") {
+      result.skipped.push({ date, reason: dayResult.reason });
+    } else {
+      result.daysTouched.push(date);
+      result.topicsCreated.push(...dayResult.topicsCreated);
+      result.topicsUpdated.push(...dayResult.topicsUpdated);
+      result.sessionsIngested.push(...dayResult.sessionsIngested);
     }
-    nextState = advanceJournalState(nextState, justCompleted, newTopicsSeen);
-
-    await persistStateAfterDay(workspaceRoot, nextState, date);
+    nextState = dayResult.nextState;
   }
 
+  // --- Phase 4: memory extraction ------------------------------------
+  await maybeExtractMemory(perSessionExcerpts, workspaceRoot, deps);
+
   return { nextState, result };
+}
+
+// --- Phase 3 helper: single-day processing + state advance -----------
+// Extracted from the Phase 3 for-loop to keep runDailyPass under
+// the sonarjs/cognitive-complexity threshold.
+
+interface ProcessDayInput {
+  workspaceRoot: string;
+  date: string;
+  dayBuckets: ReadonlyMap<string, SessionExcerpt[]>;
+  existingTopics: ExistingTopicSnapshot[];
+  summarize: Summarize;
+  sessionToDays: Map<string, Set<string>>;
+  dirtyMetaById: ReadonlyMap<string, SessionFileMeta>;
+  newTopicsSeen: Set<string>;
+  nextState: JournalState;
+}
+
+type ProcessDayOutput =
+  | {
+      kind: "skipped";
+      reason: string;
+      nextState: JournalState;
+    }
+  | {
+      kind: "processed";
+      topicsCreated: string[];
+      topicsUpdated: string[];
+      sessionsIngested: string[];
+      nextState: JournalState;
+    };
+
+async function processDayAndAdvance(
+  input: ProcessDayInput,
+): Promise<ProcessDayOutput> {
+  const excerpts = input.dayBuckets.get(input.date) ?? [];
+  const dayOutcome = await processOneDay(
+    input.workspaceRoot,
+    input.date,
+    excerpts,
+    input.existingTopics,
+    input.summarize,
+  );
+  if (dayOutcome.kind === "skipped") {
+    return {
+      kind: "skipped",
+      reason: dayOutcome.reason,
+      nextState: input.nextState,
+    };
+  }
+
+  for (const slug of dayOutcome.topicsTouched) {
+    input.newTopicsSeen.add(slug);
+  }
+
+  const justCompleted = computeJustCompletedSessions(
+    input.date,
+    excerpts,
+    input.sessionToDays,
+    input.dirtyMetaById,
+  );
+  const sessionsIngested = justCompleted.map((m) => m.id);
+  const nextState = advanceJournalState(
+    input.nextState,
+    justCompleted,
+    input.newTopicsSeen,
+  );
+  await persistStateAfterDay(input.workspaceRoot, nextState, input.date);
+
+  return {
+    kind: "processed",
+    topicsCreated: dayOutcome.topicsCreated,
+    topicsUpdated: dayOutcome.topicsUpdated,
+    sessionsIngested,
+    nextState,
+  };
+}
+
+// --- Phase 4 helper: memory extraction -------------------------------
+// Scan dirty-session excerpts for durable user facts and append new
+// ones to memory.md. Fire-and-forget: if extraction fails the daily
+// summaries are already written, so the pass is still useful.
+
+async function maybeExtractMemory(
+  perSessionExcerpts: ReadonlyMap<string, ReadonlyMap<string, SessionExcerpt>>,
+  workspaceRoot: string,
+  deps: DailyPassDeps,
+): Promise<void> {
+  if (perSessionExcerpts.size === 0) return;
+  const excerptLines: string[] = [];
+  for (const [, byDate] of perSessionExcerpts) {
+    for (const [, excerpt] of byDate) {
+      const userLines = excerpt.events
+        .filter((e: SessionEventExcerpt) => e.source === "user")
+        .map((e: SessionEventExcerpt) => `[user] ${e.content}`);
+      if (userLines.length > 0) excerptLines.push(userLines.join("\n"));
+    }
+  }
+  try {
+    await extractAndAppendMemory({
+      workspaceRoot,
+      excerpts: excerptLines.join("\n---\n"),
+      summarize: deps.summarize,
+    });
+  } catch (err) {
+    log.warn("daily-pass", "memory extraction failed (non-fatal)", {
+      error: String(err),
+    });
+  }
 }
 
 // --- Phase 3 helper: per-day side-effecting pipeline ----------------
