@@ -394,10 +394,19 @@
         />
         <!-- Files mode -->
         <FilesView
-          v-else
+          v-else-if="canvasViewMode === 'files'"
           :refresh-token="filesRefreshToken"
           @load-session="onFilesViewLoadSession"
         />
+        <!-- Todos mode -->
+        <TodoExplorer v-else-if="canvasViewMode === 'todos'" />
+        <!-- Scheduler mode (placeholder until SchedulerView lands) -->
+        <div
+          v-else-if="canvasViewMode === 'scheduler'"
+          class="flex items-center justify-center h-full text-gray-500"
+        >
+          Scheduler view (coming soon)
+        </div>
       </div>
     </div>
     <!-- Right sidebar: tool call history -->
@@ -436,6 +445,7 @@ import PluginLauncher, {
 } from "./components/PluginLauncher.vue";
 import StackView from "./components/StackView.vue";
 import FilesView from "./components/FilesView.vue";
+import TodoExplorer from "./components/TodoExplorer.vue";
 import SettingsModal from "./components/SettingsModal.vue";
 import NotificationToast from "./components/NotificationToast.vue";
 import ChatAttachmentPreview from "./components/ChatAttachmentPreview.vue";
@@ -466,6 +476,7 @@ import {
 import { usePendingCalls } from "./composables/usePendingCalls";
 import { useClickOutside } from "./composables/useClickOutside";
 import { useCanvasViewMode } from "./composables/useCanvasViewMode";
+import { isCanvasViewMode } from "./utils/canvas/viewMode";
 import { useMcpTools } from "./composables/useMcpTools";
 import { useRoles } from "./composables/useRoles";
 import { BUILTIN_ROLE_IDS } from "./config/roles";
@@ -975,25 +986,13 @@ async function invokePluginForLauncher(
 }
 
 // Plugin-launcher click:
-// - "files" target → switch canvas to files view (no plugin call).
+// - "view" target → switch canvas to the matching view mode (no plugin call).
 // - "invoke" target → call the plugin locally, push the result into
 //   the current session, select it, switch canvas to single view so
 //   the plugin's View component takes the stage.
 async function onPluginNavigate(target: PluginLauncherTarget): Promise<void> {
-  if (target.kind === "files") {
-    setCanvasViewMode("files");
-    const base = buildViewQuery();
-    const query: Record<string, string> = {};
-    for (const [k, v] of Object.entries(base)) {
-      if (typeof v === "string") query[k] = v;
-    }
-    delete query.path;
-    router.replace({ query }).catch((err: unknown) => {
-      if (!isNavigationFailure(err)) {
-        // eslint-disable-next-line no-console
-        console.error("[plugin-launcher] navigation failed:", err);
-      }
-    });
+  if (target.kind === "view" && isCanvasViewMode(target.key)) {
+    setCanvasViewMode(target.key);
     return;
   }
 
