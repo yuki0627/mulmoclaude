@@ -66,7 +66,14 @@ export interface GetUpdatesOptions {
 
 export interface TelegramApi {
   getUpdates(opts?: GetUpdatesOptions): Promise<TelegramUpdate[]>;
-  sendMessage(chatId: number, text: string): Promise<void>;
+  /** Send a message and return its message_id (needed for editMessageText). */
+  sendMessage(chatId: number, text: string): Promise<number>;
+  /** Edit an existing message in place. Used for streaming text updates. */
+  editMessageText(
+    chatId: number,
+    messageId: number,
+    text: string,
+  ): Promise<void>;
   downloadPhoto(fileId: string): Promise<string>;
 }
 
@@ -119,11 +126,30 @@ export function createTelegramApi(opts: TelegramApiOptions): TelegramApi {
       const body = (await res.json()) as {
         ok: boolean;
         description?: string;
+        result?: { message_id: number };
       };
       if (!body.ok) {
         throw new Error(
           `sendMessage API error: ${body.description ?? "unknown"}`,
         );
+      }
+      return body.result?.message_id ?? 0;
+    },
+
+    async editMessageText(chatId, messageId, text) {
+      const res = await fetchImpl(`${base}/editMessageText`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          chat_id: chatId,
+          message_id: messageId,
+          text,
+        }),
+      });
+      if (!res.ok) {
+        // editMessageText fails if the text is unchanged (Telegram
+        // returns 400 "message is not modified"). Swallow silently.
+        return;
       }
     },
 
