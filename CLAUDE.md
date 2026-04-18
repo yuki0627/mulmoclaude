@@ -23,6 +23,16 @@ See `plan/mulmo_claude.md` for the full design plan.
 
 **IMPORTANT**: Always write error handling for all `fetch` calls. Handle both network errors (try/catch) and HTTP errors (`!response.ok`). Surface errors to the user in the UI where appropriate.
 
+## Releases
+
+When creating a release (tagging a version, `gh release create`, npm publish):
+
+1. MUST update [`docs/CHANGELOG.md`](docs/CHANGELOG.md) with the new version entry **before** or **in the same commit as** the tag
+2. Follow the [Keep a Changelog](https://keepachangelog.com/) format: `## [x.y.z] - YYYY-MM-DD` with sections `Added`, `Changed`, `Fixed`, `Breaking Changes`
+3. Add the release URL to the link reference list at the bottom of the file
+4. For npm package releases, list package names and versions in the entry
+5. MUST run `date` to get today's date — NEVER guess
+
 ## GitHub posts (gh pr comment / gh issue comment / PR body / issue body)
 
 > **🚨 CRITICAL — NEVER escape backticks with backslash (`\``) in ANY `gh` command output.**
