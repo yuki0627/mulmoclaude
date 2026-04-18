@@ -79,4 +79,58 @@ describe("parseSkillFrontmatter — schedule", () => {
     assert.ok(result);
     assert.equal(result.roleId, undefined);
   });
+
+  it("rejects interval 0m (zero interval)", () => {
+    const result = parseSkillFrontmatter(
+      "---\ndescription: Zero\nschedule: interval 0m\n---\n\nBody",
+    );
+    assert.ok(result);
+    assert.equal(result.schedule?.parsed, null);
+  });
+
+  it("rejects interval 5s (below 10s minimum)", () => {
+    const result = parseSkillFrontmatter(
+      "---\ndescription: TooFast\nschedule: interval 5s\n---\n\nBody",
+    );
+    assert.ok(result);
+    assert.equal(result.schedule?.parsed, null);
+  });
+
+  it("accepts interval 10s (minimum allowed)", () => {
+    const result = parseSkillFrontmatter(
+      "---\ndescription: Min\nschedule: interval 10s\n---\n\nBody",
+    );
+    assert.ok(result);
+    assert.deepEqual(result.schedule?.parsed, {
+      type: "interval",
+      intervalMs: 10_000,
+    });
+  });
+
+  it("rejects daily 25:00 (invalid hour)", () => {
+    const result = parseSkillFrontmatter(
+      "---\ndescription: Bad\nschedule: daily 25:00\n---\n\nBody",
+    );
+    assert.ok(result);
+    assert.equal(result.schedule?.parsed, null);
+  });
+
+  it("rejects daily 12:60 (invalid minute)", () => {
+    const result = parseSkillFrontmatter(
+      "---\ndescription: Bad\nschedule: daily 12:60\n---\n\nBody",
+    );
+    assert.ok(result);
+    assert.equal(result.schedule?.parsed, null);
+  });
+
+  it("accepts daily 23:59 (max valid)", () => {
+    const result = parseSkillFrontmatter(
+      "---\ndescription: Late\nschedule: daily 23:59\n---\n\nBody",
+    );
+    assert.ok(result);
+    assert.deepEqual(result.schedule?.parsed, {
+      type: "daily",
+      time: "23:59",
+    });
+  });
 });

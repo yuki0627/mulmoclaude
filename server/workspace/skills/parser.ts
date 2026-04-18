@@ -52,23 +52,31 @@ function parseScalar(raw: string): string {
  *   "interval 2h"      → { type: "interval", intervalMs: 7200000 }
  *   "interval 300s"    → { type: "interval", intervalMs: 300000 }
  */
+// Minimum interval to prevent accidental runaway scheduling.
+const MIN_INTERVAL_MS = 10_000; // 10 seconds
+
 function parseScheduleValue(raw: string): SkillSchedule["parsed"] {
   const trimmed = raw.trim();
 
-  // daily HH:MM
-  const dailyMatch = trimmed.match(/^daily\s+(\d{2}:\d{2})$/);
+  // daily HH:MM — validate range: HH 00-23, MM 00-59
+  const dailyMatch = trimmed.match(/^daily\s+(\d{2}):(\d{2})$/);
   if (dailyMatch) {
-    return { type: "daily", time: dailyMatch[1] };
+    const hh = Number(dailyMatch[1]);
+    const mm = Number(dailyMatch[2]);
+    if (hh > 23 || mm > 59) return null;
+    return { type: "daily", time: `${dailyMatch[1]}:${dailyMatch[2]}` };
   }
 
-  // interval Ns / Nm / Nh
+  // interval Ns / Nm / Nh — must be >= MIN_INTERVAL_MS
   const intervalMatch = trimmed.match(/^interval\s+(\d+)([smh])$/);
   if (intervalMatch) {
     const value = Number(intervalMatch[1]);
     const unit = intervalMatch[2];
     const ms = TIME_UNIT_MS[unit];
     if (!ms) return null;
-    return { type: "interval", intervalMs: value * ms };
+    const intervalMs = value * ms;
+    if (intervalMs < MIN_INTERVAL_MS) return null;
+    return { type: "interval", intervalMs };
   }
 
   return null;

@@ -38,24 +38,37 @@ const SKILL_TASK_PREFIX = "skill.";
 let registeredTaskIds = new Set<string>();
 let cachedDeps: SkillSchedulerDeps | null = null;
 
+// Mutex: serialize refresh calls so concurrent save/update/delete
+// API calls don't interleave register/unregister and corrupt state.
+let refreshMutex: Promise<number> = Promise.resolve(0);
+
 export async function registerScheduledSkills(
   deps: SkillSchedulerDeps,
 ): Promise<number> {
   cachedDeps = deps;
-  return doRegister(deps);
+  return serializedRefresh(deps);
 }
 
 /**
  * Re-scan skills and update task-manager registrations. Safe to call
  * after a skill is saved, updated, or deleted — removes stale tasks
- * and adds new ones without a server restart.
+ * and adds new ones without a server restart. Serialized: concurrent
+ * calls queue behind the in-flight one.
  */
 export async function refreshScheduledSkills(): Promise<number> {
   if (!cachedDeps) {
     log.warn("skills", "refreshScheduledSkills called before initial register");
     return 0;
   }
-  return doRegister(cachedDeps);
+  return serializedRefresh(cachedDeps);
+}
+
+function serializedRefresh(deps: SkillSchedulerDeps): Promise<number> {
+  refreshMutex = refreshMutex.then(
+    () => doRegister(deps),
+    () => doRegister(deps),
+  );
+  return refreshMutex;
 }
 
 async function doRegister(deps: SkillSchedulerDeps): Promise<number> {
