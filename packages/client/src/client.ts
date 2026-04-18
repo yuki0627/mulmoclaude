@@ -86,7 +86,7 @@ export function requireBearerToken(): string {
       `\`npm run dev\`) first, or set MULMOCLAUDE_AUTH_TOKEN to the\n` +
       `same value the server is using.\n`,
   );
-  process.exit(1);
+  return process.exit(1) as never;
 }
 
 export function createBridgeClient(opts: BridgeClientOptions): BridgeClient {
