@@ -172,35 +172,42 @@ export async function runDailyPass(
   }
 
   // --- Phase 4: memory extraction ------------------------------------
-  // After all days are processed, scan the excerpts for durable user
-  // facts and append any new ones to memory.md. Fire-and-forget: if
-  // extraction fails the daily summaries are already written, so the
-  // pass is still useful.
-  if (perSessionExcerpts.size > 0) {
-    const excerptLines: string[] = [];
-    for (const [, byDate] of perSessionExcerpts) {
-      for (const [, excerpt] of byDate) {
-        const lines = excerpt.events.map(
-          (e: SessionEventExcerpt) => `[${e.source}] ${e.content}`,
-        );
-        excerptLines.push(lines.join("\n"));
-      }
-    }
-    const allExcerpts = excerptLines.join("\n---\n");
-    try {
-      await extractAndAppendMemory({
-        workspaceRoot,
-        excerpts: allExcerpts,
-        summarize: deps.summarize,
-      });
-    } catch (err) {
-      log.warn("daily-pass", "memory extraction failed (non-fatal)", {
-        error: String(err),
-      });
-    }
-  }
+  await maybeExtractMemory(perSessionExcerpts, workspaceRoot, deps);
 
   return { nextState, result };
+}
+
+// --- Phase 4 helper: memory extraction -------------------------------
+// Scan dirty-session excerpts for durable user facts and append new
+// ones to memory.md. Fire-and-forget: if extraction fails the daily
+// summaries are already written, so the pass is still useful.
+
+async function maybeExtractMemory(
+  perSessionExcerpts: ReadonlyMap<string, ReadonlyMap<string, SessionExcerpt>>,
+  workspaceRoot: string,
+  deps: DailyPassDeps,
+): Promise<void> {
+  if (perSessionExcerpts.size === 0) return;
+  const excerptLines: string[] = [];
+  for (const [, byDate] of perSessionExcerpts) {
+    for (const [, excerpt] of byDate) {
+      const lines = excerpt.events.map(
+        (e: SessionEventExcerpt) => `[${e.source}] ${e.content}`,
+      );
+      excerptLines.push(lines.join("\n"));
+    }
+  }
+  try {
+    await extractAndAppendMemory({
+      workspaceRoot,
+      excerpts: excerptLines.join("\n---\n"),
+      summarize: deps.summarize,
+    });
+  } catch (err) {
+    log.warn("daily-pass", "memory extraction failed (non-fatal)", {
+      error: String(err),
+    });
+  }
 }
 
 // --- Phase 3 helper: per-day side-effecting pipeline ----------------
