@@ -5,7 +5,16 @@
 // To add a new view mode, append it to VIEW_MODES below.
 // Everything else (type, set, parser, shortcut) derives automatically.
 
-const VIEW_MODES = ["single", "stack", "files", "todos", "scheduler"] as const;
+const VIEW_MODES = [
+  "single",
+  "stack",
+  "files",
+  "todos",
+  "scheduler",
+  "wiki",
+  "skills",
+  "roles",
+] as const;
 
 export type CanvasViewMode = (typeof VIEW_MODES)[number];
 

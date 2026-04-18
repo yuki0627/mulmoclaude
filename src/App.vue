@@ -402,6 +402,12 @@
         <TodoExplorer v-else-if="canvasViewMode === 'todos'" />
         <!-- Scheduler mode -->
         <SchedulerView v-else-if="canvasViewMode === 'scheduler'" />
+        <!-- Wiki mode -->
+        <WikiView v-else-if="canvasViewMode === 'wiki'" />
+        <!-- Skills mode -->
+        <SkillsView v-else-if="canvasViewMode === 'skills'" />
+        <!-- Roles mode -->
+        <RolesView v-else-if="canvasViewMode === 'roles'" />
       </div>
     </div>
     <!-- Right sidebar: tool call history -->
@@ -442,6 +448,9 @@ import StackView from "./components/StackView.vue";
 import FilesView from "./components/FilesView.vue";
 import TodoExplorer from "./components/TodoExplorer.vue";
 import SchedulerView from "./plugins/scheduler/View.vue";
+import WikiView from "./plugins/wiki/View.vue";
+import SkillsView from "./plugins/manageSkills/View.vue";
+import RolesView from "./plugins/manageRoles/View.vue";
 import SettingsModal from "./components/SettingsModal.vue";
 import NotificationToast from "./components/NotificationToast.vue";
 import ChatAttachmentPreview from "./components/ChatAttachmentPreview.vue";

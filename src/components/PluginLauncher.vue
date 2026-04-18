@@ -83,25 +83,25 @@ const TARGETS: PluginLauncherTarget[] = [
   },
   {
     key: "wiki",
-    kind: "invoke",
+    kind: "view",
     icon: "menu_book",
     label: "Wiki",
-    title: "Open wiki",
+    title: "Open wiki (⌘6)",
   },
   // ─── Management / navigation ───
   {
     key: "skills",
-    kind: "invoke",
+    kind: "view",
     icon: "psychology",
     label: "Skills",
-    title: "Open skills",
+    title: "Open skills (⌘7)",
   },
   {
     key: "roles",
-    kind: "invoke",
+    kind: "view",
     icon: "manage_accounts",
     label: "Roles",
-    title: "Open roles",
+    title: "Open roles (⌘8)",
   },
   {
     key: "files",

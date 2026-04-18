@@ -1,9 +1,7 @@
-// Plugin launcher buttons that sit above the canvas, to the left of
-// the view-mode toggle. "view" buttons (todos, scheduler, files) switch
-// the canvas view mode directly. "invoke" buttons (skills, wiki, roles)
-// call the matching plugin's REST endpoint locally (no LLM round-trip),
-// push the resulting ToolResult into the current session, and switch
-// the canvas to single view.
+// Plugin launcher buttons that sit above the canvas. All buttons
+// switch the canvas view mode directly via kind:"view" — the URL
+// reflects the state (?view=todos, ?view=wiki, etc.) and landing
+// on that URL restores the view.
 //
 // First slice of issue #253.
 
@@ -37,6 +35,36 @@ test.describe("plugin launcher — view path", () => {
     expect(page.url()).toContain("view=scheduler");
   });
 
+  test("Wiki button switches canvas to wiki view", async ({ page }) => {
+    await page.goto("/chat");
+    await page.waitForURL(/\/chat\//);
+
+    await page.getByTestId("plugin-launcher-wiki").click();
+
+    await page.waitForURL(/view=wiki/);
+    expect(page.url()).toContain("view=wiki");
+  });
+
+  test("Skills button switches canvas to skills view", async ({ page }) => {
+    await page.goto("/chat");
+    await page.waitForURL(/\/chat\//);
+
+    await page.getByTestId("plugin-launcher-skills").click();
+
+    await page.waitForURL(/view=skills/);
+    expect(page.url()).toContain("view=skills");
+  });
+
+  test("Roles button switches canvas to roles view", async ({ page }) => {
+    await page.goto("/chat");
+    await page.waitForURL(/\/chat\//);
+
+    await page.getByTestId("plugin-launcher-roles").click();
+
+    await page.waitForURL(/view=roles/);
+    expect(page.url()).toContain("view=roles");
+  });
+
   test("Files button switches canvas to files view", async ({ page }) => {
     await page.goto("/chat");
     await page.waitForURL(/\/chat\//);
@@ -46,92 +74,5 @@ test.describe("plugin launcher — view path", () => {
     await page.waitForURL(/view=files/);
     expect(page.url()).toContain("view=files");
     expect(page.url()).not.toContain("path=");
-  });
-});
-
-test.describe("plugin launcher — invoke path", () => {
-  test("Skills button hits GET /api/skills + surfaces the skills View", async ({
-    page,
-  }) => {
-    await page.route(
-      (url) => url.pathname === "/api/skills",
-      (route) =>
-        route.fulfill({
-          json: {
-            skills: [
-              {
-                name: "daily-plan",
-                description: "Generate a daily plan",
-                source: "user",
-              },
-            ],
-          },
-        }),
-    );
-
-    await page.goto("/chat");
-    await page.waitForURL(/\/chat\//);
-
-    await page.getByTestId("plugin-launcher-skills").click();
-
-    // The skills View renders each skill with its own testid.
-    await expect(page.getByTestId("skill-item-daily-plan")).toBeVisible();
-  });
-
-  test("Wiki button hits POST /api/wiki + surfaces page entries", async ({
-    page,
-  }) => {
-    await page.route(
-      (url) => url.pathname === "/api/wiki",
-      (route) =>
-        route.fulfill({
-          json: {
-            data: {
-              action: "index",
-              title: "Wiki",
-              content: "",
-              pageEntries: [
-                {
-                  slug: "home",
-                  title: "Welcome home page",
-                  description: "",
-                },
-              ],
-            },
-            title: "Wiki",
-            message: "1 page",
-          },
-        }),
-    );
-
-    await page.goto("/chat");
-    await page.waitForURL(/\/chat\//);
-
-    await page.getByTestId("plugin-launcher-wiki").click();
-
-    // The wiki View renders page entries as cards containing the title.
-    await expect(page.getByText("Welcome home page").first()).toBeVisible();
-  });
-
-  test("endpoint error surfaces as a text-response in the stack", async ({
-    page,
-  }) => {
-    await page.route(
-      (url) => url.pathname === "/api/skills",
-      (route) =>
-        route.fulfill({
-          status: 500,
-          json: { error: "boom" },
-        }),
-    );
-
-    await page.goto("/chat");
-    await page.waitForURL(/\/chat\//);
-
-    await page.getByTestId("plugin-launcher-skills").click();
-
-    await expect(
-      page.getByText("manageSkills failed: boom").first(),
-    ).toBeVisible();
   });
 });
