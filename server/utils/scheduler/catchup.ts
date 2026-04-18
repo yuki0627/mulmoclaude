@@ -59,9 +59,11 @@ export function computeCatchUpPlan(
   for (const task of tasks) {
     if (!task.enabled) continue;
     const state = states.get(task.id);
+    // Never-run tasks: treat as "just registered" — no catch-up
+    // from epoch. Only catch up from the current time onward.
     const lastRunMs = state?.lastRunAt
       ? new Date(state.lastRunAt).getTime()
-      : 0;
+      : nowMs;
 
     const windows = listMissedWindows(
       task.schedule,

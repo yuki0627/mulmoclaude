@@ -29,7 +29,17 @@ export async function loadState(
     if (!isStateRecord(parsed)) return new Map();
     const map = new Map<string, TaskExecutionState>();
     for (const [id, entry] of Object.entries(parsed)) {
-      map.set(id, { ...emptyState(id), ...(entry as TaskExecutionState) });
+      // Only spread if entry is a plain object — strings, numbers,
+      // arrays would produce a malformed state.
+      if (
+        typeof entry === "object" &&
+        entry !== null &&
+        !Array.isArray(entry)
+      ) {
+        map.set(id, { ...emptyState(id), ...(entry as TaskExecutionState) });
+      } else {
+        map.set(id, emptyState(id));
+      }
     }
     return map;
   } catch {

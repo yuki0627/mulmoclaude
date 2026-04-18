@@ -75,20 +75,14 @@ const systemTasks: SystemTaskDef[] = [];
 /**
  * Initialize the scheduler adapter. Call once at server startup
  * AFTER the task-manager is created but BEFORE `taskManager.start()`.
- *
- * 1. Loads persisted state from disk
- * 2. Runs catch-up for any missed windows
- * 3. Registers system tasks with the task-manager
  */
 export async function initScheduler(
   taskManager: ITaskManager,
   tasks: SystemTaskDef[],
 ): Promise<void> {
-  // Ensure dirs exist
   await mkdir(path.dirname(stateFilePath()), { recursive: true });
   await mkdir(logsDir(), { recursive: true });
 
-  // Load state
   stateMap = await loadState(stateFilePath(), stateDeps);
   systemTasks.length = 0;
   systemTasks.push(...tasks);
@@ -103,21 +97,12 @@ export async function initScheduler(
   }));
   const plan = computeCatchUpPlan(catchUpTasks, stateMap, Date.now());
 
-  if (plan.skipped.length > 0) {
-    for (const skip of plan.skipped) {
-      log.info("scheduler", "catch-up skipped", {
-        taskId: skip.taskId,
-        windows: skip.windowCount,
-      });
-      // Advance lastRunAt so they don't re-fire
-      await updateAndSave(
-        stateFilePath(),
-        stateMap,
-        skip.taskId,
-        { lastRunAt: skip.lastWindow },
-        stateDeps,
-      );
-    }
+  for (const skip of plan.skipped) {
+    log.info("scheduler", "catch-up skipped", {
+      taskId: skip.taskId,
+      windows: skip.windowCount,
+    });
+    await safeUpdateState(skip.taskId, { lastRunAt: skip.lastWindow });
   }
 
   if (plan.runs.length > 0) {
@@ -127,7 +112,6 @@ export async function initScheduler(
     for (const run of plan.runs) {
       const task = tasks.find((t) => t.id === run.taskId);
       if (!task) continue;
-      // Fire-and-forget catch-up runs sequentially
       await executeAndLog(task, run.context.scheduledFor, "catch-up");
     }
   }
@@ -187,61 +171,64 @@ async function executeAndLog(
 ): Promise<void> {
   const startedAt = new Date().toISOString();
   const startMs = Date.now();
+  let errorMessage: string | null = null;
   try {
     await task.run();
-    const durationMs = Date.now() - startMs;
-    await updateAndSave(
-      stateFilePath(),
-      stateMap,
-      task.id,
-      {
-        lastRunAt: scheduledFor,
-        lastRunResult: "success",
-        lastRunDurationMs: durationMs,
-        lastErrorMessage: null,
-        consecutiveFailures: 0,
-        totalRuns: (stateMap.get(task.id)?.totalRuns ?? 0) + 1,
-        nextScheduledAt: computeNextScheduled(task),
-      },
-      stateDeps,
-    );
-    await appendLogEntry(
-      logsDir(),
-      {
-        taskId: task.id,
-        taskName: task.name,
-        scheduledFor,
-        startedAt,
-        completedAt: new Date().toISOString(),
-        result: "success",
-        durationMs,
-        trigger,
-      },
-      logDeps,
-    );
   } catch (err) {
-    const durationMs = Date.now() - startMs;
-    const errorMessage = err instanceof Error ? err.message : String(err);
+    errorMessage = err instanceof Error ? err.message : String(err);
     log.error("scheduler", "task failed", {
       taskId: task.id,
       error: errorMessage,
     });
-    const currentState = stateMap.get(task.id);
+  }
+  const durationMs = Date.now() - startMs;
+  await persistResult(
+    task,
+    scheduledFor,
+    startedAt,
+    durationMs,
+    trigger,
+    errorMessage,
+  );
+}
+
+/** Persist state + log. Errors swallowed so disk failure doesn't
+ *  crash the tick loop or abort startup catch-up. */
+async function persistResult(
+  task: SystemTaskDef,
+  scheduledFor: string,
+  startedAt: string,
+  durationMs: number,
+  trigger: "scheduled" | "catch-up" | "manual",
+  errorMessage: string | null,
+): Promise<void> {
+  const isSuccess = errorMessage === null;
+  const currentState = stateMap.get(task.id);
+  try {
     await updateAndSave(
       stateFilePath(),
       stateMap,
       task.id,
       {
         lastRunAt: scheduledFor,
-        lastRunResult: "error",
+        lastRunResult: isSuccess ? "success" : "error",
         lastRunDurationMs: durationMs,
         lastErrorMessage: errorMessage,
-        consecutiveFailures: (currentState?.consecutiveFailures ?? 0) + 1,
+        consecutiveFailures: isSuccess
+          ? 0
+          : (currentState?.consecutiveFailures ?? 0) + 1,
         totalRuns: (currentState?.totalRuns ?? 0) + 1,
         nextScheduledAt: computeNextScheduled(task),
       },
       stateDeps,
     );
+  } catch (err) {
+    log.warn("scheduler", "state persistence failed", {
+      taskId: task.id,
+      error: String(err),
+    });
+  }
+  try {
     await appendLogEntry(
       logsDir(),
       {
@@ -250,13 +237,33 @@ async function executeAndLog(
         scheduledFor,
         startedAt,
         completedAt: new Date().toISOString(),
-        result: "error",
+        result: isSuccess ? "success" : "error",
         durationMs,
         trigger,
-        errorMessage,
+        ...(errorMessage !== null && { errorMessage }),
       },
       logDeps,
     );
+  } catch (err) {
+    log.warn("scheduler", "log persistence failed", {
+      taskId: task.id,
+      error: String(err),
+    });
+  }
+}
+
+/** Safe state update — swallows errors. */
+async function safeUpdateState(
+  taskId: string,
+  patch: Partial<TaskExecutionState>,
+): Promise<void> {
+  try {
+    await updateAndSave(stateFilePath(), stateMap, taskId, patch, stateDeps);
+  } catch (err) {
+    log.warn("scheduler", "state update failed", {
+      taskId,
+      error: String(err),
+    });
   }
 }
 
@@ -266,7 +273,6 @@ function computeNextScheduled(task: SystemTaskDef): string | null {
   return next !== null ? new Date(next).toISOString() : null;
 }
 
-/** Convert task-manager schedule to scheduler-library schedule. */
 function toCoreSchedule(
   schedule: TaskDefinition["schedule"],
 ): import("../utils/scheduler/types.js").TaskSchedule {

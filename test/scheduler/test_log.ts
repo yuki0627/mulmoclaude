@@ -108,6 +108,28 @@ describe("queryLog", () => {
     assert.equal(entries.length, 3);
   });
 
+  it("filters by since timestamp", async () => {
+    const deps = inMemoryLogDeps();
+    await appendLogEntry(
+      "/logs",
+      makeEntry({ taskId: "old", startedAt: "2026-04-17T06:00:00.000Z" }),
+      deps,
+    );
+    await appendLogEntry(
+      "/logs",
+      makeEntry({ taskId: "new", startedAt: "2026-04-17T09:00:00.000Z" }),
+      deps,
+    );
+    const testDate = new Date("2026-04-17T12:00:00Z");
+    const entries = await queryLog(
+      "/logs",
+      { since: "2026-04-17T08:00:00.000Z", date: testDate },
+      deps,
+    );
+    assert.equal(entries.length, 1);
+    assert.equal(entries[0].taskId, "new");
+  });
+
   it("returns empty array when no log file exists", async () => {
     const deps = inMemoryLogDeps();
     const entries = await queryLog(

@@ -1,6 +1,6 @@
 // Scheduler library — public API surface.
 // Zero dependencies on MulmoClaude internals. The integration
-// adapter in server/events/task-manager/ wires this to the app.
+// adapter in server/events/scheduler-adapter.ts wires this to the app.
 
 export type {
   TaskSchedule,

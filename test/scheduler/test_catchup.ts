@@ -81,7 +81,9 @@ describe("computeCatchUpPlan — run-all policy", () => {
         schedule: { type: "interval", intervalSec: 60 },
       }),
     ];
-    const states = new Map([["t", emptyState("t")]]);
+    // Last ran 1 hour ago — hundreds of 60s windows missed, capped to 3.
+    const oneHourAgo = new Date(apr17_10 - 3_600_000).toISOString();
+    const states = new Map([["t", stateAt("t", oneHourAgo)]]);
     const plan = computeCatchUpPlan(tasks, states, apr17_10, 3);
     assert.equal(plan.runs.length, 3);
   });
@@ -95,11 +97,11 @@ describe("computeCatchUpPlan — edge cases", () => {
     assert.equal(plan.skipped.length, 0);
   });
 
-  it("handles tasks with no prior state (never run)", () => {
+  it("treats never-run tasks as just registered — no catch-up from epoch", () => {
     const tasks = [makeTask({ id: "t", missedRunPolicy: "run-once" })];
     const plan = computeCatchUpPlan(tasks, new Map(), apr17_10);
-    // Should find at least one window since epoch
-    assert.ok(plan.runs.length >= 1);
+    // Never-run tasks: lastRunMs = nowMs, so no missed windows.
+    assert.equal(plan.runs.length, 0);
   });
 
   it("returns empty plan when nothing is missed", () => {
