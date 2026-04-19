@@ -3,7 +3,7 @@
 **Owner:** CMO (strategy), Engineering (demo assets), Community (day-of ops)
 **Target launch:** Tuesday, one week out — 12:01 AM PT kickoff
 **Positioning one-liner:** *Claude Code that produces docs, presentations, spreadsheets, videos, and remembers everything.*
-**Core thesis (the story behind the product):** This is the first visible surface of an AI-native operating system. Claude Code is the kernel; MulmoClaude is the shell, the compositor, and the filesystem users actually see.
+**Core thesis (the story behind the product):** This is the first visible surface of an AI-native operating system. Claude Code is the kernel; MulmoClaude is the shell, the compositor, and the filesystem users actually see. **The unique thing isn't any single feature — it's the *location.*** Web articles, chat conversations, local files, scheduled runs, phone messages all converge into one local folder (`~/mulmoclaude/`), as plain Markdown, maintained by AI. It's the reinvention of the home directory for the AI era.
 **Target early adopter (one audience, not four):** Claude Code power users who have already hit the limits of the terminal. Everyone else — productivity users, knowledge workers, AI enthusiasts — is phase 2 and will come via these users, not in parallel to them.
 
 ---
@@ -24,6 +24,7 @@ This one sentence is the whole product. The concrete noun list (docs, presentati
 2. *Claude Code that produces the things you actually ship — and gets smarter every chat.*
 3. *Turn any research paper into a document, a deck, and a narrated video — without opening anything else.*
 4. *Run five Claude Code agents in one browser tab. Get documents, decks, and videos back — not text.*
+5. *`~/mulmoclaude/` — a local knowledge base that grows itself. Web, files, conversations — all here. Reach it from anywhere.* **(Geek-targeted; use on HN, X-dev, terminal-native audiences.)**
 
 ### Category pick
 
@@ -37,6 +38,12 @@ Dev Tools is where our one audience (Claude Code power users) lives. We skip Pro
 **MulmoClaude turns Claude Code into a system that produces real documents, presentations, spreadsheets, and narrated videos, runs multiple agents at once, and builds a personal knowledge base from everything you do.**
 
 Three clauses, in the order a user asks them: *What does it make? How fast? Does it get smarter?* Everything else in this plan is supporting evidence.
+
+### The deeper frame (use when the viewer is ready for more)
+
+> **An AI-built workspace that grows itself. Research, organizing, file management — all automatic. Reach it from anywhere. All local, all yours.**
+
+The real differentiator is not any feature — it's the **location**. Web articles (via source crawling), chat conversations (via automatic wiki extraction), local files (via the file explorer), scheduled runs, phone messages — *everything converges into one folder*, as plain Markdown, maintained by Claude. Notion is cloud. Google Drive is cloud. Obsidian is local but the AI doesn't grow it for you. MulmoClaude is **all three properties in one place: local, AI-maintained, multi-source.**
 
 ### The anti-wrapper line (use this whenever "is it just a ChatGPT clone?" shows up)
 
@@ -53,9 +60,10 @@ Product Hunt voters reward three things: **a clear "aha"**, **a short demo**, an
 | Hunt instinct                  | MulmoClaude's answer                                                                                      |
 | ------------------------------ | --------------------------------------------------------------------------------------------------------- |
 | "Is this just a ChatGPT clone?"| No — it rides on Claude Code (local auth, your filesystem, your tools), not an API wrapper.               |
-| "What's the new idea?"         | Visual output + long-term wiki memory + local files as database — Karpathy's KB idea, shipped.            |
-| "Can I try it in 60 seconds?"  | One `yarn install && yarn dev`. No signup, no cloud account, no vendor lock-in.                           |
-| "Why should I care tomorrow?"  | Every conversation adds to *your* wiki. Skills, todos, and scheduled runs compound.                       |
+| "What's the new idea?"         | **One folder holds everything** — web articles, chats, files, scheduled runs — as Markdown, AI-maintained. It's the home directory reinvented. |
+| "Isn't that just Notion / Obsidian?" | Notion is cloud. Obsidian is local but doesn't grow itself. MulmoClaude is **local + AI-maintained + multi-source** — all three, in one place. |
+| "Can I try it in 60 seconds?"  | Hosted demo at `demo.mulmoclaude.com`. No signup, no cloud account, no vendor lock-in.                   |
+| "Why should I care tomorrow?"  | Every chat, every crawled article, every scheduled run **lands in the same folder** and gets wired into the wiki. It compounds. |
 
 ---
 
@@ -67,7 +75,7 @@ A PH viewer skims for ~10 seconds and remembers one idea. So we drop to **five**
 
 1. **Docs, presentations, spreadsheets, videos — not text.** Claude Code answers with **real documents, narrated slide decks, spreadsheets, ECharts dashboards, and AI-generated videos** (MulmoScript / MulmoCast: Gemini image + Veo 3.1 video + audio narration). Not a chat bubble. This is what "multi-modal" actually means — powered by the open GUI Chat Protocol.
 2. **Parallel Claude Code, in one browser tab.** Run **many sessions at once** — one generates a video, another refactors code, a third drafts email. Claude Code is no longer single-threaded. *This is the category-defining shot for the hero video.*
-3. **It gets smarter every conversation.** A personal wiki grows from every chat — plain Markdown in your workspace, cross-linked and maintained by Claude itself. Karpathy's *LLM Knowledge Bases* idea, shipped. **This is the moat:** every other Claude client starts from zero; MulmoClaude compounds.
+3. **Everything in one folder, growing itself.** Web articles (via source crawling), chat conversations, local files, scheduled runs, phone messages — *all converge into one local folder* (`~/mulmoclaude/`), as plain Markdown, cross-linked and maintained by Claude itself. Karpathy's *LLM Knowledge Bases* idea, shipped. **This is the moat, and it's about place, not feature:** Notion is cloud; Obsidian is local but inert; MulmoClaude is **local + AI-maintained + multi-source** — all three at once. Every other Claude client starts from zero; MulmoClaude compounds, because every input lands in the same place.
 4. **Your phone is a Claude Code client.** Bridges to Telegram, Slack, LINE, Discord, WhatsApp, Matrix — same agent, same workspace, same wiki. Fire a task from the subway, see the document (or the video) waiting on your laptop.
 5. **Sandboxed, so you can trust it.** Claude Code has filesystem access — that's the whole point and the whole risk. MulmoClaude auto-runs Claude in a **Docker container that only sees your workspace**. SSH keys, `.env` files, home directory: invisible. No configuration, no permissions dialogs. *Reframe AGPL + Docker as "serious enough to be safe," not "complicated."*
 
@@ -158,7 +166,7 @@ Cut from 9 to 6. Each one maps to one of the five key messages (plus the shock d
 1. **The shock demo** — "Drop in a research paper. Out comes a summary document, a slide deck, and a narrated video. No other tools opened." *(Leads the gallery because it's the ‘wait, it does THAT?' moment.)*
 2. **Parallel sessions (hero)** — "Three Claude Code sessions running at once, one browser tab. One renders a video, one builds a spreadsheet, one drafts email."
 3. **Docs, decks, spreadsheets, videos — not text** — "Claude Code's answer isn't a chat bubble. It's a document, a deck, a spreadsheet, a chart, or a narrated video you can edit and keep."
-4. **Compounding wiki** — "Every conversation adds to a personal wiki Claude builds and maintains itself. Cross-linked Markdown. Yours forever."
+4. **Everything in one folder** — "Web articles, chats, local files, scheduled runs — all converge into `~/mulmoclaude/` as Markdown, maintained by Claude. The home directory, reinvented."
 5. **Phone as a client** — "Message Claude from Telegram, LINE, Slack, WhatsApp. Send a photo from the subway, get a document back on your laptop."
 6. **Sandboxed by default** — "Docker auto-detected. Claude only sees your workspace. SSH keys, .env files, home directory — invisible."
 
@@ -263,7 +271,7 @@ Three videos — each serves a different channel. **Always record silent first; 
 1. *MulmoClaude is live on Product Hunt today. It's Claude Code that produces docs, presentations, spreadsheets, videos — and remembers everything. Not an API wrapper. It runs Claude Code directly — your auth, your tools, your files. 🧵*
 2. **[Shock demo]** *Drop a research paper in. Out comes a summary document, a slide deck, and a narrated video. No other tools opened. [60s video]*
 3. **[Parallel sessions]** *Three Claude Code sessions, one browser tab. One renders a video, one refactors code, one drafts email. Claude Code is no longer single-threaded. [multi-session gif]*
-4. **[Compounding memory]** *Every conversation adds to a personal wiki Claude builds and maintains itself — plain Markdown, cross-linked, yours forever. Karpathy's LLM Knowledge Bases idea, shipped. Every other Claude client starts from zero. This one compounds. [wiki gif]*
+4. **[Everything in one folder]** *Web articles, chats, local files, scheduled runs — all converge into one folder (`~/mulmoclaude/`) as Markdown, maintained by Claude itself. Notion is cloud. Obsidian is inert. MulmoClaude is local + AI-maintained + multi-source. The home directory, reinvented. [wiki/folder gif]*
 5. **[Phone as client]** *Message the same agent from Telegram, LINE, Slack, WhatsApp, Discord, Matrix. Fire a task from the subway, see the document (or the narrated video) waiting on your laptop. [bridges gif]*
 6. **[Trust]** *Claude runs in a Docker sandbox — auto-detected, no configuration. It only sees your workspace. SSH keys, .env, home dir: invisible. This is the level of care a real shell needs. [sandbox screenshot]*
 7. *Try it in your browser right now: [hosted demo link]. Or `git clone` it — open source, AGPL. One upvote on PH costs you nothing and means everything today: [link]*
@@ -372,7 +380,9 @@ Everything else in this plan — bridges, sandbox, roles, wiki tour, skills laun
 
 ## 13. The Story Underneath (why we're doing this at all)
 
-This is the first visible surface of a much bigger thesis: **computing is being re-platformed on top of AI agents, and the shell that platform needs doesn't exist yet.** Claude Code is the kernel. MulmoClaude is the first draft of the shell.
+This is the first visible surface of a much bigger thesis: **computing is being re-platformed on top of AI agents, and the shell that platform needs doesn't exist yet.** Claude Code is the kernel. MulmoClaude is the first draft of the shell — and the shell's user-facing form is **a single folder that every input flows into and every output comes out of.**
+
+`~/mulmoclaude/` is the home directory, reinvented for the AI era. In 1975 the home directory was where your files lived. In 2026 it's where your files, your research, your conversations, your scheduled work, and the knowledge extracted from all of them live — maintained by an AI that knows how to put things in the right place. That's the unlock. Not multi-modal output. Not parallel sessions. Not the bridges. Those are all *consequences* of having a single, local, AI-maintained convergence point. The differentiator is the **location**, not any feature on the list.
 
 If the launch goes well, we're not celebrating a successful product launch — we're announcing the existence of a new computing surface. Phase 2 audiences (productivity users, knowledge workers, JP market, enterprise) come later, pulled in by the dev-native gravity we establish on day one.
 
