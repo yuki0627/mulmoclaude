@@ -10,3 +10,4 @@ server/logs/
 .claude/scheduled_tasks.lock
 playwright-report/
 .playwright-mcp/
+.mcp.json
