@@ -4,7 +4,7 @@
 
 ## Step 1: 前提チェック
 
-1. MulmoClaude が起動しているか確認（`lsof -i :3001`）。未起動なら `/start-mulmoclaude` を案内
+1. MulmoClaude が起動しているか確認（`lsof -i :3001`）。未起動なら別ターミナルで `yarn dev` を実行するよう案内
 2. ngrok がインストールされているか確認（`which ngrok`）。未インストールなら `brew install ngrok` + authtoken 設定を案内
 
 ## Step 2: ドキュメントに従ってセットアップ

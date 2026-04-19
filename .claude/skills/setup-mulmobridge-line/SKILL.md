@@ -10,7 +10,7 @@ Guide the user through LINE bridge setup following the docs at `docs/message_app
 
 ## Step 1: Prerequisites
 
-1. Check MulmoClaude is running (`lsof -i :3001 -sTCP:LISTEN`). If not, suggest `/start-mulmoclaude` first.
+1. Check MulmoClaude is running (`lsof -i :3001 -sTCP:LISTEN`). If not, ask the user to run `yarn dev` in a separate terminal first.
 2. Check ngrok is installed (`which ngrok`). If not, guide `brew install ngrok` + authtoken setup.
 
 ## Step 2: Follow the setup doc
