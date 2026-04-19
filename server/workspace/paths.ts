@@ -82,22 +82,12 @@ export const WORKSPACE_DIRS = {
   github: "github",
 } as const;
 
-// Well-known individual files. Values are workspace-relative paths.
-// The frontend mirror is `src/config/workspacePaths.ts` — keep them
-// in sync when adding or renaming entries.
-export const WORKSPACE_FILES = {
-  memory: "conversations/memory.md",
-  sessionToken: ".session-token",
-  wikiIndex: "data/wiki/index.md",
-  wikiLog: "data/wiki/log.md",
-  wikiSchema: "data/wiki/SCHEMA.md",
-  wikiSummary: "data/wiki/summary.md",
-  summariesIndex: "conversations/summaries/_index.md",
-  todosItems: "data/todos/todos.json",
-  todosColumns: "data/todos/columns.json",
-  schedulerItems: "data/scheduler/items.json",
-  schedulerUserTasks: "config/scheduler/tasks.json",
-} as const;
+// Well-known individual files — imported from the shared
+// src/config/workspacePaths.ts (single source of truth for both
+// server and frontend). Re-exported so server callers keep the
+// same `import { WORKSPACE_FILES } from "./paths.js"` they use.
+import { WORKSPACE_FILES } from "../../src/config/workspacePaths.js";
+export { WORKSPACE_FILES };
 
 // Absolute paths, built once at module load from `workspacePath`.
 // The `workspacePath` const is itself fixed (reads `os.homedir()`
