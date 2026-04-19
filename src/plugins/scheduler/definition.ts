@@ -1,4 +1,5 @@
 import type { ToolDefinition } from "gui-chat-protocol";
+import { SCHEDULER_ACTIONS } from "../../config/schedulerActions";
 
 const toolDefinition: ToolDefinition = {
   type: "function",
@@ -16,16 +17,7 @@ const toolDefinition: ToolDefinition = {
     properties: {
       action: {
         type: "string",
-        enum: [
-          "show",
-          "add",
-          "delete",
-          "update",
-          "createTask",
-          "listTasks",
-          "deleteTask",
-          "runTask",
-        ],
+        enum: Object.values(SCHEDULER_ACTIONS),
         description:
           "Action to perform. show/add/delete/update for calendar items. createTask/listTasks/deleteTask/runTask for automated tasks.",
       },

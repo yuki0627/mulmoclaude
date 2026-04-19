@@ -7,13 +7,10 @@
 // registered with the task-manager at startup. CRUD operations
 // trigger a refresh that unregisters old tasks and registers new ones.
 
-import { WORKSPACE_FILES } from "../../../src/config/workspacePaths.js";
-import { workspacePath } from "../paths.js";
-import { loadJsonFile } from "../../utils/files/json.js";
-import { writeFileAtomic } from "../../utils/files/atomic.js";
-import { resolvePath } from "../../utils/files/workspace-io.js";
-import path from "path";
-import { mkdir } from "fs/promises";
+import {
+  loadUserTasks as loadUserTasksRaw,
+  saveUserTasks as saveUserTasksRaw,
+} from "../../utils/files/user-tasks-io.js";
 import type { MissedRunPolicy } from "@receptron/task-scheduler";
 import { SCHEDULE_TYPES, MISSED_RUN_POLICIES } from "@receptron/task-scheduler";
 import type { TaskSchedule as LocalTaskSchedule } from "../../events/task-manager/index.js";
@@ -45,25 +42,16 @@ export interface UserTaskInput {
   prompt: string;
 }
 
-// ── I/O ─────────────────────────────────────────────────────────
-
-const root = (r?: string) => r ?? workspacePath;
-
+// Typed wrappers around the generic I/O module.
 export function loadUserTasks(r?: string): PersistedUserTask[] {
-  const tasks = loadJsonFile<PersistedUserTask[]>(
-    resolvePath(root(r), WORKSPACE_FILES.schedulerUserTasks),
-    [],
-  );
-  return Array.isArray(tasks) ? tasks : [];
+  return loadUserTasksRaw<PersistedUserTask>(r);
 }
 
 export async function saveUserTasks(
   tasks: PersistedUserTask[],
   r?: string,
 ): Promise<void> {
-  const filePath = resolvePath(root(r), WORKSPACE_FILES.schedulerUserTasks);
-  await mkdir(path.dirname(filePath), { recursive: true });
-  await writeFileAtomic(filePath, JSON.stringify(tasks, null, 2));
+  return saveUserTasksRaw(tasks, r);
 }
 
 // ── Validation ──────────────────────────────────────────────────

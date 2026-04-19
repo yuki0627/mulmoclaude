@@ -21,6 +21,10 @@ import {
 } from "../../workspace/skills/user-tasks.js";
 import { startChat } from "./agent.js";
 import { log } from "../../system/logger/index.js";
+import {
+  SCHEDULER_ACTIONS,
+  TASK_ACTIONS,
+} from "../../../src/config/schedulerActions.js";
 
 const router = Router();
 
@@ -45,14 +49,6 @@ router.get(
     res.json({ data: { items: loadItems() } });
   },
 );
-
-// Task-related actions dispatched via MCP tool
-const TASK_ACTIONS = new Set([
-  "createTask",
-  "listTasks",
-  "deleteTask",
-  "runTask",
-]);
 
 interface SchedulerBody extends SchedulerActionInput {
   action: string;
@@ -83,7 +79,7 @@ router.post(
     const items = loadItems();
     const result = dispatchScheduler(action, items, input);
     respondWithDispatchResult(res, result, {
-      shouldPersist: action !== "show",
+      shouldPersist: action !== SCHEDULER_ACTIONS.show,
       instructions: "Display the updated scheduler to the user.",
       persist: saveItems,
     });
@@ -96,7 +92,7 @@ async function handleTaskAction(
   res: Response,
 ): Promise<void> {
   try {
-    if (action === "listTasks") {
+    if (action === SCHEDULER_ACTIONS.listTasks) {
       const tasks = loadUserTasks();
       res.json({
         uuid: crypto.randomUUID(),
@@ -106,7 +102,7 @@ async function handleTaskAction(
       return;
     }
 
-    if (action === "createTask") {
+    if (action === SCHEDULER_ACTIONS.createTask) {
       const result = validateAndCreate(input);
       if (result.kind === "error") {
         res.status(400).json({ error: result.error });
@@ -124,7 +120,7 @@ async function handleTaskAction(
       return;
     }
 
-    if (action === "deleteTask") {
+    if (action === SCHEDULER_ACTIONS.deleteTask) {
       const id = typeof input.id === "string" ? input.id : "";
       const tasks = loadUserTasks();
       const idx = tasks.findIndex((t) => t.id === id);
@@ -144,7 +140,7 @@ async function handleTaskAction(
       return;
     }
 
-    if (action === "runTask") {
+    if (action === SCHEDULER_ACTIONS.runTask) {
       const id = typeof input.id === "string" ? input.id : "";
       const tasks = loadUserTasks();
       const task = tasks.find((t) => t.id === id);
