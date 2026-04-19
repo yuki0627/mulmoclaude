@@ -92,7 +92,7 @@ Go to LINE Official Account settings, **Auto-reply messages**, turn it OFF.
 
 Add to `.env` in the project root:
 
-```
+```dotenv
 LINE_CHANNEL_SECRET=xxxxxx
 LINE_CHANNEL_ACCESS_TOKEN=xxxxxx
 ```
@@ -117,7 +117,8 @@ In terminal B, start ngrok (if not already running):
 ngrok http 3002
 ```
 
-In terminal C, start the LINE bridge:
+In terminal C, start the LINE bridge (`yarn dev` automatically builds
+`packages/line/dist/` via the `predev` script, so no manual build needed):
 
 ```bash
 node packages/line/dist/index.js

@@ -93,7 +93,7 @@ LINE 公式アカウント設定画面 → **応答メッセージ** → OFF に
 
 プロジェクトルートの `.env` に以下を追加:
 
-```
+```dotenv
 LINE_CHANNEL_SECRET=xxxxxx
 LINE_CHANNEL_ACCESS_TOKEN=xxxxxx
 ```
@@ -118,7 +118,8 @@ yarn dev
 ngrok http 3002
 ```
 
-ターミナル C で LINE ブリッジを起動:
+ターミナル C で LINE ブリッジを起動（`yarn dev` が `predev` スクリプト経由で
+`packages/line/dist/` を自動ビルドするので、手動ビルドは不要）:
 
 ```bash
 node packages/line/dist/index.js
