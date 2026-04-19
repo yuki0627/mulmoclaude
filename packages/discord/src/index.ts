@@ -43,14 +43,22 @@ const discord = new Client({
 
 const mulmo = createBridgeClient({ transportId: TRANSPORT_ID });
 
-mulmo.onPush((ev) => {
-  const channel = discord.channels.cache.get(ev.chatId);
-  if (channel?.isTextBased() && "send" in channel) {
-    (channel as { send: (text: string) => Promise<unknown> })
-      .send(ev.message)
-      .catch((err: unknown) =>
-        console.error(`[discord] push send failed: ${err}`),
+mulmo.onPush(async (ev) => {
+  try {
+    const channel =
+      discord.channels.cache.get(ev.chatId) ??
+      (await discord.channels.fetch(ev.chatId).catch(() => null));
+    if (channel?.isTextBased() && "send" in channel) {
+      await (channel as { send: (text: string) => Promise<unknown> }).send(
+        ev.message,
       );
+    } else {
+      console.warn(
+        `[discord] push: channel ${ev.chatId} not found or not text-based`,
+      );
+    }
+  } catch (err) {
+    console.error(`[discord] push send failed: ${err}`);
   }
 });
 

@@ -45,17 +45,27 @@ async function pushMessage(userId: string, text: string): Promise<void> {
   const messages = chunkText(text).map((t) => ({ type: "text", text: t }));
   // LINE allows max 5 messages per push
   for (let i = 0; i < messages.length; i += 5) {
-    await fetch("https://api.line.me/v2/bot/message/push", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${channelAccessToken}`,
-      },
-      body: JSON.stringify({
-        to: userId,
-        messages: messages.slice(i, i + 5),
-      }),
-    });
+    try {
+      const res = await fetch("https://api.line.me/v2/bot/message/push", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${channelAccessToken}`,
+        },
+        body: JSON.stringify({
+          to: userId,
+          messages: messages.slice(i, i + 5),
+        }),
+      });
+      if (!res.ok) {
+        const body = await res.text().catch(() => "");
+        console.error(
+          `[line] pushMessage failed: ${res.status} ${body.slice(0, 200)}`,
+        );
+      }
+    } catch (err) {
+      console.error(`[line] pushMessage network error: ${err}`);
+    }
   }
 }
 
@@ -95,7 +105,7 @@ app.post("/webhook", async (req: Request, res: Response) => {
 
   res.status(200).send("OK");
 
-  const body = JSON.parse(bodyStr) as {
+  let body: {
     events: Array<{
       type: string;
       replyToken?: string;
@@ -103,6 +113,12 @@ app.post("/webhook", async (req: Request, res: Response) => {
       message?: { type: string; text?: string };
     }>;
   };
+  try {
+    body = JSON.parse(bodyStr);
+  } catch {
+    console.error("[line] malformed JSON in webhook body");
+    return;
+  }
 
   for (const event of body.events) {
     if (event.type !== "message" || event.message?.type !== "text") continue;
