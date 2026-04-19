@@ -5,8 +5,9 @@
 //   2. Chat-service bridge → Telegram / CLI
 //
 // Callers (trigger sources) use `publishNotification()` to fire.
-// The in-memory store keeps the last N notifications for the
-// bell panel; persistence (notifications.json) tracks read/dismiss.
+// In-memory store keeps the last N notifications for the bell panel.
+// publishNotification() is wrapped in try-catch so failures never
+// propagate to callers (e.g. endRun in session-store).
 
 import { PUBSUB_CHANNELS } from "../../src/config/pubsubChannels.js";
 import {
@@ -55,42 +56,47 @@ export interface PublishNotificationOpts {
 }
 
 export function publishNotification(opts: PublishNotificationOpts): void {
-  const payload: NotificationPayload = {
-    id: crypto.randomUUID(),
-    kind: opts.kind,
-    title: opts.title,
-    body: opts.body,
-    icon: NOTIFICATION_ICONS[opts.kind],
-    action: opts.action ?? { type: "none" },
-    firedAt: new Date().toISOString(),
-    priority: opts.priority ?? "normal",
-    sessionId: opts.sessionId,
-    transportId: opts.transportId,
-  };
+  try {
+    const payload: NotificationPayload = {
+      id: crypto.randomUUID(),
+      kind: opts.kind,
+      title: opts.title,
+      body: opts.body,
+      icon: NOTIFICATION_ICONS[opts.kind],
+      action: opts.action ?? { type: "none" },
+      firedAt: new Date().toISOString(),
+      priority: opts.priority ?? "normal",
+      sessionId: opts.sessionId,
+      transportId: opts.transportId,
+    };
 
-  // Store for bell panel
-  store.unshift(payload);
-  if (store.length > MAX_STORED) store.length = MAX_STORED;
+    // Store for bell panel
+    store.unshift(payload);
+    if (store.length > MAX_STORED) store.length = MAX_STORED;
 
-  // Push to Web UI via pub-sub
-  if (deps) {
-    deps.publish(PUBSUB_CHANNELS.notifications, payload);
+    // Push to Web UI via pub-sub
+    if (deps) {
+      deps.publish(PUBSUB_CHANNELS.notifications, payload);
+    }
+
+    // Push to bridge (Telegram/CLI)
+    if (deps && opts.transportId) {
+      deps.pushToBridge(
+        opts.transportId,
+        "notifications",
+        formatBridgeMessage(payload),
+      );
+    }
+
+    log.info("notifications", "published", {
+      kind: payload.kind,
+      title: payload.title,
+      id: payload.id,
+    });
+  } catch (err) {
+    // Never let notification failures break the caller (e.g. endRun).
+    log.warn("notifications", "publish failed", { error: String(err) });
   }
-
-  // Push to bridge (Telegram/CLI)
-  if (deps && opts.transportId) {
-    deps.pushToBridge(
-      opts.transportId,
-      "notifications",
-      formatBridgeMessage(payload),
-    );
-  }
-
-  log.info("notifications", "published", {
-    kind: payload.kind,
-    title: payload.title,
-    id: payload.id,
-  });
 }
 
 function formatBridgeMessage(p: NotificationPayload): string {

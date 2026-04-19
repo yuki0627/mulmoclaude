@@ -30,7 +30,10 @@ const emit = defineEmits<{
 watch(
   () => props.forceClose,
   (v) => {
-    if (v) open.value = false;
+    if (v && open.value) {
+      open.value = false;
+      emit("update:open", false);
+    }
   },
 );
 
@@ -110,6 +113,7 @@ function handleDismiss(e: Event, id: string): void {
         <span class="text-sm font-semibold text-gray-700">Notifications</span>
         <button
           class="text-xs text-blue-500 hover:text-blue-700"
+          data-testid="notification-mark-all-read"
           @click="markAllRead"
         >
           Mark all read
@@ -129,9 +133,13 @@ function handleDismiss(e: Event, id: string): void {
         <div
           v-for="n in notifications"
           :key="n.id"
-          class="flex items-start gap-3 px-4 py-3 border-b border-gray-50 hover:bg-gray-50 cursor-pointer"
+          role="button"
+          tabindex="0"
+          class="flex items-start gap-3 px-4 py-3 border-b border-gray-50 hover:bg-gray-50 focus:bg-gray-100 cursor-pointer outline-none"
           :data-testid="`notification-item-${n.id}`"
+          :aria-label="n.title"
           @click="handleClick(n)"
+          @keydown.enter="handleClick(n)"
         >
           <span
             class="material-icons text-lg mt-0.5 shrink-0"

@@ -11,7 +11,12 @@ const MAX_RECENT = 50;
 function isNotificationPayload(value: unknown): value is NotificationPayload {
   if (value === null || typeof value !== "object") return false;
   const v = value as Record<string, unknown>;
-  return typeof v.id === "string" && typeof v.title === "string";
+  return (
+    typeof v.id === "string" &&
+    typeof v.kind === "string" &&
+    typeof v.title === "string" &&
+    typeof v.firedAt === "string"
+  );
 }
 
 // Module-level state so all components share the same list.

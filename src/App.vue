@@ -618,8 +618,9 @@ function onNotificationOpen(isOpen: boolean): void {
 
 function handleNotificationNavigate(action: NotificationAction): void {
   if (action.type !== "navigate") return;
-  if (action.view === "chat" && action.sessionId) {
-    navigateToSession(action.sessionId);
+  if (action.view === "chat") {
+    if (action.sessionId) navigateToSession(action.sessionId);
+    // No sessionId → stay on current view (notification is informational)
   } else if (action.view === "todos") {
     setCanvasViewMode("todos");
   } else if (action.view === "scheduler") {

@@ -30,6 +30,17 @@ function dismiss(): void {
 function iconName(n: NotificationPayload): string {
   return n.icon ?? NOTIFICATION_ICONS[n.kind] ?? "notifications";
 }
+
+function formatTime(iso: string): string {
+  try {
+    return new Date(iso).toLocaleTimeString([], {
+      hour: "2-digit",
+      minute: "2-digit",
+    });
+  } catch {
+    return iso;
+  }
+}
 </script>
 
 <template>
@@ -50,7 +61,9 @@ function iconName(n: NotificationPayload): string {
         >
           {{ visible.body }}
         </p>
-        <p class="mt-1 text-xs text-slate-400">{{ visible.firedAt }}</p>
+        <p class="mt-1 text-xs text-slate-400">
+          {{ formatTime(visible.firedAt) }}
+        </p>
       </div>
       <button
         type="button"
