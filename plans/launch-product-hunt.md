@@ -2,7 +2,7 @@
 
 **Owner:** CMO (strategy), Engineering (demo assets), Community (day-of ops)
 **Target launch:** Tuesday, one week out — 12:01 AM PT kickoff
-**Positioning one-liner:** *Claude Code that produces docs, presentations, spreadsheets, videos, and remembers everything.*
+**Positioning one-liner:** *Claude Code that creates documents, videos, and your personal knowledge base.*
 **Core thesis (the story behind the product):** This is the first visible surface of an AI-native operating system. Claude Code is the kernel; MulmoClaude is the shell, the compositor, and the filesystem users actually see. **The unique thing isn't any single feature — it's the *location.*** Web articles, chat conversations, local files, scheduled runs, phone messages all converge into one local folder (`~/mulmoclaude/`), as plain Markdown, maintained by AI. It's the reinvention of the home directory for the AI era.
 **Target early adopter (one audience, not four):** Claude Code power users who have already hit the limits of the terminal. Everyone else — productivity users, knowledge workers, AI enthusiasts — is phase 2 and will come via these users, not in parallel to them.
 
@@ -12,11 +12,11 @@
 
 ### Primary tagline (Product Hunt hero line)
 
-> **MulmoClaude — Claude Code that produces docs, presentations, spreadsheets, videos, and remembers everything.**
+> **MulmoClaude — Claude Code that creates documents, videos, and your personal knowledge base.**
 
-This one sentence is the whole product. The concrete noun list (docs, presentations, spreadsheets, videos) does the work — a viewer knows in half a second what they're going to get back. "Remembers everything" is the moat. Every surface — hero video, PH headline, tweet #1, gallery captions — must trace back to it. Everything else (parallel sessions, bridges, sandbox, roles, skills, charts) is *evidence*, not the message.
+This one sentence is the whole product. Three nouns do the entire job: *documents* and *videos* tell the viewer what they get back (concrete outputs); *your personal knowledge base* is the moat — local, yours, and compounding across every session. Every surface — hero video, PH headline, tweet #1, gallery captions — must trace back to it. Everything else (parallel sessions, bridges, sandbox, roles, skills, charts) is *evidence*, not the message.
 
-**Drafting rule:** whenever you're tempted to write "artifacts," write the concrete list instead. Abstractions lose upvotes.
+**Drafting rule:** whenever you're tempted to write "artifacts," write the concrete nouns (documents, videos) and the moat ("your personal knowledge base") instead. Abstractions lose upvotes.
 
 ### Supporting taglines (A/B candidates for social + hero imagery)
 
@@ -91,7 +91,7 @@ A PH viewer skims for ~10 seconds and remembers one idea. So we drop to **five**
 ## 5. Product Hunt Listing Copy
 
 ### Headline (60 char max)
-`MulmoClaude — Docs, decks, sheets, videos from Claude Code` *(58 chars)*
+`MulmoClaude — Docs, videos, and a growing knowledge base` *(56 chars — short form of the 91-char hero tagline)*
 
 ### Tagline (60 char max)
 `Parallel sessions. Personal wiki. Phone bridges. Sandboxed.` *(58 chars)*
@@ -268,7 +268,7 @@ Three videos — each serves a different channel. **Always record silent first; 
 
 **Launch thread (7 tweets) — drafts. Order matches the five key messages + shock demo + CTA.**
 
-1. *MulmoClaude is live on Product Hunt today. It's Claude Code that produces docs, presentations, spreadsheets, videos — and remembers everything. Not an API wrapper. It runs Claude Code directly — your auth, your tools, your files. 🧵*
+1. *MulmoClaude is live on Product Hunt today. It's Claude Code that creates documents, videos, and your personal knowledge base. Not an API wrapper. It runs Claude Code directly — your auth, your tools, your files. 🧵*
 2. **[Shock demo]** *Drop a research paper in. Out comes a summary document, a slide deck, and a narrated video. No other tools opened. [60s video]*
 3. **[Parallel sessions]** *Three Claude Code sessions, one browser tab. One renders a video, one refactors code, one drafts email. Claude Code is no longer single-threaded. [multi-session gif]*
 4. **[Everything in one folder]** *Web articles, chats, local files, scheduled runs — all converge into one folder (`~/mulmoclaude/`) as Markdown, maintained by Claude itself. Notion is cloud. Obsidian is inert. MulmoClaude is local + AI-maintained + multi-source. The home directory, reinvented. [wiki/folder gif]*
@@ -278,7 +278,7 @@ Three videos — each serves a different channel. **Always record silent first; 
 
 ### Hacker News
 
-Title: **Show HN: MulmoClaude – Claude Code that produces docs, decks, spreadsheets, videos, and remembers everything**
+Title: **Show HN: MulmoClaude – Claude Code that creates documents, videos, and your personal knowledge base**
 
 Body (first comment): lead with the **AI-native OS thesis** and the Karpathy *LLM Knowledge Bases* reference. HN respects ideas over features — sell the idea, not the feature list. Explicitly state: *this runs the Claude Code CLI directly, not the API — that's why it can do what it does.*
 
