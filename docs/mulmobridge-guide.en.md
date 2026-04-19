@@ -86,7 +86,7 @@ Detailed setup: [Telegram README](https://github.com/receptron/mulmoclaude/blob/
 | **Telegram** | [@mulmobridge/telegram](https://www.npmjs.com/package/@mulmobridge/telegram) | Stable | [README](https://github.com/receptron/mulmoclaude/blob/main/packages/telegram/README.md) |
 | **Discord** | [@mulmobridge/discord](https://www.npmjs.com/package/@mulmobridge/discord) | Experimental | [README](https://github.com/receptron/mulmoclaude/blob/main/packages/discord/README.md) |
 | **Slack** | [@mulmobridge/slack](https://www.npmjs.com/package/@mulmobridge/slack) | Experimental | [README](https://github.com/receptron/mulmoclaude/blob/main/packages/slack/README.md) |
-| **LINE** | [@mulmobridge/line](https://www.npmjs.com/package/@mulmobridge/line) | Experimental | [README](https://github.com/receptron/mulmoclaude/blob/main/packages/line/README.md) |
+| **LINE** | [@mulmobridge/line](https://www.npmjs.com/package/@mulmobridge/line) | Verified | [README](https://github.com/receptron/mulmoclaude/blob/main/packages/line/README.md) |
 | **WhatsApp** | [@mulmobridge/whatsapp](https://www.npmjs.com/package/@mulmobridge/whatsapp) | Experimental | [README](https://github.com/receptron/mulmoclaude/blob/main/packages/whatsapp/README.md) |
 | **Matrix** | [@mulmobridge/matrix](https://www.npmjs.com/package/@mulmobridge/matrix) | Experimental | [README](https://github.com/receptron/mulmoclaude/blob/main/packages/matrix/README.md) |
 | **IRC** | [@mulmobridge/irc](https://www.npmjs.com/package/@mulmobridge/irc) | Experimental | [README](https://github.com/receptron/mulmoclaude/blob/main/packages/irc/README.md) |

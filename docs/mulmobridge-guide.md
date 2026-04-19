@@ -86,7 +86,7 @@ TELEGRAM_ALLOWED_CHAT_IDS=your-chat-id \
 | **Telegram** | [@mulmobridge/telegram](https://www.npmjs.com/package/@mulmobridge/telegram) | 安定 | [README](https://github.com/receptron/mulmoclaude/blob/main/packages/telegram/README.md) |
 | **Discord** | [@mulmobridge/discord](https://www.npmjs.com/package/@mulmobridge/discord) | 実験的 | [README](https://github.com/receptron/mulmoclaude/blob/main/packages/discord/README.md) |
 | **Slack** | [@mulmobridge/slack](https://www.npmjs.com/package/@mulmobridge/slack) | 実験的 | [README](https://github.com/receptron/mulmoclaude/blob/main/packages/slack/README.md) |
-| **LINE** | [@mulmobridge/line](https://www.npmjs.com/package/@mulmobridge/line) | 実験的 | [README](https://github.com/receptron/mulmoclaude/blob/main/packages/line/README.md) |
+| **LINE** | [@mulmobridge/line](https://www.npmjs.com/package/@mulmobridge/line) | 動作確認済み | [README](https://github.com/receptron/mulmoclaude/blob/main/packages/line/README.md) |
 | **WhatsApp** | [@mulmobridge/whatsapp](https://www.npmjs.com/package/@mulmobridge/whatsapp) | 実験的 | [README](https://github.com/receptron/mulmoclaude/blob/main/packages/whatsapp/README.md) |
 | **Matrix** | [@mulmobridge/matrix](https://www.npmjs.com/package/@mulmobridge/matrix) | 実験的 | [README](https://github.com/receptron/mulmoclaude/blob/main/packages/matrix/README.md) |
 | **IRC** | [@mulmobridge/irc](https://www.npmjs.com/package/@mulmobridge/irc) | 実験的 | [README](https://github.com/receptron/mulmoclaude/blob/main/packages/irc/README.md) |
