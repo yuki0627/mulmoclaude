@@ -1,23 +1,48 @@
 <script setup lang="ts">
-import { ref } from "vue";
+import { ref, watch, onMounted, onUnmounted } from "vue";
 import { useNotifications } from "../composables/useNotifications";
 import { NOTIFICATION_ICONS } from "../types/notification";
 import type { NotificationPayload } from "../types/notification";
 
 const { notifications, unreadCount, markAllRead, dismiss } = useNotifications();
 const open = ref(false);
+const rootRef = ref<HTMLElement | null>(null);
+
+function onDocumentClick(e: MouseEvent): void {
+  if (!open.value || !rootRef.value) return;
+  if (!rootRef.value.contains(e.target as Node)) {
+    close();
+  }
+}
+
+onMounted(() => document.addEventListener("mousedown", onDocumentClick));
+onUnmounted(() => document.removeEventListener("mousedown", onDocumentClick));
+
+const props = defineProps<{
+  forceClose?: boolean;
+}>();
 
 const emit = defineEmits<{
   navigate: [action: NotificationPayload["action"]];
+  "update:open": [open: boolean];
 }>();
+
+watch(
+  () => props.forceClose,
+  (v) => {
+    if (v) open.value = false;
+  },
+);
 
 function toggle(): void {
   open.value = !open.value;
   if (open.value) markAllRead();
+  emit("update:open", open.value);
 }
 
 function close(): void {
   open.value = false;
+  emit("update:open", false);
 }
 
 function iconName(n: NotificationPayload): string {
@@ -54,18 +79,18 @@ function handleDismiss(e: Event, id: string): void {
 </script>
 
 <template>
-  <div class="relative">
+  <div ref="rootRef" class="relative">
     <!-- Bell button -->
     <button
-      class="relative p-1.5 rounded hover:bg-gray-100"
+      class="relative text-gray-400 hover:text-gray-700"
       data-testid="notification-bell"
       aria-label="Notifications"
       @click="toggle"
     >
-      <span class="material-icons text-xl text-gray-500">notifications</span>
+      <span class="material-icons">notifications</span>
       <span
         v-if="unreadCount > 0"
-        class="absolute -top-0.5 -right-0.5 min-w-[18px] h-[18px] flex items-center justify-center rounded-full bg-red-500 text-white text-[10px] font-bold px-1"
+        class="absolute -top-1.5 -right-1.5 min-w-[1rem] h-4 px-0.5 bg-red-500 text-white text-[10px] font-bold rounded-full flex items-center justify-center leading-none"
         data-testid="notification-badge"
       >
         {{ unreadCount > 99 ? "99+" : unreadCount }}
@@ -75,7 +100,7 @@ function handleDismiss(e: Event, id: string): void {
     <!-- Dropdown panel -->
     <div
       v-if="open"
-      class="absolute right-0 top-full mt-2 w-80 max-h-96 overflow-y-auto rounded-lg shadow-xl border border-gray-200 bg-white z-50"
+      class="absolute right-0 top-full mt-1 w-72 max-h-80 overflow-y-auto rounded-lg shadow-xl border border-gray-200 bg-white z-50"
       data-testid="notification-panel"
     >
       <!-- Header -->

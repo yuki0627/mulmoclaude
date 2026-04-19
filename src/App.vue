@@ -49,7 +49,11 @@
             @update:open="showLockPopup = $event"
             @test-query="sendMessage"
           />
-          <NotificationBell @navigate="handleNotificationNavigate" />
+          <NotificationBell
+            :force-close="showLockPopup"
+            @navigate="handleNotificationNavigate"
+            @update:open="onNotificationOpen"
+          />
           <button
             class="text-gray-400 hover:text-gray-700"
             :class="{ 'text-blue-500': showRightSidebar }"
@@ -606,6 +610,10 @@ function navigateToSession(id: string, replace = false): void {
       console.error("[navigateToSession] push failed:", err);
     }
   });
+}
+
+function onNotificationOpen(isOpen: boolean): void {
+  if (isOpen) showLockPopup.value = false;
 }
 
 function handleNotificationNavigate(action: NotificationAction): void {
