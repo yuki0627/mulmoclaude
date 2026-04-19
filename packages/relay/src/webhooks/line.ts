@@ -1,6 +1,5 @@
 // LINE webhook handler — verify signature + extract messages.
 
-import { verifyHmacSha256 } from "../crypto.js";
 import { PLATFORMS, type RelayMessage } from "../types.js";
 
 interface LineEvent {

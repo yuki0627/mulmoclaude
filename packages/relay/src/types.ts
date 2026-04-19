@@ -34,8 +34,13 @@ export interface RelayResponse {
   replyToken?: string;
 }
 
+// Env is defined with `any` for the DO binding because
+// DurableObjectNamespace is a Cloudflare Workers type not available
+// in the server tsconfig. The actual type safety comes from
+// wrangler + @cloudflare/workers-types at deploy time.
 export interface Env {
-  RELAY: DurableObjectNamespace;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  RELAY: any;
   RELAY_TOKEN: string;
   // LINE
   LINE_CHANNEL_SECRET?: string;

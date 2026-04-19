@@ -22,16 +22,16 @@ export function handleTelegramWebhook(
   }
 
   const update: TelegramUpdate = JSON.parse(body);
-  if (!update.message?.text) return [];
-
   const msg = update.message;
+  const text = msg?.text;
+  if (!msg || !text) return [];
   return [
     {
       id: crypto.randomUUID(),
       platform: PLATFORMS.telegram,
       senderId: String(msg.from?.id ?? "unknown"),
       chatId: String(msg.chat.id),
-      text: msg.text,
+      text,
       receivedAt: new Date().toISOString(),
     },
   ];

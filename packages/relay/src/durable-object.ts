@@ -1,3 +1,4 @@
+/* eslint-disable no-undef -- Cloudflare Workers globals (DurableObject, WebSocketPair, etc.) */
 // RelayDurableObject — WebSocket server + message queue.
 //
 // Holds a single WS connection to MulmoClaude. When connected,
