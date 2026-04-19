@@ -1,62 +1,56 @@
-// Web-side subscriber for the `notifications` pub-sub channel the
-// server publishes on when a scheduled push fires. Pairs with the
-// PoC endpoint `POST /api/notifications/test`
-// (`server/api/routes/notifications.ts`).
-//
-// Scope for this scaffold: keep a rolling tail of the last N
-// notifications so the toast component can render the most recent
-// one. No dedup, no dismissal persistence, no per-session
-// targeting — those land with the real notification center (#144).
+// Web-side subscriber for the `notifications` pub-sub channel.
+// Stores incoming NotificationPayloads for the bell badge + panel.
 
-import { onUnmounted, ref, type Ref } from "vue";
+import { onUnmounted, ref, computed, type Ref, type ComputedRef } from "vue";
 import { PUBSUB_CHANNELS } from "../config/pubsubChannels";
 import { usePubSub } from "./usePubSub";
+import type { NotificationPayload } from "../types/notification";
 
-export interface NotificationItem {
-  /** Monotonic id so consumers can `v-for :key` cleanly even when
-   *  two notifications arrive in the same millisecond. */
-  id: number;
-  message: string;
-  /** ISO8601 from the server at fire time (not receipt time). */
-  firedAt: string;
-}
+const MAX_RECENT = 50;
 
-const MAX_RECENT = 20;
-
-function isNotificationData(
-  value: unknown,
-): value is { message: string; firedAt: string } {
+function isNotificationPayload(value: unknown): value is NotificationPayload {
   if (value === null || typeof value !== "object") return false;
-  if (!("message" in value) || typeof value.message !== "string") return false;
-  if (!("firedAt" in value) || typeof value.firedAt !== "string") return false;
-  return true;
+  const v = value as Record<string, unknown>;
+  return typeof v.id === "string" && typeof v.title === "string";
 }
+
+// Module-level state so all components share the same list.
+const notifications = ref<NotificationPayload[]>([]);
+const readAt = ref<string | null>(null);
 
 export function useNotifications(): {
-  notifications: Ref<NotificationItem[]>;
-  latest: Ref<NotificationItem | null>;
+  notifications: Ref<NotificationPayload[]>;
+  latest: ComputedRef<NotificationPayload | null>;
+  unreadCount: ComputedRef<number>;
+  markAllRead: () => void;
+  dismiss: (id: string) => void;
 } {
-  const notifications = ref<NotificationItem[]>([]);
-  const latest = ref<NotificationItem | null>(null);
-  let nextId = 0;
-
   const { subscribe } = usePubSub();
   const unsubscribe = subscribe(PUBSUB_CHANNELS.notifications, (data) => {
-    if (!isNotificationData(data)) return;
-    const item: NotificationItem = {
-      id: nextId++,
-      message: data.message,
-      firedAt: data.firedAt,
-    };
-    // Newest-first. Cap the tail so a busy server can't grow the
-    // array unbounded.
-    notifications.value = [item, ...notifications.value].slice(0, MAX_RECENT);
-    latest.value = item;
+    if (!isNotificationPayload(data)) return;
+    notifications.value = [data, ...notifications.value].slice(0, MAX_RECENT);
   });
 
   onUnmounted(() => {
     unsubscribe();
   });
 
-  return { notifications, latest };
+  const latest = computed(() => notifications.value[0] ?? null);
+
+  const unreadCount = computed(() => {
+    if (!readAt.value) return notifications.value.length;
+    return notifications.value.filter((n) => n.firedAt > readAt.value!).length;
+  });
+
+  function markAllRead(): void {
+    if (notifications.value.length > 0) {
+      readAt.value = notifications.value[0].firedAt;
+    }
+  }
+
+  function dismiss(id: string): void {
+    notifications.value = notifications.value.filter((n) => n.id !== id);
+  }
+
+  return { notifications, latest, unreadCount, markAllRead, dismiss };
 }

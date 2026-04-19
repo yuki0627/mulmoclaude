@@ -14,6 +14,8 @@ import { log } from "../../system/logger/index.js";
 import { updateHasUnread } from "../../utils/files/session-io.js";
 import { EVENT_TYPES } from "../../../src/types/events.js";
 import { ONE_HOUR_MS, ONE_MINUTE_MS } from "../../utils/time.js";
+import { publishNotification } from "../notifications.js";
+import { NOTIFICATION_KINDS } from "../../../src/types/notification.js";
 
 // ── Types ──────────────────────────────────────────────────────
 
@@ -132,6 +134,18 @@ export function endRun(chatSessionId: string): void {
     type: EVENT_TYPES.sessionFinished,
   });
   notifySessionsChanged();
+
+  // P0 trigger: agent completed → notification
+  publishNotification({
+    kind: NOTIFICATION_KINDS.agent,
+    title: `Session completed (${session.roleId})`,
+    action: {
+      type: "navigate",
+      view: "chat",
+      sessionId: chatSessionId,
+    },
+    sessionId: chatSessionId,
+  });
 }
 
 /** Cancel a running session by killing the child process. */

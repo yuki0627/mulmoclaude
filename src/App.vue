@@ -49,6 +49,7 @@
             @update:open="showLockPopup = $event"
             @test-query="sendMessage"
           />
+          <NotificationBell @navigate="handleNotificationNavigate" />
           <button
             class="text-gray-400 hover:text-gray-700"
             :class="{ 'text-blue-500': showRightSidebar }"
@@ -453,6 +454,8 @@ import SkillsView from "./plugins/manageSkills/View.vue";
 import RolesView from "./plugins/manageRoles/View.vue";
 import SettingsModal from "./components/SettingsModal.vue";
 import NotificationToast from "./components/NotificationToast.vue";
+import NotificationBell from "./components/NotificationBell.vue";
+import type { NotificationAction } from "./types/notification";
 import ChatAttachmentPreview from "./components/ChatAttachmentPreview.vue";
 import type { SseEvent } from "./types/sse";
 import {
@@ -603,6 +606,19 @@ function navigateToSession(id: string, replace = false): void {
       console.error("[navigateToSession] push failed:", err);
     }
   });
+}
+
+function handleNotificationNavigate(action: NotificationAction): void {
+  if (action.type !== "navigate") return;
+  if (action.view === "chat" && action.sessionId) {
+    navigateToSession(action.sessionId);
+  } else if (action.view === "todos") {
+    setCanvasViewMode("todos");
+  } else if (action.view === "scheduler") {
+    setCanvasViewMode("scheduler");
+  } else if (action.view === "files") {
+    setCanvasViewMode("files");
+  }
 }
 
 // External URL changes (back/forward button, typed URL) → update ref.
