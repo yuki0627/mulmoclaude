@@ -15,7 +15,8 @@
   "scripts": {
     "build": "tsc",
     "prepack": "yarn build",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "test": "echo no tests yet"
   },
   "license": "MIT",
   "author": "Receptron Team",
