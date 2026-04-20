@@ -388,6 +388,7 @@ import { useFreshPluginData } from "../../composables/useFreshPluginData";
 import { apiPost } from "../../utils/api";
 import { API_ROUTES } from "../../config/apiRoutes";
 import TasksTab from "./TasksTab.vue";
+import { isToday } from "../../utils/format/date";
 
 type YamlScalar = string | number | boolean | null;
 
@@ -488,19 +489,6 @@ function getMonthGrid(year: number, month: number): Date[][] {
     weeks.push(week);
   }
   return weeks;
-}
-
-function isToday(date: Date): boolean {
-  const today = new Date();
-  return isSameDay(date, today);
-}
-
-function isSameDay(a: Date, b: Date): boolean {
-  return (
-    a.getFullYear() === b.getFullYear() &&
-    a.getMonth() === b.getMonth() &&
-    a.getDate() === b.getDate()
-  );
 }
 
 function isCurrentMonth(date: Date): boolean {

@@ -27,43 +27,47 @@ export function formatTime(ms: number): string {
   return new Date(ms).toLocaleTimeString();
 }
 
-/** "06:32" — short HH:MM from ISO string. Falls back to raw string on parse error. */
-export function formatShortTime(iso: string): string {
+/** "06:32" — short HH:MM. Accepts Date, epoch ms, or ISO string. */
+export function formatShortTime(value: Date | number | string): string {
   try {
-    return new Date(iso).toLocaleTimeString([], {
+    const d = value instanceof Date ? value : new Date(value);
+    return d.toLocaleTimeString([], {
       hour: "2-digit",
       minute: "2-digit",
     });
   } catch {
-    return iso;
+    return String(value);
   }
 }
 
-/** "Apr 11" — short month + day from epoch ms. */
-export function formatShortDate(ms: number): string {
-  return new Date(ms).toLocaleDateString(undefined, {
+/** "Apr 11" — short month + day. Accepts Date, epoch ms, or ISO string. */
+export function formatShortDate(value: Date | number | string): string {
+  const d = value instanceof Date ? value : new Date(value);
+  return d.toLocaleDateString(undefined, {
     month: "short",
     day: "numeric",
   });
+}
+
+/** True when two Dates fall on the same calendar day. */
+export function isSameDay(a: Date, b: Date): boolean {
+  return (
+    a.getFullYear() === b.getFullYear() &&
+    a.getMonth() === b.getMonth() &&
+    a.getDate() === b.getDate()
+  );
+}
+
+/** True when the given Date is today. */
+export function isToday(date: Date): boolean {
+  return isSameDay(date, new Date());
 }
 
 /** "14:32" for today, "Apr 16 14:32" for past dates. Works with
  *  both epoch ms (number) and ISO strings. */
 export function formatSmartTime(value: number | string): string {
   const d = new Date(value);
-  const now = new Date();
-  const isToday =
-    d.getFullYear() === now.getFullYear() &&
-    d.getMonth() === now.getMonth() &&
-    d.getDate() === now.getDate();
-  const time = d.toLocaleTimeString([], {
-    hour: "2-digit",
-    minute: "2-digit",
-  });
-  if (isToday) return time;
-  const date = d.toLocaleDateString([], {
-    month: "short",
-    day: "numeric",
-  });
-  return `${date} ${time}`;
+  const time = formatShortTime(d);
+  if (isToday(d)) return time;
+  return `${formatShortDate(d)} ${time}`;
 }
