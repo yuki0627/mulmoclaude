@@ -1,14 +1,12 @@
 <template>
-  <div class="p-4 border-b border-gray-200 flex items-center justify-between">
-    <div>
-      <h1
-        data-testid="app-title"
-        class="text-lg font-semibold"
-        :style="titleStyle"
-      >
-        MulmoClaude
-      </h1>
-    </div>
+  <div class="flex items-center gap-2">
+    <h1
+      data-testid="app-title"
+      class="text-sm font-semibold text-gray-800 mr-1"
+      :style="titleStyle"
+    >
+      MulmoClaude
+    </h1>
     <div class="flex gap-2">
       <LockStatusPopup
         ref="lockPopup"

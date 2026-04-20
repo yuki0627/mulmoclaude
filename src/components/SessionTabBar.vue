@@ -1,5 +1,5 @@
 <template>
-  <div class="px-2 py-1 border-b border-gray-200 flex gap-1 items-center">
+  <div class="flex-1 flex gap-1 items-center min-w-0">
     <button
       class="flex-shrink-0 flex items-center justify-center w-7 py-1 rounded border border-dashed border-gray-300 text-gray-400 hover:border-blue-400 hover:text-blue-500 hover:bg-blue-50 transition-colors"
       data-testid="new-session-btn"
