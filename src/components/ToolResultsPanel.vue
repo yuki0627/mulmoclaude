@@ -86,7 +86,19 @@ defineProps<{
 
 function formatTime(epochMs: number): string {
   const d = new Date(epochMs);
-  return d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+  const now = new Date();
+  const isToday =
+    d.getFullYear() === now.getFullYear() &&
+    d.getMonth() === now.getMonth() &&
+    d.getDate() === now.getDate();
+  if (isToday) {
+    return d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+  }
+  return (
+    d.toLocaleDateString([], { month: "short", day: "numeric" }) +
+    " " +
+    d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })
+  );
 }
 
 const emit = defineEmits<{
