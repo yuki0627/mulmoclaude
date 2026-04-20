@@ -15,14 +15,21 @@ export function useFileTree() {
   const childrenByPath = ref<Map<string, TreeNode[] | null>>(new Map());
   const treeError = ref<string | null>(null);
 
+  // Generation counter — incremented on reloadRoot so in-flight
+  // requests from a prior generation don't write stale data.
+  let generation = 0;
+
   async function loadDirChildren(path: string): Promise<void> {
     if (childrenByPath.value.has(path)) return;
 
+    const gen = generation;
     const next = new Map(childrenByPath.value);
     next.set(path, null);
     childrenByPath.value = next;
 
     const result = await apiGet<TreeNode>(API_ROUTES.files.dir, { path });
+    // Bail if reloadRoot was called while we were awaiting.
+    if (gen !== generation) return;
     if (!result.ok) {
       const rollback = new Map(childrenByPath.value);
       rollback.delete(path);
@@ -51,6 +58,8 @@ export function useFileTree() {
   }
 
   async function reloadRoot(): Promise<void> {
+    generation++;
+    rootNode.value = null;
     childrenByPath.value = new Map();
     treeError.value = null;
     await loadDirChildren("");

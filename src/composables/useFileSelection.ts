@@ -24,11 +24,12 @@ interface MetaContent {
 
 export type FileContent = TextContent | MetaContent;
 
+/** Segment-wise traversal check: rejects `../` path components
+ *  but allows legitimate filenames like `my..notes.txt`. */
 export function isValidFilePath(p: unknown): p is string {
   if (typeof p !== "string" || p.length === 0) return false;
-  if (p.includes("..")) return false;
   if (p.startsWith("/")) return false;
-  return true;
+  return !p.split("/").some((seg) => seg === "..");
 }
 
 export function useFileSelection() {
@@ -53,20 +54,23 @@ export function useFileSelection() {
     contentLoading.value = true;
     contentError.value = null;
     content.value = null;
-    const result = await apiGet<FileContent>(
-      API_ROUTES.files.content,
-      { path: filePath },
-      { signal: controller.signal },
-    );
-    if (controller.signal.aborted) return;
-    if (!result.ok) {
-      contentError.value = result.error;
-    } else {
-      content.value = result.data;
-    }
-    if (contentAbort === controller) {
-      contentLoading.value = false;
-      contentAbort = null;
+    try {
+      const result = await apiGet<FileContent>(
+        API_ROUTES.files.content,
+        { path: filePath },
+        { signal: controller.signal },
+      );
+      if (controller.signal.aborted) return;
+      if (!result.ok) {
+        contentError.value = result.error;
+      } else {
+        content.value = result.data;
+      }
+    } finally {
+      if (contentAbort === controller) {
+        contentLoading.value = false;
+        contentAbort = null;
+      }
     }
   }
 
@@ -78,6 +82,8 @@ export function useFileSelection() {
       .push({ query: { ...restQuery, path: filePath } })
       .catch((err: unknown) => {
         if (!isNavigationFailure(err)) {
+          // Frontend composable — server logger not available.
+          // console.error is the standard pattern in Vue composables.
           console.error("[selectFile] navigation failed:", err);
         }
       });
@@ -100,6 +106,8 @@ export function useFileSelection() {
 
   function abortContent(): void {
     contentAbort?.abort();
+    contentAbort = null;
+    contentLoading.value = false;
   }
 
   return {
