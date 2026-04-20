@@ -9,7 +9,9 @@ const roles = [
   { id: "office", name: "Office" },
 ];
 
-function makeState(overrides?: Partial<TransportChatState>): TransportChatState {
+function makeState(
+  overrides?: Partial<TransportChatState>,
+): TransportChatState {
   return {
     externalChatId: "test-chat",
     sessionId: "sess-1",
@@ -21,9 +23,24 @@ function makeState(overrides?: Partial<TransportChatState>): TransportChatState 
 }
 
 const mockSessions: SessionSummary[] = [
-  { id: "s1", roleId: "general", preview: "First session", updatedAt: new Date().toISOString() },
-  { id: "s2", roleId: "office", preview: "Second session", updatedAt: new Date().toISOString() },
-  { id: "s3", roleId: "general", preview: "Third session", updatedAt: new Date().toISOString() },
+  {
+    id: "s1",
+    roleId: "general",
+    preview: "First session",
+    updatedAt: new Date().toISOString(),
+  },
+  {
+    id: "s2",
+    roleId: "office",
+    preview: "Second session",
+    updatedAt: new Date().toISOString(),
+  },
+  {
+    id: "s3",
+    roleId: "general",
+    preview: "Third session",
+    updatedAt: new Date().toISOString(),
+  },
 ];
 
 const mockMessages = [
@@ -72,8 +89,7 @@ describe("/switch command", () => {
       loadAllRoles: () => roles,
       getRole: (id) => roles.find((r) => r.id === id) ?? roles[0],
       resetChatState: async (_t, _c, roleId) => makeState({ roleId }),
-      connectSession: async (_t, _c, sessionId) =>
-        makeState({ sessionId }),
+      connectSession: async (_t, _c, sessionId) => makeState({ sessionId }),
       listSessions: async ({ limit, offset }) => ({
         sessions: mockSessions.slice(offset, offset + limit),
         total: mockSessions.length,
@@ -112,9 +128,17 @@ describe("/switch command", () => {
       }),
     });
     // User A populates cache
-    await handler("/sessions", "telegram", makeState({ externalChatId: "userA" }));
+    await handler(
+      "/sessions",
+      "telegram",
+      makeState({ externalChatId: "userA" }),
+    );
     // User B has NOT called /sessions — /switch should fail
-    const result = await handler("/switch 1", "telegram", makeState({ externalChatId: "userB" }));
+    const result = await handler(
+      "/switch 1",
+      "telegram",
+      makeState({ externalChatId: "userB" }),
+    );
     assert.ok(result);
     assert.ok(result.reply.includes("/sessions first"));
   });

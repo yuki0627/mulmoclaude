@@ -169,12 +169,14 @@ async function listSessionsForBridge(opts: { limit: number; offset: number }) {
   const rows = await loadAllSessions();
   const sorted = rows.sort((a, b) => b.changeMs - a.changeMs);
   const total = sorted.length;
-  const sessions = sorted.slice(opts.offset, opts.offset + opts.limit).map((r) => ({
-    id: r.summary.id,
-    roleId: r.summary.roleId,
-    preview: r.summary.preview,
-    updatedAt: r.summary.updatedAt,
-  }));
+  const sessions = sorted
+    .slice(opts.offset, opts.offset + opts.limit)
+    .map((r) => ({
+      id: r.summary.id,
+      roleId: r.summary.roleId,
+      preview: r.summary.preview,
+      updatedAt: r.summary.updatedAt,
+    }));
   return { sessions, total };
 }
 async function getSessionHistoryForBridge(

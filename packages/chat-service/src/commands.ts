@@ -269,10 +269,10 @@ export function createCommandHandler(opts: {
     }
     const page = Math.max(1, parseInt(pageArg ?? "1", 10) || 1);
     const offset = (page - 1) * HISTORY_PAGE_SIZE;
-    const { messages, total } = await getSessionHistory(
-      chatState.sessionId,
-      { limit: HISTORY_PAGE_SIZE, offset },
-    );
+    const { messages, total } = await getSessionHistory(chatState.sessionId, {
+      limit: HISTORY_PAGE_SIZE,
+      offset,
+    });
     if (messages.length === 0 && total === 0) {
       return { reply: "No messages in this session." };
     }
