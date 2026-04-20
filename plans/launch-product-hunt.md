@@ -175,7 +175,7 @@ You can also reach the same workspace from Telegram, Slack, LINE,
 Discord, WhatsApp, Matrix — same agent, same wiki memory. Fire a
 task from the subway, see the result on your laptop.
 
-Open source, AGPL.
+Open source, MIT.
 
 If you're already a Claude Code power user who's hit the walls of
 the terminal, this is built for you. Would love your honest feedback
@@ -227,7 +227,7 @@ Three videos — each serves a different channel. **Always record silent first; 
   - 1:30–2:10 — **The compounding moment.** Ingest two related articles. Show wiki backlinks appearing. Open a fresh session tomorrow's simulated morning and ask a question — Claude answers grounded in the wiki it built itself. Call out: *"every other Claude client starts from zero. This one compounds."*
   - 2:10–2:30 — Bridges. Message from **Telegram** and **LINE**; show desktop canvas updating live. Same memory, same workspace.
   - 2:30–2:50 — Trust layer. Docker sandbox banner. Show Claude being *unable* to read a file outside the workspace. Frame against tools that run Claude directly on `~/`. Anti-wrapper line on-screen.
-  - 2:50–3:00 — Open source, AGPL. Hosted demo link + github link.
+  - 2:50–3:00 — Open source, MIT. Hosted demo link + github link.
 - **Production notes:** talking-head inset bottom-right for the first 20 seconds, then pure screencast.
 
 ### Video C — The 15-second loop (Instagram, LinkedIn, PH gallery motion)
@@ -301,7 +301,7 @@ Three videos — each serves a different channel. **Always record silent first; 
 3. **[Message #2 — Autonomy]** *Other agents wait for you. This one has a schedule. Register a source → morning briefing. Set a recurring task → weekly report done. Close the lid, come back to a catch-up. No other AI agent ships this. [scheduler gif]*
 4. **[Message #3 — Ownership]** *It all lives in `~/mulmoclaude/`. Plain Markdown. `git push` is the backup. No cloud, no lock-in, no export flow. Your machine, your data, your agent. [folder + git gif]*
 5. **[Anti-wrapper beat]** *This is not an API wrapper. It runs the Claude Code CLI directly — your auth, your tools, your files. That's why it can do what it does.*
-6. **[CTA]** *Install with `npx create-mulmoclaude` or `git clone` — open source, AGPL. One upvote on PH costs you nothing and means everything today: [link]* (If a hosted demo or `--demo` mode ships by launch, swap the first clause.)
+6. **[CTA]** *Install with `npx create-mulmoclaude` or `git clone` — open source, MIT. One upvote on PH costs you nothing and means everything today: [link]* (If a hosted demo or `--demo` mode ships by launch, swap the first clause.)
 
 ### Hacker News
 
@@ -341,7 +341,7 @@ Satoshi has a strong JP audience. Ship a Japanese version of the maker post and 
 | "It's just a wrapper" objection                        | Medium      | Lead with the anti-wrapper line verbatim: *"It runs Claude Code directly — not the API."* Reinforce with wiki + multi-session proof.  |
 | Cognitive overload (too many features in one message)  | Medium      | Already addressed in §4 — 9 messages collapsed to 5, rest kept in reserve. Hold the line; don't let screenshots creep the list back. |
 | Demo video latency from live Claude calls              | Medium      | Pre-record, splice, never show >3s of spinner                                                                                        |
-| AGPL + Docker read as "hacker tool, not safe"          | Medium      | **Reframe:** sandbox = *"the level of care a real shell needs."* AGPL = *"open-source, local-first, no vendor lock-in."* Same facts, different framing. |
+| MIT + Docker read as "hacker tool, not safe"           | Low-Medium  | **Reframe:** sandbox = *"the level of care a real shell needs."* MIT = *"maximally permissive open source — fork it, ship it, use it commercially."* (MIT de-risks the license objection that AGPL would have created.) |
 | Anthropic ships their own GUI the same week            | Low         | Frame as complementary — local-first, open-source, plugin-extensible                                                                 |
 | PH algorithm — late US vote surge from JP timing       | Low         | JP launch tweet timed to catch evening-JP as launch-day-morning-PT                                                                   |
 

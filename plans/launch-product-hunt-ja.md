@@ -177,7 +177,7 @@ You can also reach the same workspace from Telegram, Slack, LINE,
 Discord, WhatsApp, Matrix — same agent, same wiki memory. Fire a
 task from the subway, see the result on your laptop.
 
-Open source, AGPL.
+Open source, MIT.
 
 If you're already a Claude Code power user who's hit the walls of
 the terminal, this is built for you. Would love your honest feedback
@@ -229,7 +229,7 @@ what computing looks like when AI is the kernel.
   - 1:30–2:10 — **複利の瞬間。** 関連する 2 本の記事を取り込む。Wiki のバックリンクが出現する様子を見せる。"翌朝" を想定した新しいセッションを開いて質問する — Claude が自分で築いた Wiki を根拠に答える。強調: *"every other Claude client starts from zero. This one compounds."*
   - 2:10–2:30 — ブリッジ。**Telegram** と **LINE** からメッセージ; デスクトップのキャンバスがライブで更新される様子を見せる。同じメモリ、同じワークスペース。
   - 2:30–2:50 — 信頼レイヤー。Docker サンドボックス・バナー。Claude がワークスペース外のファイルを *読めない* 様子を見せる。`~/` で直接 Claude を動かすツールと対比。アンチ・ラッパー・ラインを画面に。
-  - 2:50–3:00 — オープンソース、AGPL。GitHub リンク(ホストデモまたは `--demo` モードが用意できていればそのリンクも)。
+  - 2:50–3:00 — オープンソース、MIT。GitHub リンク(ホストデモまたは `--demo` モードが用意できていればそのリンクも)。
 - **制作メモ:** 最初の 20 秒だけ右下にトーキングヘッドのインセット、以後は純粋なスクリーンキャスト。
 
 ### Video C — 15 秒ループ(Instagram, LinkedIn, PH ギャラリーモーション)
@@ -303,7 +303,7 @@ what computing looks like when AI is the kernel.
 3. **[メッセージ #2 — 自律]** *Other agents wait for you. This one has a schedule. Register a source → morning briefing. Set a recurring task → weekly report done. Close the lid, come back to a catch-up. No other AI agent ships this. [scheduler gif]*
 4. **[メッセージ #3 — 所有権]** *It all lives in `~/mulmoclaude/`. Plain Markdown. `git push` is the backup. No cloud, no lock-in, no export flow. Your machine, your data, your agent. [folder + git gif]*
 5. **[アンチ・ラッパー・ビート]** *This is not an API wrapper. It runs the Claude Code CLI directly — your auth, your tools, your files. That's why it can do what it does.*
-6. **[CTA]** *Install with `npx create-mulmoclaude` or `git clone` — open source, AGPL. One upvote on PH costs you nothing and means everything today: [link]* (ホストデモもしくは `--demo` モードがローンチ前に出荷されれば先頭の節を差し替える。)
+6. **[CTA]** *Install with `npx create-mulmoclaude` or `git clone` — open source, MIT. One upvote on PH costs you nothing and means everything today: [link]* (ホストデモもしくは `--demo` モードがローンチ前に出荷されれば先頭の節を差し替える。)
 
 ### Hacker News
 
@@ -343,7 +343,7 @@ what computing looks like when AI is the kernel.
 | "ただのラッパーでしょ"という反論                       | 中       | アンチ・ラッパー・ラインを一字一句そのまま使う: *"It runs Claude Code directly — not the API."* Wiki + マルチセッションで補強。         |
 | 認知過負荷(1 メッセージに機能が多すぎる)               | 中       | §4 で既に対処済 — 9 → 5 に圧縮、残りは温存。ラインを死守; スクリーンショットでリストが戻らないよう監視。                             |
 | ライブ Claude 呼び出しによるデモ動画のレイテンシ       | 中       | プリレコード、スプライス、スピナー 3 秒以上絶対に見せない                                                                             |
-| AGPL + Docker が "ハッカーツール、危険" と読まれる     | 中       | **再フレーム:** サンドボックス = *"the level of care a real shell needs."* AGPL = *"open-source, local-first, no vendor lock-in."* 同じ事実、別フレーミング。 |
+| MIT + Docker が "ハッカーツール、危険" と読まれる      | 低〜中   | **再フレーム:** サンドボックス = *"the level of care a real shell needs."* MIT = *"maximally permissive open source — フォークしろ、出荷しろ、商用利用 OK"*。(MIT は AGPL だと発生していたライセンス反論をそもそも除去する。)|
 | Anthropic が同じ週に自社 GUI を出す                    | 低       | 補完的と位置付ける — ローカルファースト、オープンソース、プラグイン拡張可能                                                           |
 | PH アルゴリズム — JP タイミングによる米国夕方の追い上げ | 低       | JP ローンチツイートを日本夕方 = PH 当日朝 PT に合わせる                                                                               |
 
