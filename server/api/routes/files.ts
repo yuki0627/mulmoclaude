@@ -736,7 +736,10 @@ router.put(
       return;
     }
     try {
-      await writeFileAtomic(absPath, contentRaw);
+      // `uniqueTmp: true` appends a randomUUID to the tmp filename so
+      // two simultaneous PUTs to the same path can't clobber each
+      // other's staging file and race through the rename.
+      await writeFileAtomic(absPath, contentRaw, { uniqueTmp: true });
     } catch (err) {
       serverError(res, `Failed to write file: ${errorMessage(err)}`);
       return;

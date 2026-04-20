@@ -380,15 +380,21 @@ async function saveRawMarkdown(newSource: string): Promise<void> {
   if (!selectedPath.value) return;
   if (content.value?.kind !== "text") return;
   if (newSource === content.value.content) return;
+  // Snapshot the target path so a late response from a PUT for file A
+  // can't overwrite `content.value` after the user has navigated to
+  // file B. Server-side the save still completes — we only suppress
+  // the stale UI update.
+  const pathAtSave = selectedPath.value;
   rawSaveError.value = null;
   const result = await apiPut<{
     path: string;
     size: number;
     modifiedMs: number;
   }>(API_ROUTES.files.content, {
-    path: selectedPath.value,
+    path: pathAtSave,
     content: newSource,
   });
+  if (selectedPath.value !== pathAtSave) return;
   if (!result.ok) {
     rawSaveError.value = result.error;
     return;
