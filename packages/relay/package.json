@@ -3,8 +3,16 @@
   "version": "0.1.0",
   "description": "Cloudflare Workers relay for MulmoBridge — receives webhooks, queues messages, forwards via WebSocket to MulmoClaude",
   "type": "module",
-  "main": "src/index.ts",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "exports": {
+    ".": "./dist/index.js",
+    "./client": "./dist/client.js",
+    "./types": "./dist/types.js"
+  },
+  "files": ["dist", "src", "wrangler.toml", "README.md"],
   "scripts": {
+    "build": "tsc",
     "dev": "wrangler dev",
     "deploy": "wrangler deploy",
     "typecheck": "tsc --noEmit",
