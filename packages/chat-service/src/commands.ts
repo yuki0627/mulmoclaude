@@ -60,8 +60,11 @@ export function createCommandHandler(opts: {
     getSessionHistory,
   } = opts;
 
-  // Cache the last /sessions result so /switch <number> can reference it.
-  let lastSessionList: SessionSummary[] = [];
+  // Cache /sessions results per chat so /switch resolves to the correct list.
+  // Key: "transportId:externalChatId"
+  const sessionListCache = new Map<string, SessionSummary[]>();
+  const cacheKey = (transportId: string, externalChatId: string) =>
+    `${transportId}:${externalChatId}`;
 
   const getRolesText = (): string =>
     [
@@ -136,6 +139,8 @@ export function createCommandHandler(opts: {
   const PAGE_SIZE = 10;
 
   const handleSessions = async (
+    transportId: string,
+    chatState: TransportChatState,
     pageArg: string | undefined,
   ): Promise<CommandResult> => {
     if (!listSessions) {
@@ -145,7 +150,10 @@ export function createCommandHandler(opts: {
     if (sessions.length === 0) {
       return { reply: "No sessions found." };
     }
-    lastSessionList = sessions;
+    sessionListCache.set(
+      cacheKey(transportId, chatState.externalChatId),
+      sessions,
+    );
     const page = Math.max(1, parseInt(pageArg ?? "1", 10) || 1);
     const start = (page - 1) * PAGE_SIZE;
     const end = Math.min(start + PAGE_SIZE, sessions.length);
@@ -178,20 +186,21 @@ export function createCommandHandler(opts: {
         reply: "Usage: /switch <number>\nRun /sessions first to see the list.",
       };
     }
+    if (!/^\d+$/.test(arg)) {
+      return { reply: "Usage: /switch <number> (digits only)" };
+    }
+    const key = cacheKey(transportId, chatState.externalChatId);
+    const cached = sessionListCache.get(key) ?? [];
     const index = parseInt(arg, 10);
-    if (
-      !Number.isInteger(index) ||
-      index < 1 ||
-      index > lastSessionList.length
-    ) {
+    if (index < 1 || index > cached.length) {
       return {
         reply:
-          lastSessionList.length > 0
-            ? `Invalid number. Pick 1-${lastSessionList.length} from the /sessions list.`
+          cached.length > 0
+            ? `Invalid number. Pick 1-${cached.length} from the /sessions list.`
             : "Run /sessions first to see available sessions.",
       };
     }
-    const target = lastSessionList[index - 1];
+    const target = cached[index - 1];
     const updated = await connectSession(
       transportId,
       chatState.externalChatId,
@@ -262,7 +271,7 @@ export function createCommandHandler(opts: {
       case "/reset":
         return handleReset(transportId, chatState);
       case "/sessions":
-        return handleSessions(args[0]);
+        return handleSessions(transportId, chatState, args[0]);
       case "/switch":
         return handleSwitch(transportId, chatState, args[0]);
       case "/history":
