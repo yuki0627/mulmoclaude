@@ -120,7 +120,16 @@
                       mdFrontmatter ? mdFrontmatter.body : content.content,
                     )
                   "
+                  :editable-source="content.content"
+                  @update-source="saveRawMarkdown"
                 />
+              </div>
+              <div
+                v-if="rawSaveError"
+                class="shrink-0 m-4 mt-0 rounded border border-red-300 bg-red-50 p-2 text-xs text-red-700"
+                role="alert"
+              >
+                ⚠ {{ rawSaveError }}
               </div>
             </div>
             <!-- Markdown raw source (includes frontmatter) -->
@@ -248,7 +257,7 @@ import FileTree, { type TreeNode } from "./FileTree.vue";
 import { useExpandedDirs } from "../composables/useExpandedDirs";
 import TextResponseView from "../plugins/textResponse/View.vue";
 import { rewriteMarkdownImageRefs } from "../utils/image/rewriteMarkdownImageRefs";
-import { apiGet } from "../utils/api";
+import { apiGet, apiPut } from "../utils/api";
 import { API_ROUTES } from "../config/apiRoutes";
 import { WORKSPACE_FILES } from "../config/workspacePaths";
 import { formatDateTime } from "../utils/format/date";
@@ -362,6 +371,44 @@ function toggleMdRaw(): void {
   mdRawMode.value = !mdRawMode.value;
   localStorage.setItem(MD_RAW_STORAGE_KEY, String(mdRawMode.value));
 }
+
+// Save-error banner shown above the Rendered-mode markdown editor.
+// Cleared on every new file load and on the next successful save.
+const rawSaveError = ref<string | null>(null);
+
+async function saveRawMarkdown(newSource: string): Promise<void> {
+  if (!selectedPath.value) return;
+  if (content.value?.kind !== "text") return;
+  if (newSource === content.value.content) return;
+  rawSaveError.value = null;
+  const result = await apiPut<{
+    path: string;
+    size: number;
+    modifiedMs: number;
+  }>(API_ROUTES.files.content, {
+    path: selectedPath.value,
+    content: newSource,
+  });
+  if (!result.ok) {
+    rawSaveError.value = result.error;
+    return;
+  }
+  // Reflect the saved state locally — size/modifiedMs come from the
+  // server's post-write stat, and `content` is what we just sent. Avoid
+  // a round-trip GET since the server has already confirmed the write.
+  content.value = {
+    kind: "text",
+    path: result.data.path,
+    content: newSource,
+    size: result.data.size,
+    modifiedMs: result.data.modifiedMs,
+  };
+}
+
+// Clear any stale save error whenever a new file is loaded.
+watch(content, () => {
+  rawSaveError.value = null;
+});
 const isHtml = computed(() => hasExt(selectedPath.value, [".html", ".htm"]));
 
 // The HTML body handed to the iframe's `srcdoc`. We inject a CSP

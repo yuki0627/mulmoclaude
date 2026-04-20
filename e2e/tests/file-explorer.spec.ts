@@ -158,6 +158,62 @@ test.describe("file explorer path in URL", () => {
     }).toPass({ timeout: 5000 });
   });
 
+  test("editing a markdown file via the rendered-mode editor saves via PUT /api/files/content", async ({
+    page,
+  }) => {
+    // Capture the PUT request body so we can assert on exactly what
+    // the editor sent to the server.
+    const putRequests: Array<{ path: string; content: string }> = [];
+    await page.route(
+      (url) => url.pathname === "/api/files/content",
+      async (route, req) => {
+        if (req.method() === "PUT") {
+          const body = req.postDataJSON() as {
+            path: string;
+            content: string;
+          };
+          putRequests.push(body);
+          await route.fulfill({
+            json: {
+              path: body.path,
+              size: body.content.length,
+              modifiedMs: Date.now(),
+            },
+          });
+          return;
+        }
+        // Non-PUT → fall through to the earlier GET mock.
+        await route.fallback();
+      },
+    );
+
+    await page.goto("/chat?view=files&path=wiki/hello.md");
+
+    // Open the collapsible editor — it hangs off the bottom of the
+    // rendered markdown pane. The textarea is seeded with the raw
+    // on-disk source (not the rewritten display text), so edits
+    // round-trip through PUT /api/files/content unmodified.
+    const summary = page.getByTestId("text-response-edit-summary");
+    await expect(summary).toBeVisible({ timeout: 5000 });
+    await summary.click();
+
+    const textarea = page.getByTestId("text-response-edit-textarea");
+    await expect(textarea).toHaveValue("# Hello\n\nThis is a test.");
+
+    const apply = page.getByTestId("text-response-apply-btn");
+    await expect(apply).toBeDisabled();
+
+    await textarea.fill("# Hello\n\nEdited by the test.");
+    await expect(apply).toBeEnabled();
+    await apply.click();
+
+    await expect(() => {
+      expect(putRequests).toHaveLength(1);
+      expect(putRequests[0].path).toBe("wiki/hello.md");
+      expect(putRequests[0].content).toBe("# Hello\n\nEdited by the test.");
+    }).toPass({ timeout: 5000 });
+  });
+
   test("closing a file removes ?path= from URL", async ({ page }) => {
     await page.goto("/chat?view=files&path=wiki/hello.md");
     await expect(page.getByText("This is a test.")).toBeVisible({
