@@ -7,12 +7,14 @@
 // Non-Docker mode: prompt-based restriction only.
 
 import { createHash } from "crypto";
-import fs from "fs";
 import path from "path";
 import os from "os";
-import { workspacePath, WORKSPACE_DIRS } from "./paths.js";
 import { log } from "../system/logger/index.js";
-import { writeFileAtomicSync } from "../utils/files/atomic.js";
+import {
+  readReferenceDirsJson,
+  writeReferenceDirsJson,
+  isExistingDirectory,
+} from "../utils/files/reference-dirs-io.js";
 
 // ── Types ───────────────────────────────────────────────────────
 
@@ -25,7 +27,6 @@ export interface ReferenceDirEntry {
 
 // ── Constants ───────────────────────────────────────────────────
 
-const CONFIG_FILE_NAME = "reference-dirs.json";
 const MAX_ENTRIES = 20;
 const MAX_LABEL_LENGTH = 100;
 const CONTAINER_MOUNT_ROOT = "/mnt/readonly";
@@ -134,32 +135,17 @@ function validateEntry(raw: unknown): ReferenceDirEntry | null {
 // ── Load ────────────────────────────────────────────────────────
 
 export function loadReferenceDirs(root?: string): ReferenceDirEntry[] {
-  const base = root ?? workspacePath;
-  const filePath = path.join(base, WORKSPACE_DIRS.configs, CONFIG_FILE_NAME);
-  try {
-    if (!fs.existsSync(filePath)) return [];
-    const raw = fs.readFileSync(filePath, "utf-8");
-    const parsed: unknown = JSON.parse(raw);
-    if (!Array.isArray(parsed)) {
-      log.warn("reference-dirs", "reference-dirs.json is not an array");
-      return [];
-    }
-    const entries = parsed
-      .slice(0, MAX_ENTRIES)
-      .map(validateEntry)
-      .filter((e): e is ReferenceDirEntry => e !== null);
+  const parsed = readReferenceDirsJson(root);
+  const entries = parsed
+    .slice(0, MAX_ENTRIES)
+    .map(validateEntry)
+    .filter((e): e is ReferenceDirEntry => e !== null);
 
-    const skipped = parsed.length - entries.length;
-    if (skipped > 0) {
-      log.warn("reference-dirs", "skipped invalid entries", { skipped });
-    }
-    return entries;
-  } catch (err) {
-    log.warn("reference-dirs", "failed to load reference-dirs.json", {
-      error: String(err),
-    });
-    return [];
+  const skipped = parsed.length - entries.length;
+  if (skipped > 0) {
+    log.warn("reference-dirs", "skipped invalid entries", { skipped });
   }
+  return entries;
 }
 
 // ── Save ────────────────────────────────────────────────────────
@@ -168,10 +154,7 @@ export function saveReferenceDirs(
   entries: readonly ReferenceDirEntry[],
   root?: string,
 ): void {
-  const base = root ?? workspacePath;
-  const filePath = path.join(base, WORKSPACE_DIRS.configs, CONFIG_FILE_NAME);
-  fs.mkdirSync(path.dirname(filePath), { recursive: true });
-  writeFileAtomicSync(filePath, JSON.stringify(entries, null, 2));
+  writeReferenceDirsJson(entries, root);
   invalidateCache();
 }
 
@@ -244,11 +227,8 @@ export function referenceDirMountArgs(
 ): string[] {
   const args: string[] = [];
   for (const entry of entries) {
-    try {
-      const stat = fs.statSync(entry.hostPath);
-      if (!stat.isDirectory()) continue;
-    } catch {
-      log.info("reference-dirs", "skipped (not found)", {
+    if (!isExistingDirectory(entry.hostPath)) {
+      log.info("reference-dirs", "skipped (not found or not a directory)", {
         path: entry.hostPath,
       });
       continue;
