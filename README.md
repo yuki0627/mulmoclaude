@@ -1,33 +1,42 @@
 # MulmoClaude
 
-Experience GUI-chat with Claude Code — and long-term memory! You chat with Claude Code, and it responds not just with text but with interactive visual tools — documents, spreadsheets, mind maps, images, forms, 3D scenes, and more. A built-in personal wiki gives Claude persistent, structured knowledge that grows with every conversation.
+GUI-chat with Claude Code — plus long-term memory, visual tools, and messaging app access.
 
-> **Hacking on MulmoClaude?** See [`docs/developer.md`](docs/developer.md) for environment variables, scripts, the process map, sandbox layout, and other contributor-facing notes. Logging knobs live in [`docs/logging.md`](docs/logging.md).
+Chat with Claude Code and get back not just text but **interactive visual output**: documents, spreadsheets, mind maps, charts, images, forms, 3D scenes, and more. A built-in personal wiki gives Claude **persistent knowledge** that grows with every conversation.
 
-## Installation
+**Access from anywhere**: connect Telegram, Slack, LINE, Discord, or [10 other messaging apps](#messaging-bridges) to talk to your AI agent from your phone.
 
-**Prerequisites**: Node.js 20+ (24 recommended), [Claude Code CLI](https://claude.ai/code) installed and authenticated.
+## Quick Start
 
 ```bash
-# Clone the repository
+# 1. Clone and install
 git clone git@github.com:receptron/mulmoclaude.git
-cd mulmoclaude
+cd mulmoclaude && yarn install
 
-# Install dependencies
-yarn install
+# 2. Configure (optional — image generation requires Gemini API key)
+cp .env.example .env   # edit .env to add GEMINI_API_KEY
 
-# Set up environment variables
-cp .env.example .env
-# Edit .env and add your GEMINI_API_KEY
-```
-
-## Running the App
-
-```bash
+# 3. Run
 yarn dev
 ```
 
-This starts both the frontend (Vite) and the backend (Express + Claude Code agent) concurrently. Open [http://localhost:5173](http://localhost:5173) in your browser.
+Open [http://localhost:5173](http://localhost:5173). That's it — start chatting.
+
+> **Prerequisites**: Node.js 20+, [Claude Code CLI](https://claude.ai/code) installed and authenticated.
+
+## What can you do?
+
+| Ask Claude to... | What you get |
+|------------------|--------------|
+| "Write a project proposal" | Rich markdown document in the canvas |
+| "Chart last quarter's revenue" | Interactive ECharts visualization |
+| "Create a trip plan for Kyoto" | Illustrated guide with images |
+| "Manage my todos" | Kanban board with drag-and-drop |
+| "Ingest this article: URL" | Wiki page with `[[links]]` for long-term memory |
+| "Schedule a daily news digest" | Recurring task that runs automatically |
+| "Generate an image of a sunset" | AI-generated image (Gemini) |
+
+> **Hacking on MulmoClaude?** See [`docs/developer.md`](docs/developer.md) for environment variables, scripts, and architecture.
 
 ### Messaging bridges
 
@@ -523,22 +532,46 @@ Shared code is extracted into publishable npm packages under `packages/`:
 
 | Package | Description | Links |
 |---|---|---|
-| `@mulmobridge/protocol` | Shared types and constants (EVENT_TYPES, Attachment, socket events) | [source](packages/protocol/) |
-| `@mulmobridge/client` | Socket.io client library + bearer token reader + MIME utilities | [source](packages/client/) |
-| `@mulmobridge/chat-service` | Server-side chat service (socket.io + REST bridge, DI factory) | [source](packages/chat-service/) |
-| `@mulmobridge/cli` | Interactive terminal bridge | [npm](https://www.npmjs.com/package/@mulmobridge/cli) / [source](packages/cli/) |
-| `@mulmobridge/telegram` | Telegram bot bridge (photo support, allowlist) | [npm](https://www.npmjs.com/package/@mulmobridge/telegram) / [source](packages/telegram/) |
-| `@mulmobridge/slack` | Slack bot bridge (Socket Mode) | [source](packages/slack/) |
-| `@mulmobridge/discord` | Discord bot bridge | [source](packages/discord/) |
-| `@mulmobridge/line` | LINE bot bridge (webhook) | [source](packages/line/) |
-| `@mulmobridge/whatsapp` | WhatsApp Cloud API bridge (webhook) | [source](packages/whatsapp/) |
-| `@mulmobridge/matrix` | Matrix bridge (matrix-js-sdk) | [source](packages/matrix/) |
-| `@mulmobridge/irc` | IRC bridge (irc-framework) | [source](packages/irc/) |
-| `@mulmobridge/mattermost` | Mattermost bridge (WebSocket + REST) | [source](packages/mattermost/) |
-| `@mulmobridge/zulip` | Zulip bridge (long-polling events API) | [source](packages/zulip/) |
-| `@mulmobridge/messenger` | Facebook Messenger bridge (webhook + HMAC) | [source](packages/messenger/) |
-| `@mulmobridge/google-chat` | Google Chat bridge (webhook + JWT verification) | [source](packages/google-chat/) |
-| `@mulmobridge/mock-server` | Lightweight mock server for bridge testing | [source](packages/mock-server/) |
-| `@receptron/task-scheduler` | Persistent task scheduler with catch-up | [source](packages/scheduler/) |
+| `@mulmobridge/protocol` | Shared types and constants | [npm](https://www.npmjs.com/package/@mulmobridge/protocol) / [source](packages/protocol/) |
+| `@mulmobridge/client` | Socket.io client library | [npm](https://www.npmjs.com/package/@mulmobridge/client) / [source](packages/client/) |
+| `@mulmobridge/chat-service` | Server-side chat service (DI factory) | [npm](https://www.npmjs.com/package/@mulmobridge/chat-service) / [source](packages/chat-service/) |
+| `@mulmobridge/cli` | Terminal bridge | [npm](https://www.npmjs.com/package/@mulmobridge/cli) / [source](packages/cli/) |
+| `@mulmobridge/telegram` | Telegram bot bridge | [npm](https://www.npmjs.com/package/@mulmobridge/telegram) / [source](packages/telegram/) |
+| `@mulmobridge/slack` | Slack bot bridge | [npm](https://www.npmjs.com/package/@mulmobridge/slack) / [source](packages/slack/) |
+| `@mulmobridge/discord` | Discord bot bridge | [npm](https://www.npmjs.com/package/@mulmobridge/discord) / [source](packages/discord/) |
+| `@mulmobridge/line` | LINE bot bridge | [npm](https://www.npmjs.com/package/@mulmobridge/line) / [source](packages/line/) |
+| `@mulmobridge/whatsapp` | WhatsApp bridge | [npm](https://www.npmjs.com/package/@mulmobridge/whatsapp) / [source](packages/whatsapp/) |
+| `@mulmobridge/matrix` | Matrix bridge | [npm](https://www.npmjs.com/package/@mulmobridge/matrix) / [source](packages/matrix/) |
+| `@mulmobridge/irc` | IRC bridge | [npm](https://www.npmjs.com/package/@mulmobridge/irc) / [source](packages/irc/) |
+| `@mulmobridge/mattermost` | Mattermost bridge | [npm](https://www.npmjs.com/package/@mulmobridge/mattermost) / [source](packages/mattermost/) |
+| `@mulmobridge/zulip` | Zulip bridge | [npm](https://www.npmjs.com/package/@mulmobridge/zulip) / [source](packages/zulip/) |
+| `@mulmobridge/messenger` | Facebook Messenger bridge | [npm](https://www.npmjs.com/package/@mulmobridge/messenger) / [source](packages/messenger/) |
+| `@mulmobridge/google-chat` | Google Chat bridge | [npm](https://www.npmjs.com/package/@mulmobridge/google-chat) / [source](packages/google-chat/) |
+| `@mulmobridge/mock-server` | Mock server for testing | [npm](https://www.npmjs.com/package/@mulmobridge/mock-server) / [source](packages/mock-server/) |
+| `@receptron/task-scheduler` | Persistent task scheduler | [npm](https://www.npmjs.com/package/@receptron/task-scheduler) / [source](packages/scheduler/) |
 
 Anyone can write a bridge in any language — just speak the socket.io protocol documented in [`docs/bridge-protocol.md`](docs/bridge-protocol.md).
+
+## Documentation
+
+Full documentation lives in [`docs/`](docs/README.md). Here are the key entry points:
+
+### For users
+
+| Guide | Description |
+|-------|-------------|
+| [MulmoBridge Guide](docs/mulmobridge-guide.en.md) / [日本語](docs/mulmobridge-guide.md) | Connect messaging apps (Telegram, Slack, LINE, etc.) to your home PC |
+| [Scheduler Guide](docs/scheduler-guide.en.md) / [日本語](docs/scheduler-guide.md) | Calendar and recurring tasks |
+| [Obsidian Integration](docs/tips/obsidian.en.md) / [日本語](docs/tips/obsidian.md) | Use Obsidian to browse MulmoClaude's wiki and documents |
+| [Telegram Setup](docs/message_apps/telegram/README.md) / [日本語](docs/message_apps/telegram/README.ja.md) | Step-by-step Telegram Bot setup |
+| [LINE Setup](docs/message_apps/line/README.md) / [日本語](docs/message_apps/line/README.ja.md) | Step-by-step LINE Bot setup |
+
+### For developers
+
+| Guide | Description |
+|-------|-------------|
+| [Developer Guide](docs/developer.md) | Environment variables, scripts, workspace structure, CI |
+| [Bridge Protocol](docs/bridge-protocol.md) | Wire-level spec for writing new messaging bridges |
+| [Sandbox Credentials](docs/sandbox-credentials.md) | Docker sandbox credential forwarding (SSH, GitHub CLI) |
+| [Logging](docs/logging.md) | Log levels, formats, file rotation |
+| [CHANGELOG](docs/CHANGELOG.md) | Release history |
