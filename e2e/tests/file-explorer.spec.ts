@@ -1,13 +1,14 @@
 import { test, expect, type Page } from "@playwright/test";
 import { mockAllApis } from "../fixtures/api";
 import { WORKSPACE_FILES } from "../../src/config/workspacePaths";
+import { API_ROUTES } from "../../src/config/apiRoutes";
 
 // Override the lazy-expand endpoint with a small fixture tree. Each
 // directory returns its immediate children only — recursion is
 // emulated by the client via subsequent fetches on expand.
 async function mockFileTree(page: Page) {
   await page.route(
-    (url) => url.pathname === "/api/files/dir",
+    (url) => url.pathname === API_ROUTES.files.dir,
     (route) => {
       const path =
         new URL(route.request().url()).searchParams.get("path") ?? "";
@@ -77,7 +78,7 @@ async function mockFileTree(page: Page) {
   // Mock file content for wiki/hello.md
   await page.route(
     (url) =>
-      url.pathname === "/api/files/content" &&
+      url.pathname === API_ROUTES.files.content &&
       url.searchParams.get("path") === "wiki/hello.md",
     (route) =>
       route.fulfill({
@@ -165,7 +166,7 @@ test.describe("file explorer path in URL", () => {
     // the editor sent to the server.
     const putRequests: Array<{ path: string; content: string }> = [];
     await page.route(
-      (url) => url.pathname === "/api/files/content",
+      (url) => url.pathname === API_ROUTES.files.content,
       async (route, req) => {
         if (req.method() === "PUT") {
           const body = req.postDataJSON() as {
