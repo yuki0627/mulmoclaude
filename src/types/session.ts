@@ -82,6 +82,12 @@ export interface ActiveSession {
   id: string;
   roleId: string;
   toolResults: ToolResultComplete[];
+  /** UUID → epoch ms. Recorded when each result is added to the
+   *  session — either from a real-time pubsub event or from
+   *  loading a saved session. For saved sessions, the session's
+   *  `startedAt` is used as a baseline (individual per-entry
+   *  timestamps aren't persisted in the JSONL yet). */
+  resultTimestamps: Map<string, number>;
   isRunning: boolean;
   statusMessage: string;
   toolCallHistory: ToolCallHistoryItem[];

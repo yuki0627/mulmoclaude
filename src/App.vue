@@ -182,6 +182,7 @@
         ref="toolResultsPanelRef"
         :results="sidebarResults"
         :selected-uuid="selectedResultUuid"
+        :result-timestamps="activeSession?.resultTimestamps ?? new Map()"
         :is-running="isRunning"
         :status-message="statusMessage"
         :pending-calls="pendingCalls"
@@ -393,6 +394,7 @@
           v-else-if="canvasViewMode === 'stack'"
           :tool-results="sidebarResults"
           :selected-result-uuid="selectedResultUuid"
+          :result-timestamps="activeSession?.resultTimestamps ?? new Map()"
           :send-text-message="sendMessage"
           @select="(uuid) => (selectedResultUuid = uuid)"
           @update-result="handleUpdateResult"
@@ -1107,6 +1109,12 @@ function roleName(roleId: string): string {
 // session's chat so the user actually sees it. The status-message
 // channel can't be used because `finally` clears it the moment the
 // run ends.
+/** Push a result and record its timestamp in one place. */
+function pushResult(session: ActiveSession, result: ToolResultComplete): void {
+  session.toolResults.push(result);
+  session.resultTimestamps.set(result.uuid, Date.now());
+}
+
 function pushErrorMessage(session: ActiveSession, message: string): void {
   const text = `[Error] ${message}`;
   const errorResult: ToolResultComplete = {
@@ -1116,7 +1124,7 @@ function pushErrorMessage(session: ActiveSession, message: string): void {
     title: "Error",
     data: { text, role: "assistant", transportKind: "text-rest" },
   };
-  session.toolResults.push(errorResult);
+  pushResult(session, errorResult);
   session.selectedResultUuid = errorResult.uuid;
 }
 
@@ -1188,6 +1196,7 @@ function createNewSession(roleId?: string): ActiveSession {
     id,
     roleId: rId,
     toolResults: [],
+    resultTimestamps: new Map(),
     isRunning: false,
     statusMessage: "",
     toolCallHistory: [],
@@ -1245,7 +1254,7 @@ async function maybeSeedRoleDefault(session: ActiveSession): Promise<void> {
   // Skip if the user has already produced their own result in the
   // meantime (fast typer + slow fetch race).
   if (session.toolResults.length > 0) return;
-  session.toolResults.push(result);
+  pushResult(session, result);
   session.selectedResultUuid = result.uuid;
 }
 
@@ -1291,10 +1300,23 @@ async function loadSession(id: string) {
     new Date().toISOString(),
   );
 
+  // Build timestamps for loaded entries. Saved sessions don't have
+  // per-entry timestamps in the JSONL, so we spread them evenly
+  // between startedAt and updatedAt as a visual approximation.
+  const loadedTimestamps = new Map<string, number>();
+  const t0 = new Date(startedAt).getTime();
+  const t1 = new Date(updatedAt).getTime();
+  toolResultsList.forEach((r, i) => {
+    const frac =
+      toolResultsList.length > 1 ? i / (toolResultsList.length - 1) : 0;
+    loadedTimestamps.set(r.uuid, t0 + (t1 - t0) * frac);
+  });
+
   const newSession: ActiveSession = {
     id,
     roleId,
     toolResults: toolResultsList,
+    resultTimestamps: loadedTimestamps,
     isRunning: serverSummary?.isRunning ?? false,
     statusMessage: serverSummary?.statusMessage ?? "",
     toolCallHistory: [],
@@ -1349,7 +1371,7 @@ function beginUserTurn(session: ActiveSession, message: string): void {
   // server via the `sessions` channel notification → refetch cycle,
   // keeping all clients (including the initiator) in sync.
   session.updatedAt = new Date().toISOString();
-  session.toolResults.push(makeTextResult(message, "user"));
+  pushResult(session, makeTextResult(message, "user"));
   session.runStartIndex = session.toolResults.length;
 }
 
@@ -1499,14 +1521,14 @@ async function applyAgentEvent(
           lastData?.text === event.message
         )
           return;
-        session.toolResults.push(makeTextResult(event.message, "user"));
+        pushResult(session, makeTextResult(event.message, "user"));
         return;
       }
       // Streaming: append to the last assistant text-response if one
       // exists, rather than creating a new card per chunk.
       if (appendToLastAssistantText(session, event.message)) return;
       const textResult = makeTextResult(event.message, "assistant");
-      session.toolResults.push(textResult);
+      pushResult(session, textResult);
       if (
         shouldSelectAssistantText(session.toolResults, session.runStartIndex)
       ) {
@@ -1522,7 +1544,7 @@ async function applyAgentEvent(
       if (existing >= 0) {
         session.toolResults[existing] = result;
       } else {
-        session.toolResults.push(result);
+        pushResult(session, result);
         session.selectedResultUuid = result.uuid;
       }
       return;

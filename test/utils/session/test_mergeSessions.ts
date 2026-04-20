@@ -20,6 +20,7 @@ function makeActive(overrides: Partial<ActiveSession> = {}): ActiveSession {
     id: "live-1",
     roleId: "general",
     toolResults: [],
+    resultTimestamps: new Map(),
     isRunning: false,
     statusMessage: "",
     toolCallHistory: [],

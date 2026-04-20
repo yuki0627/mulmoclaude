@@ -31,7 +31,12 @@
         <span class="text-sm font-medium text-gray-800 truncate">{{
           result.title || result.toolName
         }}</span>
-        <span class="font-mono text-xs text-gray-400 ml-auto shrink-0">{{
+        <span
+          v-if="resultTimestamps.get(result.uuid)"
+          class="text-[10px] text-gray-400 shrink-0"
+          >{{ formatTime(resultTimestamps.get(result.uuid)!) }}</span
+        >
+        <span class="font-mono text-xs text-gray-400 shrink-0">{{
           result.toolName
         }}</span>
       </button>
@@ -131,8 +136,14 @@ function isStackNatural(toolName: string): boolean {
 const props = defineProps<{
   toolResults: ToolResultComplete[];
   selectedResultUuid: string | null;
+  resultTimestamps: Map<string, number>;
   sendTextMessage?: (text: string) => void;
 }>();
+
+function formatTime(epochMs: number): string {
+  const d = new Date(epochMs);
+  return d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+}
 
 const emit = defineEmits<{
   select: [uuid: string];
