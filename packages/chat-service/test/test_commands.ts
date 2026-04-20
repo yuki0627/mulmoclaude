@@ -104,7 +104,7 @@ describe("/switch command", () => {
     assert.ok(result.nextState);
   });
 
-  it("rejects non-digit argument", async () => {
+  it("treats non-digit argument as session ID (not found)", async () => {
     const handler = createCommandHandler({
       loadAllRoles: () => roles,
       getRole: () => roles[0],
@@ -113,7 +113,7 @@ describe("/switch command", () => {
     });
     const result = await handler("/switch abc", "telegram", makeState());
     assert.ok(result);
-    assert.ok(result.reply.includes("digits only"));
+    assert.ok(result.reply.includes("not found"));
   });
 
   it("per-chat cache isolation", async () => {

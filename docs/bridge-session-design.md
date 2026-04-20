@@ -16,13 +16,14 @@ For personal use, `externalChatId` is effectively fixed per bridge (you have one
 
 ### Session Switching (`/sessions`, `/switch`)
 
-- `/sessions` lists all sessions on the server (up to 200)
-- `/switch <number>` connects the current chat to a chosen session
-- The session list is cached **per `transportId:externalChatId`** in memory so `/switch` resolves correctly even if the same user has multiple bridges open
+- `/sessions [page]` lists sessions in pages of 10; the server returns paginated results via `listSessions({ limit, offset })`
+- `/switch <number|sessionId>` connects the current chat to a chosen session (by list number or direct session ID)
+- `/history [page]` shows recent messages in the current session (5 per page)
+- The session list is cached **per `transportId:externalChatId`** in memory (max 1000 entries, 5-minute TTL) so `/switch` resolves correctly even if the same user has multiple bridges open
 
 ### Current Limitations
 
-**In-memory cache is unbounded.** The `sessionListCache` Map in `commands.ts` grows with each unique `transportId:externalChatId` pair that calls `/sessions`. For personal use (a handful of entries), this is fine. For a service with many users, this is a memory leak.
+**In-memory cache is bounded but process-local.** The `sessionListCache` Map in `commands.ts` is keyed by `transportId:externalChatId`, capped at 1000 entries, and uses a 5-minute TTL. Sufficient for personal use and small-to-medium services, but for large-scale deployment consider an external cache (Redis) or per-request resolution.
 
 **Session list is global.** `/sessions` returns the same list regardless of who asks. For personal use this is correct (all sessions are yours). For multi-user service, users would see each other's sessions.
 

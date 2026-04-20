@@ -69,6 +69,7 @@ import { startChat } from "./api/routes/agent.js";
 import { registerScheduledSkills } from "./workspace/skills/scheduler.js";
 import { registerUserTasks } from "./workspace/skills/user-tasks.js";
 import { API_ROUTES } from "../src/config/apiRoutes.js";
+import { EVENT_TYPES } from "../src/types/events.js";
 import { SESSION_ORIGINS } from "../src/types/session.js";
 import { ONE_SECOND_MS, ONE_MINUTE_MS, ONE_HOUR_MS } from "./utils/time.js";
 import { SCHEDULE_TYPES, MISSED_RUN_POLICIES } from "@receptron/task-scheduler";
@@ -192,7 +193,10 @@ async function getSessionHistoryForBridge(
   for (let i = lines.length - 1; i >= 0; i--) {
     try {
       const entry = JSON.parse(lines[i]);
-      if (entry.type === "text" && typeof entry.message === "string") {
+      if (
+        entry.type === EVENT_TYPES.text &&
+        typeof entry.message === "string"
+      ) {
         allMessages.push({
           source: entry.source ?? "unknown",
           text: entry.message,

@@ -109,8 +109,8 @@ export function createCommandHandler(opts: {
       "Commands:",
       "  /reset  — Start a new session",
       "  /sessions [page] — List recent sessions (e.g. /sessions 2)",
-      "  /switch <number> — Switch to a session from the list",
-      "  /history [count] — Show recent messages in current session",
+      "  /switch <number|sessionId> — Switch to a session",
+      "  /history [page] — Show recent messages in current session",
       "  /help   — Show this help",
       "  /roles  — List available roles",
       "  /role <id> — Switch role",
@@ -212,7 +212,7 @@ export function createCommandHandler(opts: {
     if (page < totalPages) {
       parts.push(`\n/sessions ${page + 1} for next page`);
     }
-    parts.push("Use /switch <number> to connect.");
+    parts.push("Use /switch <number> or /switch <sessionId> to connect.");
     return { reply: parts.join("\n") };
   };
 
@@ -223,24 +223,41 @@ export function createCommandHandler(opts: {
   ): Promise<CommandResult> => {
     if (!arg) {
       return {
-        reply: "Usage: /switch <number>\nRun /sessions first to see the list.",
+        reply:
+          "Usage: /switch <number|sessionId>\nRun /sessions first to see the list.",
       };
-    }
-    if (!/^\d+$/.test(arg)) {
-      return { reply: "Usage: /switch <number> (digits only)" };
     }
     const key = cacheKey(transportId, chatState.externalChatId);
     const cached = getCachedSessions(key) ?? [];
-    const index = parseInt(arg, 10);
-    if (index < 1 || index > cached.length) {
-      return {
-        reply:
-          cached.length > 0
-            ? `Invalid number. Pick 1-${cached.length} from the /sessions list.`
-            : "Run /sessions first to see available sessions.",
-      };
+    let target: SessionSummary | undefined;
+    if (/^\d+$/.test(arg)) {
+      // Numeric — index into cached list
+      const index = parseInt(arg, 10);
+      if (index < 1 || index > cached.length) {
+        return {
+          reply:
+            cached.length > 0
+              ? `Invalid number. Pick 1-${cached.length} from the /sessions list.`
+              : "Run /sessions first to see available sessions.",
+        };
+      }
+      target = cached[index - 1];
+      // Guard against sparse cache (user loaded page 2 but not page 1)
+      if (!target) {
+        const page = Math.ceil(index / SESSIONS_PAGE_SIZE);
+        return {
+          reply: `Run /sessions ${page} first to load that page.`,
+        };
+      }
+    } else {
+      // Non-numeric — treat as session ID
+      target = cached.find((s) => s.id === arg);
+      if (!target) {
+        return {
+          reply: `Session "${arg}" not found. Run /sessions to see available sessions.`,
+        };
+      }
     }
-    const target = cached[index - 1];
     const updated = await connectSession(
       transportId,
       chatState.externalChatId,
