@@ -8,6 +8,7 @@
 // arXiv query and registers it as a daily source. Existing arXiv
 // sources are not duplicated.
 
+import crypto from "crypto";
 import { loadInterests } from "./interests.js";
 import { listSources, writeSource } from "./registry.js";
 import { sourcesRoot } from "./paths.js";
@@ -26,24 +27,26 @@ const DEFAULT_MAX_ITEMS = 20;
 
 /**
  * Build an arXiv query string from a list of keywords.
- * Searches in title and abstract fields.
+ * Searches in title and abstract fields. Double quotes in keywords
+ * are stripped (not escaped) so the arXiv query stays valid.
  * Example: ["transformer", "attention"] → 'ti:"transformer" OR abs:"transformer" OR ti:"attention" OR abs:"attention"'
  */
 export function buildArxivQuery(keywords: readonly string[]): string {
   const terms = keywords.flatMap((kw) => {
-    const escaped = kw.replace(/"/g, "");
-    return [`ti:"${escaped}"`, `abs:"${escaped}"`];
+    const stripped = kw.replace(/"/g, "");
+    return [`ti:"${stripped}"`, `abs:"${stripped}"`];
   });
   return terms.join(" OR ");
 }
 
 /**
- * Generate a slug from keywords.
- * Example: ["WebAssembly", "WASM"] → "arxiv-auto-webassembly-wasm"
+ * Generate a slug from keywords. Uses a short hash of all keywords
+ * to avoid collisions when chunks share the same leading words or
+ * when keywords are non-ASCII (CJK, etc.).
+ * Example: ["WebAssembly", "WASM"] → "arxiv-auto-webassembly-wasm-a1b2"
  */
 export function keywordsToSlug(keywords: readonly string[]): string {
-  const base = keywords
-    .slice(0, 3)
+  const latin = keywords
     .map((kw) =>
       kw
         .toLowerCase()
@@ -51,8 +54,17 @@ export function keywordsToSlug(keywords: readonly string[]): string {
         .replace(/^-|-$/g, ""),
     )
     .filter((s) => s.length > 0)
+    .slice(0, 3)
     .join("-");
-  return `${ARXIV_SLUG_PREFIX}${base || "general"}`;
+  // Short hash of ALL keywords ensures uniqueness even when the
+  // Latin portion is empty (non-ASCII) or identical across chunks.
+  const hash = crypto
+    .createHash("sha256")
+    .update(keywords.join("|"))
+    .digest("hex")
+    .slice(0, 6);
+  const base = latin ? `${latin}-${hash}` : hash;
+  return `${ARXIV_SLUG_PREFIX}${base}`;
 }
 
 /**
@@ -170,7 +182,7 @@ export async function pruneStaleAutoSources(root?: string): Promise<string[]> {
 
   const pruned: string[] = [];
   for (const source of autoSources) {
-    const notes = source.notes.toLowerCase();
+    const notes = (source.notes ?? "").toLowerCase();
     const hasMatch = [...currentKeywords].some((kw) => notes.includes(kw));
     if (!hasMatch && currentKeywords.size > 0) {
       // Keywords changed — this source is stale but don't delete,

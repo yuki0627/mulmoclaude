@@ -34,25 +34,42 @@ describe("buildArxivQuery", () => {
 });
 
 describe("keywordsToSlug", () => {
-  it("generates slug with prefix", () => {
-    assert.equal(keywordsToSlug(["WebAssembly"]), "arxiv-auto-webassembly");
+  it("generates slug with prefix and hash", () => {
+    const slug = keywordsToSlug(["WebAssembly"]);
+    assert.ok(slug.startsWith("arxiv-auto-webassembly-"));
+    assert.ok(slug.length > "arxiv-auto-webassembly-".length);
   });
 
   it("joins multiple keywords with hyphen", () => {
-    assert.equal(keywordsToSlug(["AI", "safety"]), "arxiv-auto-ai-safety");
+    const slug = keywordsToSlug(["AI", "safety"]);
+    assert.ok(slug.startsWith("arxiv-auto-ai-safety-"));
   });
 
-  it("limits to 3 keywords", () => {
+  it("limits latin part to 3 keywords", () => {
     const slug = keywordsToSlug(["a", "b", "c", "d", "e"]);
-    assert.equal(slug, "arxiv-auto-a-b-c");
+    assert.ok(slug.startsWith("arxiv-auto-a-b-c-"));
+  });
+
+  it("different chunks produce different slugs", () => {
+    const slug1 = keywordsToSlug(["a", "b", "c", "d", "e"]);
+    const slug2 = keywordsToSlug(["a", "b", "c", "f", "g"]);
+    assert.notEqual(slug1, slug2);
+  });
+
+  it("handles non-ASCII keywords via hash", () => {
+    const slug = keywordsToSlug(["トランスフォーマー", "注意機構"]);
+    assert.ok(slug.startsWith("arxiv-auto-"));
+    assert.ok(slug.length > "arxiv-auto-".length); // hash only, no latin part
   });
 
   it("handles special characters", () => {
-    assert.equal(keywordsToSlug(["C++", "Rust"]), "arxiv-auto-c-rust");
+    const slug = keywordsToSlug(["C++", "Rust"]);
+    assert.ok(slug.startsWith("arxiv-auto-c-rust-"));
   });
 
-  it("falls back to general for empty", () => {
-    assert.equal(keywordsToSlug([]), "arxiv-auto-general");
+  it("handles empty array with hash", () => {
+    const slug = keywordsToSlug([]);
+    assert.ok(slug.startsWith("arxiv-auto-"));
   });
 });
 
@@ -94,10 +111,10 @@ describe("discoverAndRegister", () => {
     });
     const result = await discoverAndRegister(tmp);
     assert.equal(result.registered.length, 1);
-    assert.equal(result.registered[0], "arxiv-auto-transformer");
+    assert.ok(result.registered[0].startsWith("arxiv-auto-transformer-"));
 
     // Verify source file was created
-    const sourceFile = path.join(tmp, "sources", "arxiv-auto-transformer.md");
+    const sourceFile = path.join(tmp, "sources", result.registered[0] + ".md");
     assert.ok(fs.existsSync(sourceFile));
     const content = fs.readFileSync(sourceFile, "utf-8");
     assert.ok(content.includes("arxiv_query"));

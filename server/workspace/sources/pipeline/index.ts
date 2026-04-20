@@ -52,6 +52,7 @@ import { makeDefaultSummarize, type SummarizeFn } from "./summarize.js";
 import { writeDailyFile, appendItemsToArchives } from "./write.js";
 import { runNotifyPhase } from "./notify.js";
 import { discoverAndRegister } from "../arxivDiscovery.js";
+import { log } from "../../../system/logger/index.js";
 import { toLocalIsoDate } from "../../../utils/date.js";
 
 export interface RunPipelineInput {
@@ -126,8 +127,17 @@ export async function runSourcesPipeline(
   const summarizeFn = input.summarizeFn ?? makeDefaultSummarize(isoDate);
 
   // --- 0. Auto-discover arXiv sources from interests ------------------
+  // Best-effort: a bad interests.json or FS error must not abort the
+  // entire pipeline. The daily news fetch is more important than
+  // auto-registering arXiv sources.
   onProgress("discover");
-  await discoverAndRegister(workspaceRoot);
+  try {
+    await discoverAndRegister(workspaceRoot);
+  } catch (err) {
+    log.warn("pipeline", "arXiv auto-discovery failed (non-fatal)", {
+      error: String(err),
+    });
+  }
 
   // --- 1. Load registry + state --------------------------------------
   onProgress("load");
