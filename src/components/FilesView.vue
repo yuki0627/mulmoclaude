@@ -249,33 +249,27 @@ import {
   useFileSelection,
   isValidFilePath,
 } from "../composables/useFileSelection";
+import { useMarkdownMode } from "../composables/useMarkdownMode";
+import { useContentDisplay } from "../composables/useContentDisplay";
 import TextResponseView from "../plugins/textResponse/View.vue";
 import { rewriteMarkdownImageRefs } from "../utils/image/rewriteMarkdownImageRefs";
 import { apiPut } from "../utils/api";
 import { API_ROUTES } from "../config/apiRoutes";
 import { WORKSPACE_FILES } from "../config/workspacePaths";
 import { formatDateTime } from "../utils/format/date";
-import { wrapHtmlWithPreviewCsp } from "../utils/html/previewCsp";
 import SchedulerView from "../plugins/scheduler/View.vue";
 import TodoExplorer from "./TodoExplorer.vue";
 import type { ToolResultComplete } from "gui-chat-protocol/vue";
 import type { TextResponseData } from "../plugins/textResponse/types";
 import type { SchedulerData, ScheduledItem } from "../plugins/scheduler/index";
 import type { StatusColumn, TodoData, TodoItem } from "../plugins/todo/index";
-import {
-  tokenizeJson,
-  tokenizeJsonl,
-  prettyJson,
-  JSON_TOKEN_CLASS,
-} from "../utils/format/jsonSyntax";
-import { extractFrontmatter } from "../utils/format/frontmatter";
+import { JSON_TOKEN_CLASS } from "../utils/format/jsonSyntax";
 import {
   isExternalHref,
   resolveWorkspaceLink,
   extractSessionIdFromPath,
 } from "../utils/path/relativeLink";
 
-const MD_RAW_STORAGE_KEY = "files_md_raw_mode";
 const RECENT_THRESHOLD_MS = 60 * 1000;
 
 const route = useRoute();
@@ -313,22 +307,18 @@ const {
   abortContent,
 } = useFileSelection();
 
-function hasExt(filePath: string | null, exts: string[]): boolean {
-  if (!filePath) return false;
-  const lower = filePath.toLowerCase();
-  return exts.some((ext) => lower.endsWith(ext));
-}
+const { mdRawMode, toggleMdRaw } = useMarkdownMode();
 
-const isMarkdown = computed(() =>
-  hasExt(selectedPath.value, [".md", ".markdown"]),
-);
-
-const mdRawMode = ref(localStorage.getItem(MD_RAW_STORAGE_KEY) === "true");
-
-function toggleMdRaw(): void {
-  mdRawMode.value = !mdRawMode.value;
-  localStorage.setItem(MD_RAW_STORAGE_KEY, String(mdRawMode.value));
-}
+const {
+  isMarkdown,
+  isHtml,
+  isJson,
+  isJsonl,
+  sandboxedHtml,
+  jsonTokens,
+  jsonlLines,
+  mdFrontmatter,
+} = useContentDisplay(selectedPath, content);
 
 // Save-error banner shown above the Rendered-mode markdown editor.
 // Cleared on every new file load and on the next successful save.
@@ -372,31 +362,6 @@ async function saveRawMarkdown(newSource: string): Promise<void> {
 // Clear any stale save error whenever a new file is loaded.
 watch(content, () => {
   rawSaveError.value = null;
-});
-const isHtml = computed(() => hasExt(selectedPath.value, [".html", ".htm"]));
-
-// The HTML body handed to the iframe's `srcdoc`. We inject a CSP
-// meta tag that narrows what the LLM's output can load — see
-// src/utils/html/previewCsp.ts. Computed so the injection happens
-// once per content change, not on every render.
-const sandboxedHtml = computed(() =>
-  content.value?.kind === "text" && isHtml.value
-    ? wrapHtmlWithPreviewCsp(content.value.content)
-    : "",
-);
-const isJson = computed(() => hasExt(selectedPath.value, [".json"]));
-const isJsonl = computed(() =>
-  hasExt(selectedPath.value, [".jsonl", ".ndjson"]),
-);
-
-const jsonTokens = computed(() => {
-  if (!content.value || content.value.kind !== "text") return [];
-  return tokenizeJson(prettyJson(content.value.content));
-});
-
-const jsonlLines = computed(() => {
-  if (!content.value || content.value.kind !== "text") return [];
-  return tokenizeJsonl(content.value.content);
 });
 
 function isScheduledItem(x: unknown): x is ScheduledItem {
@@ -472,12 +437,6 @@ const todoExplorerResult = computed((): ToolResultComplete<TodoData> | null => {
     title: "Todo",
     data: { items, columns },
   };
-});
-
-const mdFrontmatter = computed(() => {
-  if (!content.value || content.value.kind !== "text") return null;
-  if (!isMarkdown.value) return null;
-  return extractFrontmatter(content.value.content);
 });
 
 function markdownResult(text: string): ToolResultComplete<TextResponseData> {
