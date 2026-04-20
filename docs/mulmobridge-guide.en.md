@@ -30,7 +30,7 @@ MulmoBridge was originally part of [MulmoClaude](https://github.com/receptron/mu
 
 1. **Works with any AI tool** — not limited to MulmoClaude. Connect to OpenAI, LangChain, or your own custom agent
 2. **Pick only what you need** — want only Telegram? Install just the Telegram package
-3. **MIT licensed** — free for any use, including commercial (MulmoClaude itself is AGPL, but the bridge packages are MIT)
+3. **MIT licensed** — free for any use, including commercial (both MulmoClaude and the bridge packages are MIT licensed)
 4. **Easy to extend** — each package is small and independent, making it simple to add new platforms
 
 ---
@@ -209,7 +209,7 @@ The newer bridges (Discord, Slack, LINE, WhatsApp, Matrix, IRC) haven't been tho
 
 - **Tried it?** Please tell us at [Issues](https://github.com/receptron/mulmoclaude/issues/new) — both "it worked" and "it broke" reports help
 - **Found a bug?** Include the `--verbose` log from the mock server
-- **Want a new platform?** Open an issue. Bridges are ~100 lines, so PRs are welcome too
+- **Want a new platform?** Open an issue with a plan. See [developer.md](../docs/developer.md) for the contribution flow
 
 GitHub: https://github.com/receptron/mulmoclaude
 npm: https://www.npmjs.com/org/mulmobridge
