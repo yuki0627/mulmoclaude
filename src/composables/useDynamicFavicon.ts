@@ -110,6 +110,7 @@ function applyFavicon(dataUrl: string): void {
     link.type = "image/png";
     document.head.appendChild(link);
   }
+  link.type = "image/png";
   link.href = dataUrl;
 }
 
