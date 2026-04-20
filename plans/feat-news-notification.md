@@ -6,7 +6,7 @@ Without the user explicitly saying "notify me", Claude detects interests from na
 
 ## User Experience
 
-```
+```text
 User: "I can't keep up with WebAssembly developments lately"
 
 Claude: "Want me to track WebAssembly news automatically?
@@ -33,7 +33,7 @@ Claude: registers 3 sources + adds keywords to interests.json
 
 Add to the existing system prompt:
 
-```
+```text
 ## News Concierge
 
 When you detect the user's interest in a specific topic during conversation:
@@ -70,7 +70,7 @@ No file = no notifications (backward compatible).
 
 ### 3. Relevance Scoring (no LLM cost)
 
-```
+```text
 score = 0
 
 keyword in title:     +0.4
@@ -88,7 +88,7 @@ Pure string matching. Sub-millisecond, zero API cost.
 
 Insert notify phase between dedup and summarize in `pipeline/index.ts`:
 
-```
+```text
 1. Load → 2. Plan → 3. Fetch → 4. Dedup
 → 5. Notify (NEW)
 → 6. Summarize → 7. Write → 8. Archive → 9. Persist
@@ -104,14 +104,14 @@ Notify phase:
 
 **Single item**: article title as notification title
 
-```
+```text
 📰 WebAssembly 3.0 proposal published
 From wasm-blog — New milestone for the component model
 ```
 
 **Multiple items**: batch notification
 
-```
+```text
 📰 3 interesting articles found
 • WebAssembly 3.0 proposal (wasm-blog)
 • New Rust async runtime (hacker-news)

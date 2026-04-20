@@ -71,11 +71,16 @@ function publishBatchNotification(scored: readonly ScoredItem[]): void {
     .join("\n");
   const extra = scored.length > 5 ? `\n+${scored.length - 5} more` : "";
 
+  // Preserve high priority if any item in the batch is critical
+  const hasCritical = scored.some((s) => s.item.severity === "critical");
+
   publishNotification({
     kind: NOTIFICATION_KINDS.push,
     title: `${scored.length} interesting articles found`,
     body: `${bullets}${extra}`,
-    priority: NOTIFICATION_PRIORITIES.normal,
+    priority: hasCritical
+      ? NOTIFICATION_PRIORITIES.high
+      : NOTIFICATION_PRIORITIES.normal,
     action: {
       type: NOTIFICATION_ACTION_TYPES.navigate,
       view: NOTIFICATION_VIEWS.files,

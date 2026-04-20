@@ -8,6 +8,7 @@ import {
   getCachedCustomDirs,
   buildCustomDirsPrompt,
 } from "../workspace/custom-dirs.js";
+import { TOOL_NAMES } from "../../src/config/toolNames.js";
 import {
   getCachedReferenceDirs,
   buildReferenceDirsPrompt,
@@ -199,7 +200,7 @@ const NEWS_CONCIERGE_PROMPT = `## News Concierge
 When you detect the user's interest in a specific topic during conversation:
 1. Propose relevant news sources (RSS, arXiv, GitHub releases) — suggest 2-3 concrete feeds
 2. On agreement, register sources via the manageSource tool
-3. Add keywords and categories to \`config/interests.json\` using the Edit tool. Format:
+3. Create or update \`config/interests.json\`: use Write if the file does not exist; otherwise Read it first and merge new keywords/categories with existing ones (do not replace). Format:
    \`\`\`json
    {
      "keywords": ["topic1", "topic2"],
@@ -215,10 +216,13 @@ Read interest signals naturally from the conversation — do not wait for the us
 Propose once per topic. Don't push if declined. Be a concierge, not a salesperson.`;
 
 export function buildNewsConciergeContext(
+  role: Role,
   workspacePath: string,
 ): string | null {
-  // Only emit the concierge prompt when sources are already set up.
-  // On fresh workspaces the feature isn't relevant yet.
+  // Only emit when the role has manageSource available AND sources
+  // are already set up. Roles without manageSource (artist, tutor,
+  // etc.) can't register sources, so the prompt would be misleading.
+  if (!role.availablePlugins.includes(TOOL_NAMES.manageSource)) return null;
   const sourcesDir = join(workspacePath, WORKSPACE_DIRS.sources);
   if (!existsSync(sourcesDir)) return null;
   return NEWS_CONCIERGE_PROMPT;
@@ -339,7 +343,7 @@ export function buildSystemPrompt(params: SystemPromptParams): string {
     useDocker ? SANDBOX_TOOLS_HINT : null,
     buildWikiContext(workspacePath),
     buildSourcesContext(workspacePath),
-    buildNewsConciergeContext(workspacePath),
+    buildNewsConciergeContext(role, workspacePath),
     buildCustomDirsPrompt(getCachedCustomDirs()),
     buildReferenceDirsPrompt(getCachedReferenceDirs(), useDocker),
     headingSection(

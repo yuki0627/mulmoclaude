@@ -56,8 +56,11 @@ function validateInterests(raw: unknown): InterestsProfile | null {
   if (typeof raw !== "object" || raw === null) return null;
   const obj = raw as Record<string, unknown>;
 
+  // Filter out blank/whitespace-only keywords — "" matches every title
   const keywords = Array.isArray(obj.keywords)
-    ? obj.keywords.filter((k): k is string => typeof k === "string")
+    ? obj.keywords.filter(
+        (k): k is string => typeof k === "string" && k.trim().length > 0,
+      )
     : [];
 
   const categories = Array.isArray(obj.categories)
@@ -66,16 +69,20 @@ function validateInterests(raw: unknown): InterestsProfile | null {
 
   if (keywords.length === 0 && categories.length === 0) return null;
 
-  const minRelevance =
-    typeof obj.minRelevance === "number" && obj.minRelevance >= 0
+  // Clamp minRelevance to [0, 1] — values > 1 would make notifications
+  // impossible since scores are clamped to 1.0
+  const rawMin =
+    typeof obj.minRelevance === "number"
       ? obj.minRelevance
       : DEFAULT_MIN_RELEVANCE;
+  const minRelevance = Math.max(0, Math.min(1, rawMin));
 
-  const maxNotificationsPerRun =
-    typeof obj.maxNotificationsPerRun === "number" &&
-    obj.maxNotificationsPerRun > 0
-      ? Math.floor(obj.maxNotificationsPerRun)
+  // Floor to integer, minimum 1
+  const rawMax =
+    typeof obj.maxNotificationsPerRun === "number"
+      ? obj.maxNotificationsPerRun
       : DEFAULT_MAX_NOTIFICATIONS;
+  const maxNotificationsPerRun = Math.max(1, Math.floor(rawMax));
 
   return { keywords, categories, minRelevance, maxNotificationsPerRun };
 }
