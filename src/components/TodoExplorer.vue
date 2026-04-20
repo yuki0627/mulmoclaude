@@ -269,8 +269,6 @@ watch(
 
 // ── View mode (persisted in localStorage) ───────────────────────
 
-const viewMode = ref<ViewMode>(loadViewMode());
-
 const VALID_VIEW_MODES: ReadonlySet<string> = new Set(Object.values(TODO_VIEW));
 
 function loadViewMode(): ViewMode {
@@ -280,6 +278,8 @@ function loadViewMode(): ViewMode {
   }
   return TODO_VIEW.kanban;
 }
+
+const viewMode = ref<ViewMode>(loadViewMode());
 
 function setViewMode(next: ViewMode): void {
   viewMode.value = next;
