@@ -4,10 +4,12 @@
 // system task ID (e.g. "system:journal"), value overrides the
 // default schedule.
 
+import fs from "fs";
 import path from "path";
 import { workspacePath } from "../../workspace/paths.js";
 import { WORKSPACE_FILES } from "../../../src/config/workspacePaths.js";
 import { loadJsonFile } from "./json.js";
+import { writeFileAtomicSync } from "./atomic.js";
 import { log } from "../../system/logger/index.js";
 
 export interface ScheduleOverride {
@@ -31,4 +33,14 @@ export function loadSchedulerOverrides(root?: string): ScheduleOverrides {
     return {};
   }
   return raw as ScheduleOverrides;
+}
+
+/** Save schedule overrides atomically. Creates directory if needed. */
+export function saveSchedulerOverrides(
+  overrides: ScheduleOverrides,
+  root?: string,
+): void {
+  const filePath = overridesPath(root);
+  fs.mkdirSync(path.dirname(filePath), { recursive: true });
+  writeFileAtomicSync(filePath, JSON.stringify(overrides, null, 2));
 }

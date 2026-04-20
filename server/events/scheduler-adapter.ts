@@ -81,6 +81,7 @@ export interface SystemTaskDef {
 
 let stateMap: StateMap = new Map();
 const systemTasks: SystemTaskDef[] = [];
+let taskManagerRef: ITaskManager | null = null;
 
 /**
  * Initialize the scheduler adapter. Call once at server startup
@@ -96,6 +97,7 @@ export async function initScheduler(
   stateMap = await loadState(stateFilePath(), stateDeps);
   systemTasks.length = 0;
   systemTasks.push(...tasks);
+  taskManagerRef = taskManager;
 
   // Run catch-up
   const catchUpTasks: CatchUpTask[] = tasks.map((t) => ({
@@ -147,6 +149,18 @@ export async function initScheduler(
     tasks: tasks.map((t) => t.id),
     stateEntries: stateMap.size,
   });
+}
+
+/** Apply a schedule override to a running system task.
+ *  Updates both the in-memory task definition and the task-manager. */
+export function applyScheduleOverride(
+  taskId: string,
+  schedule: SystemTaskDef["schedule"],
+): boolean {
+  const task = systemTasks.find((t) => t.id === taskId);
+  if (!task || !taskManagerRef) return false;
+  task.schedule = schedule;
+  return taskManagerRef.updateSchedule(taskId, schedule);
 }
 
 /** Query execution logs — used by API routes. */
