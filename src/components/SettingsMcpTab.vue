@@ -265,21 +265,21 @@ function ensureUniqueId(base: string): string {
 }
 
 function commitAdd(): void {
-  let id = draft.value.id.trim();
-  if (!id) {
+  let mcpId = draft.value.id.trim();
+  if (!mcpId) {
     const suggested = ensureUniqueId(suggestIdFromDraft(draft.value));
     if (!suggested) {
       draftError.value = "Please provide a Name, or enter a URL / args we can derive one from.";
       return;
     }
-    id = suggested;
+    mcpId = suggested;
   }
-  if (!ID_RE.test(id)) {
+  if (!ID_RE.test(mcpId)) {
     draftError.value = "Name must start with a lowercase letter and contain only [a-z0-9_-].";
     return;
   }
-  if (props.servers.some((server) => server.id === id)) {
-    draftError.value = `Server id "${id}" already exists.`;
+  if (props.servers.some((server) => server.id === mcpId)) {
+    draftError.value = `Server id "${mcpId}" already exists.`;
     return;
   }
   let spec: ServerSpec;
@@ -302,7 +302,7 @@ function commitAdd(): void {
       enabled: true,
     };
   }
-  emit("add", { id, spec });
+  emit("add", { id: mcpId, spec });
   adding.value = false;
   draftError.value = "";
 }

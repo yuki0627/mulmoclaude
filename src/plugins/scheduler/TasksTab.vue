@@ -168,9 +168,9 @@ function formatSchedule(schedule: TaskSchedule): string {
   return JSON.stringify(schedule);
 }
 
-async function runTask(id: string): Promise<void> {
+async function runTask(taskId: string): Promise<void> {
   mutationError.value = "";
-  const url = API_ROUTES.scheduler.taskRun.replace(":id", id);
+  const url = API_ROUTES.scheduler.taskRun.replace(":id", taskId);
   const result = await apiPost(url, {});
   if (!result.ok) {
     mutationError.value = `Run failed: ${result.error}`;
@@ -190,9 +190,9 @@ async function toggleEnabled(task: SchedulerTask): Promise<void> {
   await fetchTasks();
 }
 
-async function deleteTask(id: string): Promise<void> {
+async function deleteTask(taskId: string): Promise<void> {
   mutationError.value = "";
-  const url = API_ROUTES.scheduler.task.replace(":id", id);
+  const url = API_ROUTES.scheduler.task.replace(":id", taskId);
   const result = await apiDelete(url);
   if (!result.ok) {
     mutationError.value = `Delete failed: ${result.error}`;

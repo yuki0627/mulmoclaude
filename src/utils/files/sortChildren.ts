@@ -7,14 +7,14 @@ import type { FileSortMode } from "../../composables/useFileSortMode";
 // on name so the order is deterministic).
 export function sortChildren(children: readonly TreeNode[], mode: FileSortMode): TreeNode[] {
   const copy = children.slice();
-  copy.sort((a, b) => {
-    if (a.type !== b.type) return a.type === "dir" ? -1 : 1;
+  copy.sort((nodeA, nodeB) => {
+    if (nodeA.type !== nodeB.type) return nodeA.type === "dir" ? -1 : 1;
     if (mode === "recent") {
-      const am = a.modifiedMs ?? -Infinity;
-      const bm = b.modifiedMs ?? -Infinity;
-      if (am !== bm) return bm - am;
+      const modTimeA = nodeA.modifiedMs ?? -Infinity;
+      const modTimeB = nodeB.modifiedMs ?? -Infinity;
+      if (modTimeA !== modTimeB) return modTimeB - modTimeA;
     }
-    return a.name.localeCompare(b.name);
+    return nodeA.name.localeCompare(nodeB.name);
   });
   return copy;
 }

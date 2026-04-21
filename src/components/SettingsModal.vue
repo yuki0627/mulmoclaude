@@ -177,11 +177,11 @@ let loadToken = 0;
 const parsedToolNames = computed(() =>
   toolsText.value
     .split("\n")
-    .map((s) => s.trim())
-    .filter((s) => s.length > 0),
+    .map((line) => line.trim())
+    .filter((line) => line.length > 0),
 );
 
-const invalidToolNames = computed(() => parsedToolNames.value.filter((n) => !n.startsWith("mcp__") && !isBuiltIn(n)));
+const invalidToolNames = computed(() => parsedToolNames.value.filter((name) => !name.startsWith("mcp__") && !isBuiltIn(name)));
 
 function isBuiltIn(name: string): boolean {
   return ["Bash", "Read", "Write", "Edit", "Glob", "Grep", "WebFetch", "WebSearch"].includes(name);

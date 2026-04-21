@@ -51,21 +51,21 @@ async function save(): Promise<void> {
 
 function addEntry(): void {
   draftError.value = "";
-  const p = draftPath.value.trim();
-  if (!p) {
+  const path = draftPath.value.trim();
+  if (!path) {
     draftError.value = "Path required";
     return;
   }
-  if (!p.startsWith("data/") && !p.startsWith("artifacts/")) {
+  if (!path.startsWith("data/") && !path.startsWith("artifacts/")) {
     draftError.value = "Must start with data/ or artifacts/";
     return;
   }
-  if (dirs.value.some((d) => d.path === p)) {
+  if (dirs.value.some((dir) => dir.path === path)) {
     draftError.value = "Already exists";
     return;
   }
   dirs.value.push({
-    path: p,
+    path,
     description: draftDescription.value.trim(),
     structure: draftStructure.value,
   });

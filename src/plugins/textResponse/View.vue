@@ -168,8 +168,8 @@ const { pdfDownloading, pdfError, downloadPdf: rawDownloadPdf } = usePdfDownload
 const detailsEl = ref<HTMLDetailsElement>();
 const editing = ref(false);
 
-function onDetailsToggle(e: Event) {
-  editing.value = (e.target as HTMLDetailsElement).open;
+function onDetailsToggle(event: Event) {
+  editing.value = (event.target as HTMLDetailsElement).open;
 }
 
 onMounted(() => {

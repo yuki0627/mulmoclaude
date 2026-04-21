@@ -130,7 +130,7 @@ const ACCEPTED_MIME_EXACT = new Set([
 ]);
 
 function isAcceptedType(mime: string): boolean {
-  return ACCEPTED_MIME_PREFIXES.some((p) => mime.startsWith(p)) || ACCEPTED_MIME_EXACT.has(mime);
+  return ACCEPTED_MIME_PREFIXES.some((prefix) => mime.startsWith(prefix)) || ACCEPTED_MIME_EXACT.has(mime);
 }
 
 function readAttachmentFile(file: File): void {
@@ -154,14 +154,14 @@ function readAttachmentFile(file: File): void {
   reader.readAsDataURL(file);
 }
 
-function onPasteFile(e: ClipboardEvent): void {
-  const items = e.clipboardData?.items;
+function onPasteFile(event: ClipboardEvent): void {
+  const items = event.clipboardData?.items;
   if (!items) return;
   for (const item of items) {
     if (isAcceptedType(item.type)) {
       const file = item.getAsFile();
       if (file) {
-        e.preventDefault();
+        event.preventDefault();
         readAttachmentFile(file);
         return;
       }
@@ -169,9 +169,9 @@ function onPasteFile(e: ClipboardEvent): void {
   }
 }
 
-function onDropFile(e: DragEvent): void {
-  e.preventDefault();
-  const file = e.dataTransfer?.files[0];
+function onDropFile(event: DragEvent): void {
+  event.preventDefault();
+  const file = event.dataTransfer?.files[0];
   if (file) readAttachmentFile(file);
 }
 

@@ -156,8 +156,8 @@ const sourceDetails = ref<HTMLDetailsElement>();
 const editing = ref(false);
 const { copied, copy } = useClipboardCopy();
 
-function onDetailsToggle(e: Event) {
-  const open = (e.target as HTMLDetailsElement).open;
+function onDetailsToggle(event: Event) {
+  const open = (event.target as HTMLDetailsElement).open;
   editing.value = open;
   if (!open) {
     editableMarkdown.value = markdownContent.value;

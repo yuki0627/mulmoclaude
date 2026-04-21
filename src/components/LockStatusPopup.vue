@@ -104,8 +104,8 @@ watch(
   },
 );
 
-function onTestQuery(q: string): void {
+function onTestQuery(query: string): void {
   emit("update:open", false);
-  emit("testQuery", q);
+  emit("testQuery", query);
 }
 </script>

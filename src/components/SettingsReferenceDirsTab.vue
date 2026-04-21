@@ -48,33 +48,33 @@ async function save(): Promise<void> {
 
 function addEntry(): void {
   draftError.value = "";
-  const p = draftPath.value.trim();
-  if (!p) {
+  const path = draftPath.value.trim();
+  if (!path) {
     draftError.value = "Path required";
     return;
   }
-  if (!p.startsWith("/") && !p.startsWith("~/")) {
+  if (!path.startsWith("/") && !path.startsWith("~/")) {
     draftError.value = "Must be an absolute path or start with ~/";
     return;
   }
   // Normalize: trim trailing slashes for consistent comparison
-  let normalized = p;
+  let normalized = path;
   while (normalized.length > 1 && normalized.endsWith("/")) {
     normalized = normalized.slice(0, -1);
   }
-  const stripSlash = (s: string): string => {
-    let r = s;
-    while (r.length > 1 && r.endsWith("/")) r = r.slice(0, -1);
-    return r;
+  const stripSlash = (str: string): string => {
+    let cleaned = str;
+    while (cleaned.length > 1 && cleaned.endsWith("/")) cleaned = cleaned.slice(0, -1);
+    return cleaned;
   };
-  if (dirs.value.some((d) => stripSlash(d.hostPath) === normalized)) {
+  if (dirs.value.some((dir) => stripSlash(dir.hostPath) === normalized)) {
     draftError.value = "Already exists";
     return;
   }
   const lastSeg = normalized.split("/").pop();
   const label = draftLabel.value.trim() || lastSeg || normalized;
   // Reject duplicate labels — @ref/<label> routing requires uniqueness
-  if (dirs.value.some((d) => d.label === label)) {
+  if (dirs.value.some((dir) => dir.label === label)) {
     draftError.value = `Label "${label}" already exists`;
     return;
   }

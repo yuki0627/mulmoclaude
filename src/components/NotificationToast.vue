@@ -28,8 +28,8 @@ function dismiss(): void {
   visible.value = null;
 }
 
-function iconName(n: NotificationPayload): string {
-  return n.icon ?? NOTIFICATION_ICONS[n.kind] ?? "notifications";
+function iconName(notif: NotificationPayload): string {
+  return notif.icon ?? NOTIFICATION_ICONS[notif.kind] ?? "notifications";
 }
 </script>
 

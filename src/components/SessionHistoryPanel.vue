@@ -128,12 +128,12 @@ function originOf(session: SessionSummary): SessionOrigin {
 
 const filteredSessions = computed(() => {
   if (activeFilter.value === "all") return props.sessions;
-  return props.sessions.filter((s) => originOf(s) === activeFilter.value);
+  return props.sessions.filter((session) => originOf(session) === activeFilter.value);
 });
 
 function countByOrigin(origin: string): number {
   if (origin === "all") return props.sessions.length;
-  return props.sessions.filter((s) => originOf(s) === origin).length;
+  return props.sessions.filter((session) => originOf(session) === origin).length;
 }
 
 function originIcon(origin: string): string {
@@ -146,11 +146,11 @@ function originColor(origin: string): string {
 
 // ── Role helpers ────────────────────────────────────────────
 
-function roleIconFor(id: string): string {
-  return roleIcon(props.roles, id);
+function roleIconFor(roleId: string): string {
+  return roleIcon(props.roles, roleId);
 }
-function roleNameFor(id: string): string {
-  return roleName(props.roles, id);
+function roleNameFor(roleId: string): string {
+  return roleName(props.roles, roleId);
 }
 
 function isSessionRunning(session: SessionSummary): boolean {
