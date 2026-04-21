@@ -2,15 +2,19 @@
 // arrive or a run starts. Also re-focuses the chat input when a run
 // finishes.
 
-import { nextTick, watch, type ComputedRef } from "vue";
+import { computed, nextTick, watch, type ComputedRef, type Ref } from "vue";
+import type { ToolResultComplete } from "gui-chat-protocol/vue";
 
 export function useChatScroll(opts: {
-  chatListRef: ComputedRef<HTMLDivElement | null>;
-  toolResultsLength: ComputedRef<number>;
+  toolResultsPanelRef: Ref<{ root: HTMLDivElement | null } | null>;
+  toolResults: ComputedRef<ToolResultComplete[]>;
   isRunning: ComputedRef<boolean>;
-  focusChatInput: () => void;
+  chatInputRef: Ref<{ focus: () => void } | null>;
 }) {
-  const { chatListRef, toolResultsLength, isRunning, focusChatInput } = opts;
+  const { toolResultsPanelRef, toolResults, isRunning, chatInputRef } = opts;
+
+  const chatListRef = computed(() => toolResultsPanelRef.value?.root ?? null);
+  const toolResultsLength = computed(() => toolResults.value.length);
 
   function scrollChatToBottom(): void {
     nextTick(() => {
@@ -18,6 +22,10 @@ export function useChatScroll(opts: {
         chatListRef.value.scrollTop = chatListRef.value.scrollHeight;
       }
     });
+  }
+
+  function focusChatInput(): void {
+    chatInputRef.value?.focus();
   }
 
   watch(toolResultsLength, scrollChatToBottom);
@@ -29,5 +37,5 @@ export function useChatScroll(opts: {
     }
   });
 
-  return { scrollChatToBottom };
+  return { scrollChatToBottom, focusChatInput };
 }

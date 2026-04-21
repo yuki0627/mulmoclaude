@@ -452,34 +452,25 @@ const {
 useFaviconState({ isRunning, currentSummary, activeSession });
 
 const toolResultsPanelRef = ref<{ root: HTMLDivElement | null } | null>(null);
-const chatListRef = computed(() => toolResultsPanelRef.value?.root ?? null);
 const canvasRef = ref<HTMLDivElement | null>(null);
 const chatInputRef = ref<{ focus: () => void } | null>(null);
 const topBarRef = ref<HTMLDivElement | null>(null);
-// Measured when the history popup opens — the popup is a direct child
-// of the root, so its absolute `top` must equal the global top bar's
-// full height.
 const historyTopOffset = ref<number | undefined>(undefined);
 
-function focusChatInput(): void {
-  chatInputRef.value?.focus();
-}
 const sessionTabBarRef = ref<{
   historyButton: HTMLButtonElement | null;
 } | null>(null);
 const historyButtonRef = computed(
   () => sessionTabBarRef.value?.historyButton ?? null,
 );
-// Exposed `root` from SessionHistoryPanel — the click-outside guard
-// needs the actual popup DOM element (not the component instance).
 const historyPanelRef = ref<{ root: HTMLDivElement | null } | null>(null);
 const historyPopupRef = computed(() => historyPanelRef.value?.root ?? null);
-const toolResultsLength = computed(() => toolResults.value.length);
-useChatScroll({
-  chatListRef,
-  toolResultsLength,
+
+const { focusChatInput } = useChatScroll({
+  toolResultsPanelRef,
+  toolResults,
   isRunning,
-  focusChatInput,
+  chatInputRef,
 });
 
 const { showRightSidebar, toggleRightSidebar } = useRightSidebar();
