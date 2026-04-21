@@ -27,7 +27,7 @@ import {
   defaultHttpFetcherDeps,
   type RobotsProvider,
 } from "../../workspace/sources/httpFetcher.js";
-import { isValidSlug } from "../../utils/slug.js";
+import { isValidSlug, slugify } from "../../utils/slug.js";
 import {
   FETCHER_KINDS,
   SOURCE_SCHEDULES,
@@ -485,12 +485,7 @@ export function resolveSlug(rawSlug: unknown, title: string): string | null {
 }
 
 export function deriveSourceSlug(title: string): string {
-  const ascii = title
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, "-")
-    .replace(/-+/g, "-")
-    .replace(/^-|-$/g, "")
-    .slice(0, 60);
+  const ascii = slugify(title, "", 60);
   if (ascii.length > 0 && isValidSlug(ascii)) return ascii;
   // Fallback: sha256 prefix. Base-16 so we only emit [0-9a-f]
   // — matches the isValidSlug charset without needing base64url
