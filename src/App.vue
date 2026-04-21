@@ -297,19 +297,20 @@ import { useKeyNavigation } from "./composables/useKeyNavigation";
 import { useDebugBeat } from "./composables/useDebugBeat";
 import { useChatScroll } from "./composables/useChatScroll";
 import { useViewLayout } from "./composables/useViewLayout";
+import { useSessionSync } from "./composables/useSessionSync";
 import { useCanvasViewMode } from "./composables/useCanvasViewMode";
 import { isCanvasViewMode } from "./utils/canvas/viewMode";
 import { useMcpTools } from "./composables/useMcpTools";
 import { useRoles } from "./composables/useRoles";
 import { usePubSub } from "./composables/usePubSub";
-import { PUBSUB_CHANNELS, sessionChannel } from "./config/pubsubChannels";
+import { sessionChannel } from "./config/pubsubChannels";
 import { useHealth } from "./composables/useHealth";
 import { useSessionHistory } from "./composables/useSessionHistory";
 import { useRightSidebar } from "./composables/useRightSidebar";
 import { useEventListeners } from "./composables/useEventListeners";
 import { provideAppApi } from "./composables/useAppApi";
 import { useRoute, useRouter, isNavigationFailure } from "vue-router";
-import { apiGet, apiPost, apiFetchRaw } from "./utils/api";
+import { apiGet, apiFetchRaw } from "./utils/api";
 import { API_ROUTES } from "./config/apiRoutes";
 
 // --- Per-session state ---
@@ -334,45 +335,6 @@ const currentSessionId = ref("");
 const { debugTitleStyle } = useDebugBeat();
 
 const { subscribe: pubsubSubscribe } = usePubSub();
-
-// --- Sessions channel (pub/sub) ---
-// Subscribe to the global `sessions` channel. The server publishes a
-// bare notification (no data) whenever any session's state changes.
-// The client refetches the session list via REST — the server is the
-// single source of truth for isRunning, hasUnread, etc.
-pubsubSubscribe(PUBSUB_CHANNELS.sessions, () => {
-  refreshSessionStates();
-});
-
-async function refreshSessionStates(): Promise<void> {
-  const summaries = await fetchSessions();
-  for (const s of summaries) {
-    const live = sessionMap.get(s.id);
-    if (!live) continue;
-    // Missing fields mean the server has no live entry — reset to defaults.
-    live.isRunning = s.isRunning ?? false;
-    live.statusMessage = s.statusMessage ?? "";
-    const unread = s.hasUnread ?? false;
-    // Don't mark the currently viewed session as unread
-    if (!(unread && s.id === currentSessionId.value)) {
-      live.hasUnread = unread;
-    }
-  }
-}
-
-async function markSessionRead(id: string): Promise<void> {
-  const result = await apiPost<{ ok: boolean }>(
-    API_ROUTES.sessions.markRead.replace(":id", encodeURIComponent(id)),
-  );
-  // The server returns `{ ok: boolean }` — a 200 with `ok: false`
-  // means the endpoint was reached but the flag wasn't actually
-  // cleared (e.g. session not found). Treat that the same as a
-  // transport failure and refetch so the sidebar doesn't go stale.
-  if (!result.ok || result.data.ok === false) {
-    // Server didn't clear the flag — refetch to restore truth.
-    await refreshSessionStates();
-  }
-}
 
 // --- Routing ---
 const route = useRoute();
@@ -541,6 +503,11 @@ const activePane = ref<"sidebar" | "main">("sidebar");
 
 const { sessions, showHistory, historyError, fetchSessions, toggleHistory } =
   useSessionHistory();
+const { markSessionRead } = useSessionSync({
+  sessionMap,
+  currentSessionId,
+  fetchSessions,
+});
 const { geminiAvailable, sandboxEnabled, fetchHealth } = useHealth();
 
 // ── Dynamic favicon (#470) ──────────────────────────────────
