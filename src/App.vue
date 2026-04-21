@@ -681,29 +681,24 @@ function onRoleChange() {
   maybeSeedRoleDefault(session);
 }
 
-async function loadSession(id: string) {
-  // Re-selecting the already-active, loaded session is a no-op.
-  // The sessionMap check is needed because the route watcher sets
-  // currentSessionId before calling loadSession — without it the
-  // guard would bail before the session data is fetched.
-  if (id === currentSessionId.value && sessionMap.has(id)) return;
+function activateSession(id: string, roleId: string, replace: boolean): void {
+  const reactiveSession = sessionMap.get(id);
+  if (reactiveSession) ensureSessionSubscription(reactiveSession);
+  navigateToSession(id, replace);
+  currentRoleId.value = roleId;
+  showHistory.value = false;
+}
 
-  // If the current session is empty, remove it from memory and use
-  // replace-navigation so the empty session doesn't linger in
-  // browser history (back button won't revisit it).
+async function loadSession(id: string) {
+  if (id === currentSessionId.value && sessionMap.has(id)) return;
   const replaced = removeCurrentIfEmpty();
 
-  // Already live in memory — just switch to it. The watch on
-  // currentSessionId clears the unread flag automatically.
   const live = sessionMap.get(id);
   if (live) {
-    navigateToSession(id, replaced);
-    currentRoleId.value = live.roleId;
-    showHistory.value = false;
+    activateSession(id, live.roleId, replaced);
     return;
   }
 
-  // Load from server
   const response = await apiGet<SessionEntry[]>(
     API_ROUTES.sessions.detail.replace(":id", encodeURIComponent(id)),
   );
@@ -719,16 +714,7 @@ async function loadSession(id: string) {
     nowIso: new Date().toISOString(),
   });
   sessionMap.set(id, newSession);
-  // Subscribe immediately — the watch(currentSessionId) may have
-  // already fired before the session was in sessionMap (e.g. when
-  // opened via URL), so it couldn't subscribe at that point.
-  // Use sessionMap.get() to obtain the reactive proxy — passing the
-  // raw object would bypass Vue's reactivity tracking.
-  const reactiveSession = sessionMap.get(id)!;
-  ensureSessionSubscription(reactiveSession);
-  navigateToSession(id, replaced);
-  currentRoleId.value = newSession.roleId;
-  showHistory.value = false;
+  activateSession(id, newSession.roleId, replaced);
 }
 
 // Re-fetch the transcript from the server and patch any entries the
@@ -754,16 +740,10 @@ async function refreshSessionTranscript(sessionId: string): Promise<void> {
 // Subscribe to a session's pub/sub channel so events from the server
 // (tool_call, text, tool_result, session_finished, etc.) arrive via
 // WebSocket and are dispatched into the session's reactive state.
-// Returns the unsubscribe function. Idempotent — if a subscription
-// already exists for this session, it's reused.
-function ensureSessionSubscription(session: ActiveSession): void {
-  if (sessionSubscriptions.has(session.id)) return;
-
+function buildAgentEventContext(session: ActiveSession): AgentEventContext {
   const sessionId = session.id;
-  const ctx: AgentEventContext = {
+  return {
     get session() {
-      // Always resolve from sessionMap so we track the latest
-      // reactive proxy — loadSession may replace the object.
       return sessionMap.get(sessionId) ?? session;
     },
     setCurrentRoleId: (roleId) => {
@@ -773,34 +753,30 @@ function ensureSessionSubscription(session: ActiveSession): void {
     refreshRoles,
     scrollSidebarToBottom: () => rightSidebarRef.value?.scrollToBottom(),
   };
+}
 
+function handleSessionFinished(sessionId: string): void {
+  refreshSessionTranscript(sessionId);
+  if (currentSessionId.value === sessionId) {
+    markSessionRead(sessionId);
+  } else {
+    unsubscribeSession(sessionId);
+  }
+}
+
+function ensureSessionSubscription(session: ActiveSession): void {
+  if (sessionSubscriptions.has(session.id)) return;
+  const ctx = buildAgentEventContext(session);
   const channel = sessionChannel(session.id);
   const unsub = pubsubSubscribe(channel, (data) => {
     const event = data as SseEvent;
     if (!event || typeof event !== "object") return;
-
-    // session_finished signals end-of-run. If the user is viewing
-    // this session, clear unread and keep the subscription alive so
-    // we receive events if another tab starts a new run. Only
-    // unsubscribe sessions the user is NOT currently viewing — the
-    // watch(currentSessionId) handler cleans up when switching away.
     if (event.type === EVENT_TYPES.sessionFinished) {
-      // Recover any events lost due to pub-sub disconnects during
-      // long runs (e.g. Docker builds). Fire-and-forget; if the
-      // re-fetch fails the user still has whatever events arrived
-      // via the live stream + can reload manually. See #350.
-      refreshSessionTranscript(session.id);
-      if (currentSessionId.value === session.id) {
-        markSessionRead(session.id);
-      } else {
-        unsubscribeSession(session.id);
-      }
+      handleSessionFinished(session.id);
       return;
     }
-
     applyAgentEvent(event, ctx);
   });
-
   sessionSubscriptions.set(session.id, unsub);
 }
 
