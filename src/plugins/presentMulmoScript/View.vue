@@ -1235,7 +1235,14 @@ watch(pendingForThisScript, (now, prev = {}) => {
     if (!(mapKey in prev)) reflectGenerationStart(entry);
   }
   for (const [mapKey, entry] of Object.entries(prev)) {
-    if (!(mapKey in now)) reflectGenerationFinish(entry);
+    if (!(mapKey in now)) {
+      // Fire-and-forget: the watcher callback must stay sync so Vue
+      // can batch multiple pendingGenerations updates. Swallow + log
+      // so a failed reload doesn't surface as an unhandled rejection.
+      reflectGenerationFinish(entry).catch((err) => {
+        console.error("[presentMulmoScript] reload on finish failed:", err);
+      });
+    }
   }
 });
 
