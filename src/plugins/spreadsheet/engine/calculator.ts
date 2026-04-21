@@ -232,11 +232,14 @@ export function calculateSheet(
         }
         return 0; // No position info, can't evaluate
       }
-      // Try to parse as number, but preserve strings
+      // Try to parse as number, but preserve original type on failure
       if (typeof value === "number") return value;
-      const str = String(value);
-      const num = parseFloat(str);
-      return isNaN(num) ? str : num;
+      if (typeof value === "boolean") return value;
+      if (typeof value === "string") {
+        const num = parseFloat(value);
+        return isNaN(num) ? value : num;
+      }
+      return String(value);
     }
 
     // Try to parse cell as number, but preserve strings
