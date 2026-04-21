@@ -19,7 +19,7 @@ export function useChatScroll(opts: {
   const latestResultScrollKey = computed(() => {
     const list = toolResults.value;
     const last = list[list.length - 1];
-    return `${list.length}:${last?.uuid ?? ""}:${last?.message ?? ""}`;
+    return `${list.length}:${last?.uuid ?? ""}:${last?.message?.length ?? 0}`;
   });
 
   function scrollChatToBottom(): void {

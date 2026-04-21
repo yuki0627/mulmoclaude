@@ -99,7 +99,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, watch, nextTick, onMounted, onUnmounted } from "vue";
+import { ref, computed, watch, nextTick, onMounted, onUnmounted } from "vue";
 import { getPlugin } from "../tools";
 import type { ToolResultComplete } from "gui-chat-protocol/vue";
 import { View as TextResponseOriginalView } from "../plugins/textResponse/index";
@@ -308,21 +308,26 @@ watch(
   },
 );
 
-watch(
-  () => props.toolResults.length,
-  () => {
-    nextTick(() => {
-      if (containerRef.value) {
-        beginSuppressScrollSync();
-        containerRef.value.scrollTop = containerRef.value.scrollHeight;
-      }
-      // New items may have brought in more iframes to size.
-      for (const wrapper of naturalWrapperRefs.values()) {
-        sizeIframesIn(wrapper);
-      }
-    });
-  },
-);
+// Key that changes both on new results AND on streaming updates to
+// the last text card (which appends in place, leaving length stable).
+const latestResultScrollKey = computed(() => {
+  const list = props.toolResults;
+  const last = list[list.length - 1];
+  return `${list.length}:${last?.uuid ?? ""}:${last?.message?.length ?? 0}`;
+});
+
+watch(latestResultScrollKey, () => {
+  nextTick(() => {
+    if (containerRef.value) {
+      beginSuppressScrollSync();
+      containerRef.value.scrollTop = containerRef.value.scrollHeight;
+    }
+    // New items may have brought in more iframes to size.
+    for (const wrapper of naturalWrapperRefs.values()) {
+      sizeIframesIn(wrapper);
+    }
+  });
+});
 
 onMounted(() => {
   containerRef.value?.addEventListener("scroll", onContainerScroll, {
