@@ -272,7 +272,6 @@ import {
 } from "./types/session";
 import { EVENT_TYPES } from "./types/events";
 import { extractImageData, makeTextResult } from "./utils/tools/result";
-import { deduplicateResults } from "./utils/tools/dedup";
 import { buildAgentRequestBody } from "./utils/agent/request";
 import {
   pushResult,
@@ -298,6 +297,7 @@ import { useDebugBeat } from "./composables/useDebugBeat";
 import { useChatScroll } from "./composables/useChatScroll";
 import { useViewLayout } from "./composables/useViewLayout";
 import { useSessionSync } from "./composables/useSessionSync";
+import { useSessionDerived } from "./composables/useSessionDerived";
 import { useCanvasViewMode } from "./composables/useCanvasViewMode";
 import { isCanvasViewMode } from "./utils/canvas/viewMode";
 import { useMcpTools } from "./composables/useMcpTools";
@@ -424,54 +424,7 @@ watch(
   },
 );
 
-const activeSession = computed(() => sessionMap.get(currentSessionId.value));
-
-const toolResults = computed(() => activeSession.value?.toolResults ?? []);
-
 // Deduplicate consecutive tool results with the same toolName for the
-// sidebar preview list. Tools like manageScheduler / manageTodoList
-// return the full item list on every call, so 4 consecutive scheduler
-// calls produce 4 identical "22 upcoming" previews. We keep only the
-// last one in each consecutive run. text-response is excluded because
-// each user/assistant message is unique content.
-// Deduplicate consecutive tool results that represent "full-state
-// refreshes" of the same collection. Tools like manageScheduler /
-// manageTodoList / manageWiki return the full list on every call
-// and set `updating: true` on the response — that flag is the
-// signal that the previous result is superseded, not a new artifact.
-//
-// Tools that create individual artifacts (generateImage,
-// presentDocument, editImage) DO NOT set `updating`, so consecutive
-// calls stay visible as separate preview cards. This matches the
-// "tennis vs golf docs" case raised in review: two different
-// documents produced in a row must both be shown.
-//
-// text-response is never collapsed because each user/assistant
-// message is unique content.
-const sidebarResults = computed(() => {
-  return deduplicateResults(toolResults.value);
-});
-
-// Read running/status from the server session list (single source of
-// truth). Falls back to sessionMap for the brief window before the
-// first fetchSessions completes.
-const currentSummary = computed(() =>
-  sessions.value.find((s) => s.id === currentSessionId.value),
-);
-const isRunning = computed(
-  () =>
-    currentSummary.value?.isRunning ?? activeSession.value?.isRunning ?? false,
-);
-const statusMessage = computed(
-  () =>
-    currentSummary.value?.statusMessage ??
-    activeSession.value?.statusMessage ??
-    "",
-);
-const toolCallHistory = computed(
-  () => activeSession.value?.toolCallHistory ?? [],
-);
-
 const selectedResultUuid = computed({
   get: () => activeSession.value?.selectedResultUuid ?? null,
   set: (val: string | null) => {
@@ -486,13 +439,6 @@ const selectedResultUuid = computed({
     });
   },
 });
-
-const activeSessionCount = computed(
-  () => sessions.value.filter((s) => s.isRunning).length,
-);
-const unreadCount = computed(
-  () => sessions.value.filter((s) => s.hasUnread).length,
-);
 
 // --- Global state ---
 const { roles, currentRoleId, currentRole, refreshRoles } = useRoles();
@@ -509,6 +455,18 @@ const { markSessionRead } = useSessionSync({
   fetchSessions,
 });
 const { geminiAvailable, sandboxEnabled, fetchHealth } = useHealth();
+
+const {
+  activeSession,
+  toolResults,
+  sidebarResults,
+  currentSummary,
+  isRunning,
+  statusMessage,
+  toolCallHistory,
+  activeSessionCount,
+  unreadCount,
+} = useSessionDerived({ sessionMap, currentSessionId, sessions });
 
 // ── Dynamic favicon (#470) ──────────────────────────────────
 const faviconState = computed<FaviconState>(() => {

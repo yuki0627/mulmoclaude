@@ -4,7 +4,8 @@
 // for clearing the unread flag on the server.
 
 import type { Ref } from "vue";
-import type { ActiveSession, SessionSummary } from "../types/session";
+import type { ActiveSession } from "../types/session";
+import type { SessionSummary } from "../types/session";
 import { usePubSub } from "./usePubSub";
 import { PUBSUB_CHANNELS } from "../config/pubsubChannels";
 import { apiPost } from "../utils/api";
