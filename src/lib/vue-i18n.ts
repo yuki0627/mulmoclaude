@@ -13,9 +13,17 @@ import { createI18n } from "vue-i18n";
 import en from "../lang/en";
 import ja from "../lang/ja";
 
-const locale = import.meta.env.VITE_LOCALE ?? "en";
+// Schema generic on createI18n — this is what makes `t("common.save")`
+// calls across the whole app compile-time checked (the module
+// augmentation in src/types/vue-i18n.d.ts alone is not enough; vue-i18n
+// v11's `t` overloads still fall back to `string` unless the schema is
+// threaded through here).
+type MessageSchema = typeof en;
+type Locale = "en" | "ja";
 
-const i18n = createI18n({
+const locale = (import.meta.env.VITE_LOCALE ?? "en") as Locale;
+
+const i18n = createI18n<[MessageSchema], Locale>({
   legacy: false,
   locale,
   fallbackLocale: "en",

@@ -17,7 +17,7 @@ CLAUDE.md に「MUST use vue-i18n for text; NEVER hardcode strings in templates 
 
 ### ファイル追加
 
-```
+```text
 src/
   lang/
     en.ts        ← default export オブジェクト、スケルトン

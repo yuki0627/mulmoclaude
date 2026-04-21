@@ -6,6 +6,6 @@ const ja = {
     save: "保存",
     cancel: "キャンセル",
   },
-} as const;
+};
 
 export default ja;
