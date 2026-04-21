@@ -96,7 +96,7 @@ export async function initScheduler(taskManager: ITaskManager, tasks: SystemTask
 
   // Run catch-up
   const catchUpTasks: CatchUpTask[] = tasks.map((taskDef) => ({
-    ["id"]: taskDef.id,
+    id: taskDef.id,
     name: taskDef.name,
     schedule: toCoreSchedule(taskDef.schedule),
     missedRunPolicy: taskDef.missedRunPolicy,
@@ -126,7 +126,7 @@ export async function initScheduler(taskManager: ITaskManager, tasks: SystemTask
   // Register with task-manager for ongoing ticks
   for (const task of tasks) {
     taskManager.registerTask({
-      ["id"]: task.id,
+      id: task.id,
       description: task.description,
       schedule: task.schedule,
       run: async () => {
@@ -173,7 +173,7 @@ export function getSchedulerTasks(): Array<{
   state: TaskExecutionState;
 }> {
   return systemTasks.map((taskDef) => ({
-    ["id"]: taskDef.id,
+    id: taskDef.id,
     name: taskDef.name,
     description: taskDef.description,
     schedule: taskDef.schedule,

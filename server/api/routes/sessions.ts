@@ -135,7 +135,7 @@ export async function loadAllSessions(): Promise<{ summary: SessionSummary; chan
 
         const live = getSession(sessionId);
         const summary: SessionSummary = {
-          ["id"]: sessionId,
+          id: sessionId,
           roleId: meta.roleId,
           startedAt: meta.startedAt,
           updatedAt: new Date(fileStat.mtimeMs).toISOString(),
@@ -288,7 +288,7 @@ router.get(API_ROUTES.sessions.detail, async (req: Request<SessionIdParams>, res
 // completes — prevents the client from refetching stale hasUnread values.
 router.post(API_ROUTES.sessions.markRead, async (req: Request<SessionIdParams>, res: Response<{ ok: boolean }>) => {
   await markRead(req.params.id);
-  res.json({ ["ok"]: true });
+  res.json({ ok: true });
 });
 
 export default router;

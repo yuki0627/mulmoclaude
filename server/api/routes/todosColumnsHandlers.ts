@@ -25,10 +25,10 @@ export interface StatusColumn {
 }
 
 export const DEFAULT_COLUMNS: StatusColumn[] = [
-  { ["id"]: "backlog", label: "Backlog" },
-  { ["id"]: "todo", label: "Todo" },
-  { ["id"]: "in_progress", label: "In Progress" },
-  { ["id"]: "done", label: "Done", isDone: true },
+  { id: "backlog", label: "Backlog" },
+  { id: "todo", label: "Todo" },
+  { id: "in_progress", label: "In Progress" },
+  { id: "done", label: "Done", isDone: true },
 ];
 
 // ── Result types ──────────────────────────────────────────────────
@@ -105,7 +105,7 @@ function ensureColumnsValid(columns: StatusColumn[]): StatusColumn[] {
     return columns.map((column) => {
       if (!column.isDone) return column;
       if (kept) {
-        const next: StatusColumn = { ["id"]: column.id, label: column.label };
+        const next: StatusColumn = { id: column.id, label: column.label };
         return next;
       }
       kept = true;
@@ -123,7 +123,7 @@ export function normalizeColumns(raw: unknown): StatusColumn[] {
   for (const entry of raw) {
     if (!isRecord(entry)) continue;
     if (typeof entry["id"] !== "string" || typeof entry["label"] !== "string") continue;
-    const col: StatusColumn = { ["id"]: entry["id"], label: entry["label"] };
+    const col: StatusColumn = { id: entry["id"], label: entry["label"] };
     if (entry["isDone"] === true) col.isDone = true;
     cleaned.push(col);
   }
@@ -201,7 +201,7 @@ export function handleAddColumn(columns: StatusColumn[], items: TodoItem[], inpu
   }
   const baseId = slugify(input.label);
   const columnId = uniqueId(baseId, new Set(columns.map((column) => column.id)));
-  const columnToAdd: StatusColumn = { ["id"]: columnId, label: input.label.trim() };
+  const columnToAdd: StatusColumn = { id: columnId, label: input.label.trim() };
   if (input.isDone === true) columnToAdd.isDone = true;
   // If the new column is flagged done, demote any existing done
   // columns (only one is allowed at a time) and resync items so the
@@ -229,7 +229,7 @@ export function handlePatchColumn(columns: StatusColumn[], columnId: string, inp
   if (!target) {
     return { kind: "error", status: 404, error: `column not found: ${columnId}` };
   }
-  const patched: StatusColumn = { ["id"]: target.id, label: target.label };
+  const patched: StatusColumn = { id: target.id, label: target.label };
   if (target.isDone) patched.isDone = true;
   if (typeof input.label === "string" && input.label.trim().length > 0) {
     patched.label = input.label.trim();
@@ -240,7 +240,7 @@ export function handlePatchColumn(columns: StatusColumn[], columnId: string, inp
   let nextItems = items;
   if (input.isDone === true && !target.isDone) {
     // Promote this column to done; demote everyone else.
-    nextColumns = nextColumns.map((column) => (column.id === columnId ? { ...column, isDone: true } : { ["id"]: column.id, label: column.label }));
+    nextColumns = nextColumns.map((column) => (column.id === columnId ? { ...column, isDone: true } : { id: column.id, label: column.label }));
     // Resync `completed` across all items: the new done column's
     // items become true, the old done column's items become false.
     // Doing this with the helper rather than a one-sided pass means

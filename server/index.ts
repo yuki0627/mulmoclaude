@@ -160,7 +160,7 @@ async function listSessionsForBridge(opts: { limit: number; offset: number }) {
   const sorted = rows.sort((leftSession, rightSession) => rightSession.changeMs - leftSession.changeMs);
   const total = sorted.length;
   const sessions = sorted.slice(opts.offset, opts.offset + opts.limit).map((row) => ({
-    ["id"]: row.summary.id,
+    id: row.summary.id,
     roleId: row.summary.roleId,
     preview: row.summary.preview,
     updatedAt: row.summary.updatedAt,
@@ -402,7 +402,7 @@ function startRuntimeServices(httpServer: ReturnType<typeof app.listen>): void {
   // responsiveness; the scheduler ensures catch-up after gaps.
   const systemTasks: SystemTaskDef[] = [
     {
-      ["id"]: "system:journal",
+      id: "system:journal",
       name: "Journal daily pass",
       description: "Summarize recent chat sessions into daily + topic files",
       schedule: { type: SCHEDULE_TYPES.interval, intervalMs: ONE_HOUR_MS },
@@ -410,7 +410,7 @@ function startRuntimeServices(httpServer: ReturnType<typeof app.listen>): void {
       run: () => maybeRunJournal({}),
     },
     {
-      ["id"]: "system:chat-index",
+      id: "system:chat-index",
       name: "Chat index backfill",
       description: "Generate AI titles + summaries for un-indexed sessions",
       schedule: { type: SCHEDULE_TYPES.interval, intervalMs: ONE_HOUR_MS },
@@ -428,7 +428,7 @@ function startRuntimeServices(httpServer: ReturnType<typeof app.listen>): void {
     if (!override) continue;
     if (task.schedule.type === SCHEDULE_TYPES.interval && typeof override.intervalMs === "number" && override.intervalMs > 0) {
       log.info("scheduler", "applying override", {
-        ["id"]: task.id,
+        id: task.id,
         intervalMs: override.intervalMs,
       });
       task.schedule = {
@@ -438,7 +438,7 @@ function startRuntimeServices(httpServer: ReturnType<typeof app.listen>): void {
     }
     if (task.schedule.type === SCHEDULE_TYPES.daily && typeof override.time === "string" && UTC_HH_MM_RE.test(override.time)) {
       log.info("scheduler", "applying override", {
-        ["id"]: task.id,
+        id: task.id,
         time: override.time,
       });
       task.schedule = { type: SCHEDULE_TYPES.daily, time: override.time };
@@ -544,7 +544,7 @@ function registerDebugTasks(taskManager: ITaskManager, pubsub: IPubSub) {
   let tick = 0;
 
   taskManager.registerTask({
-    ["id"]: "debug.auto-chat",
+    id: "debug.auto-chat",
     description: "Debug — toggles title color 10 times then starts a General-mode chat, then self-removes",
     schedule: { type: SCHEDULE_TYPES.interval, intervalMs: ONE_SECOND_MS },
     run: async () => {

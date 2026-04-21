@@ -352,7 +352,7 @@ process.stdin.on("data", (chunk: Buffer) => {
     if (method === "initialize") {
       respond({
         jsonrpc: "2.0",
-        ["id"]: requestId,
+        id: requestId,
         result: {
           protocolVersion: "2024-11-05",
           capabilities: { tools: {} },
@@ -362,7 +362,7 @@ process.stdin.on("data", (chunk: Buffer) => {
     } else if (method === "tools/list") {
       respond({
         jsonrpc: "2.0",
-        ["id"]: requestId,
+        id: requestId,
         result: {
           tools: tools.map((toolDef) => ({
             name: toolDef.name,
@@ -375,7 +375,7 @@ process.stdin.on("data", (chunk: Buffer) => {
       if (!params?.name) {
         respond({
           jsonrpc: "2.0",
-          ["id"]: requestId,
+          id: requestId,
           error: {
             code: -32602,
             message: "Invalid params: tools/call requires params.name",
@@ -388,14 +388,14 @@ process.stdin.on("data", (chunk: Buffer) => {
         .then((text) => {
           respond({
             jsonrpc: "2.0",
-            ["id"]: requestId,
+            id: requestId,
             result: { content: [{ type: "text", text }] },
           });
         })
         .catch((err: unknown) => {
           respond({
             jsonrpc: "2.0",
-            ["id"]: requestId,
+            id: requestId,
             result: {
               content: [{ type: "text", text: String(err) }],
               isError: true,
@@ -403,7 +403,7 @@ process.stdin.on("data", (chunk: Buffer) => {
           });
         });
     } else if (method === "ping") {
-      respond({ jsonrpc: "2.0", ["id"]: requestId, result: {} });
+      respond({ jsonrpc: "2.0", id: requestId, result: {} });
     }
     // notifications/initialized and other notifications: no response needed
   }

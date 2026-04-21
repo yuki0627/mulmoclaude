@@ -138,7 +138,7 @@ export function createStreamParser(): {
       if (event.session_id) {
         events.push({
           type: EVENT_TYPES.claudeSessionId,
-          ["id"]: event.session_id,
+          id: event.session_id,
         });
       }
       textStreamedFromDeltas = false;
@@ -174,7 +174,7 @@ export function parseStreamEvent(event: RawStreamEvent): AgentEvent[] {
     if (event.session_id) {
       events.push({
         type: EVENT_TYPES.claudeSessionId,
-        ["id"]: event.session_id,
+        id: event.session_id,
       });
     }
     return events;

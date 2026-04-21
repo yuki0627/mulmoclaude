@@ -182,7 +182,7 @@ export async function indexSession(workspaceRoot: string, sessionId: string, dep
   const meta = await readSessionMeta(workspaceRoot, sessionId);
 
   const entry: ChatIndexEntry = {
-    ["id"]: sessionId,
+    id: sessionId,
     roleId: meta.roleId ?? DEFAULT_ROLE_ID,
     startedAt: meta.startedAt ?? new Date(now).toISOString(),
     indexedAt: new Date(now).toISOString(),

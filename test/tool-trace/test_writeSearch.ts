@@ -55,7 +55,7 @@ describe("computeSearchRelPath", () => {
     const p = computeSearchRelPath({
       query: "熊本地震 2016",
       sessionId: SID,
-      ts: FIXED_TS,
+      timestamp: FIXED_TS,
     });
     assert.ok(p.startsWith("conversations/searches/2026-04-13/"));
     assert.ok(p.endsWith(".md"));
@@ -65,12 +65,12 @@ describe("computeSearchRelPath", () => {
     const a = computeSearchRelPath({
       query: "claude code",
       sessionId: SID,
-      ts: FIXED_TS,
+      timestamp: FIXED_TS,
     });
     const b = computeSearchRelPath({
       query: "claude code",
       sessionId: SID,
-      ts: FIXED_TS,
+      timestamp: FIXED_TS,
     });
     assert.equal(a, b);
   });
@@ -79,12 +79,12 @@ describe("computeSearchRelPath", () => {
     const a = computeSearchRelPath({
       query: "foo",
       sessionId: SID,
-      ts: FIXED_TS,
+      timestamp: FIXED_TS,
     });
     const b = computeSearchRelPath({
       query: "bar",
       sessionId: SID,
-      ts: FIXED_TS,
+      timestamp: FIXED_TS,
     });
     assert.notEqual(a, b);
   });
@@ -95,7 +95,7 @@ describe("buildSearchMarkdown", () => {
     const md = buildSearchMarkdown({
       query: "foo",
       sessionId: SID,
-      ts: FIXED_TS,
+      timestamp: FIXED_TS,
       resultBody: "- result 1\n- result 2",
     });
     assert.ok(md.startsWith("---\n"));
@@ -111,7 +111,7 @@ describe("buildSearchMarkdown", () => {
     const md = buildSearchMarkdown({
       query: "a:b",
       sessionId: SID,
-      ts: FIXED_TS,
+      timestamp: FIXED_TS,
       resultBody: "body",
     });
     assert.ok(md.includes('query: "a:b"'));
@@ -121,7 +121,7 @@ describe("buildSearchMarkdown", () => {
     const md = buildSearchMarkdown({
       query: "熊本地震",
       sessionId: SID,
-      ts: FIXED_TS,
+      timestamp: FIXED_TS,
       resultBody: "body",
     });
     assert.ok(md.includes("# Search: 熊本地震"));
@@ -144,7 +144,7 @@ describe("writeSearchResult (I/O)", () => {
       workspaceRoot,
       query: "foo query",
       sessionId: SID,
-      ts: FIXED_TS,
+      timestamp: FIXED_TS,
       resultBody: "top result",
     });
     assert.ok(rel.startsWith("conversations/searches/2026-04-13/"));
@@ -158,14 +158,14 @@ describe("writeSearchResult (I/O)", () => {
       workspaceRoot,
       query: "alpha",
       sessionId: SID,
-      ts: FIXED_TS,
+      timestamp: FIXED_TS,
       resultBody: "a",
     });
     await writeSearchResult({
       workspaceRoot,
       query: "beta",
       sessionId: SID,
-      ts: FIXED_TS,
+      timestamp: FIXED_TS,
       resultBody: "b",
     });
     const dir = path.join(workspaceRoot, "conversations", "searches", "2026-04-13");

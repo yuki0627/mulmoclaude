@@ -531,7 +531,7 @@ async function listSessionMetas(chatDir: string): Promise<SessionFileMeta[]> {
     try {
       const stats = await fsp.stat(full);
       out.push({
-        ["id"]: name.replace(/\.jsonl$/, ""),
+        id: name.replace(/\.jsonl$/, ""),
         mtimeMs: stats.mtimeMs,
       });
     } catch {

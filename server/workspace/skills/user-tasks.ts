@@ -80,7 +80,7 @@ export function validateAndCreate(input: unknown): ValidateResult {
 
   const now = new Date().toISOString();
   const task: PersistedUserTask = {
-    ["id"]: crypto.randomUUID(),
+    id: crypto.randomUUID(),
     name: obj.name.trim(),
     description: typeof obj.description === "string" ? obj.description.trim() : "",
     schedule: obj.schedule,
@@ -216,7 +216,7 @@ async function doRegisterUserTasks(deps: UserTaskDeps): Promise<number> {
 
     const taskId = `${USER_TASK_PREFIX}${task.id}`;
     taskManager.registerTask({
-      ["id"]: taskId,
+      id: taskId,
       description: `User task: ${task.name}`,
       schedule: task.schedule,
       run: async () => {
