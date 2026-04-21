@@ -280,7 +280,7 @@ interface PluginEntry {
 // Plugins the user can assign — exclude internal/auto-managed ones
 const EXCLUDED = new Set(["text-response", "switchRole"]);
 const guiPlugins: PluginEntry[] = getAllPluginNames()
-  .filter((p) => !EXCLUDED.has(p))
+  .filter((name) => !EXCLUDED.has(name))
   .map((name) => ({ name, enabled: true, requiredEnv: [] }));
 
 const availablePlugins = ref<PluginEntry[]>(guiPlugins);
@@ -385,7 +385,7 @@ function selectRole(role: CustomRole) {
     name: role.name,
     icon: role.icon,
     prompt: role.prompt,
-    selectedPlugins: role.availablePlugins.filter((p) => p !== "switchRole"),
+    selectedPlugins: role.availablePlugins.filter((plugin) => plugin !== "switchRole"),
     queriesText: (role.queries ?? []).join("\n"),
   };
 }
@@ -437,7 +437,7 @@ function validateRoleForm(form: EditForm, excludeId: string | null): string | nu
     return "ID may only contain letters, numbers, '-' and '_'.";
   }
   if (!trimmedName) return "Name is required.";
-  if (customRoles.value.some((r) => r.id === trimmedId && r.id !== excludeId)) {
+  if (customRoles.value.some((existing) => existing.id === trimmedId && existing.id !== excludeId)) {
     return `A role with ID '${trimmedId}' already exists.`;
   }
   return null;
@@ -456,7 +456,7 @@ function buildNewRole(): CustomRole {
     availablePlugins: newForm.value.selectedPlugins,
     queries: newForm.value.queriesText
       .split("\n")
-      .map((s) => s.trim())
+      .map((line) => line.trim())
       .filter(Boolean),
   };
 }
@@ -493,7 +493,7 @@ async function saveEdit(originalId: string) {
     availablePlugins: editForm.value.selectedPlugins,
     queries: editForm.value.queriesText
       .split("\n")
-      .map((s) => s.trim())
+      .map((line) => line.trim())
       .filter(Boolean),
   };
   const result = await callManage({
