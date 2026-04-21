@@ -61,6 +61,7 @@ import {
 } from "./utils/files/scheduler-overrides-io.js";
 import type { IPubSub } from "./events/pub-sub/index.js";
 import { initSessionStore } from "./events/session-store/index.js";
+import { connectRelay } from "./events/relay-client.js";
 import { requireSameOrigin } from "./api/csrfGuard.js";
 import { bearerAuth } from "./api/auth/bearerAuth.js";
 import {
@@ -416,6 +417,16 @@ function startRuntimeServices(httpServer: ReturnType<typeof app.listen>): void {
 
   // --- Chat socket transport (Phase A of #268) ---
   chatService.attachSocket(httpServer);
+
+  // --- Relay WebSocket client ---
+  if (env.relayUrl && env.relayToken) {
+    connectRelay({
+      relayUrl: env.relayUrl,
+      relayToken: env.relayToken,
+      relay: chatService.relay,
+      logger: log,
+    });
+  }
 
   // --- Session Store ---
   initSessionStore(pubsub);
