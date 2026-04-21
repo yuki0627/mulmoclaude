@@ -201,21 +201,29 @@ export function pushSessionEvent(
 
   const generationDelta = resolveGenerationDelta(chatSessionId, type, event);
   if (generationDelta === "same") return;
-
-  // When the last pending generation completes, flag the session as
-  // unread — same semantics as endRun(): "something for the user to
-  // notice". Clients viewing the session clear it via markRead.
-  if (generationDelta === "drained") {
-    const session = store.get(chatSessionId);
-    if (session) session.hasUnread = true;
-    persistHasUnread(chatSessionId, true);
+  if (generationDelta === "started") {
+    notifySessionsChanged();
+    return;
   }
 
-  // A generation starting or finishing changes the session summary's
-  // isRunning flag, so the sidebar needs to refetch. We fire on both
-  // transitions (started and drained) so the sidebar indicator and
-  // hasUnread both propagate without waiting for a later refetch.
-  notifySessionsChanged();
+  // Drained: flag hasUnread, same semantics as endRun(). Clients
+  // viewing the session clear it via markRead.
+  const session = store.get(chatSessionId);
+  if (session) {
+    session.hasUnread = true;
+    // Store is the source of truth, so the refetch already sees the
+    // flag via `live.hasUnread` — the disk write is just a backstop
+    // across server restarts and can stay fire-and-forget.
+    void persistHasUnread(chatSessionId, true);
+    notifySessionsChanged();
+    return;
+  }
+
+  // Storeless: meta.hasUnread on disk is the ONLY place the flag lives.
+  // If we notified before the write completed, the client's refetch
+  // would read the stale pre-drain value. Sequence: persist, then
+  // notify.
+  void persistHasUnread(chatSessionId, true).then(notifySessionsChanged);
 }
 
 /**
