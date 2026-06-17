@@ -2,6 +2,12 @@
 
 This file provides guidance to Claude Code when working with the MulmoClaude repository.
 
+> **【最初に読む】このリポジトリの理解には `kb/INDEX.md` を参照すること。**
+> `kb/` は MulmoClaude を「使う」ための知識ベース（日本語）。ユーザーの「何ができる/どう設定する」等の
+> 質問には、まず kb の該当章から即答し、不足/古い疑いがある時だけ実コードを開く。
+> コード変更（upstream 同期含む）を取り込んだら、`kb/INDEX.md` の「増分更新手順」に従って kb を更新する。
+> ※ このポインタ節は作業ブランチ専用。upstream 同期でこの CLAUDE.md が衝突したら、この節だけ付け直す。
+
 ## Project Overview
 
 MulmoClaude is a text/task-driven agent app with rich visual output. It uses **Claude Code Agent SDK** as the LLM core and **gui-chat-protocol** as the plugin layer. Shared code is published as `@mulmobridge/*` npm packages under `packages/`.
