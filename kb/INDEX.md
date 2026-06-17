@@ -29,6 +29,12 @@
 | セットアップ・設定 | [`04-setup-and-config.md`](04-setup-and-config.md) | 起動・環境変数・ワークスペース・ロール・スケジューラ・データ機能 |
 | 深掘り | [`deep-dives/`](deep-dives/) | 領域別の詳細分析（随時追加） |
 
+### deep-dives 一覧
+
+| ファイル | 内容 | ステータス |
+|---|---|---|
+| [`deep-dives/wiki-migration.md`](deep-dives/wiki-migration.md) | 外部 vault（Obsidian 等）→ MulmoClaude wiki 移行の懸念と手順 | 進行中 |
+
 ---
 
 ## 増分更新手順（重要）
