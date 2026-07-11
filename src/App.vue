@@ -4,6 +4,17 @@
          it's the first thing the user sees when the server isn't
          reachable. Self-hiding when fetchHealth succeeds. -->
     <BackendOfflineBanner :on-retry="fetchHealth" />
+    <!-- CSP-blocked-resource notice (#1989) — a sandboxed view tried to load a
+         host not allowed by config/csp.json. Tells the user the exact host +
+         directive so they can extend the policy (if they trust it). -->
+    <div
+      v-if="cspViolations.length > 0"
+      class="shrink-0 flex items-start gap-3 bg-amber-50 text-amber-900 text-xs px-3 py-2 border-b border-amber-200"
+      role="alert"
+    >
+      <span class="flex-1 min-w-0">{{ $t("cspViolation.notice", { host: cspViolations[0].host, directive: cspViolations[0].directive }) }}</span>
+      <button class="shrink-0 underline hover:no-underline" @click="dismissCspViolations()">{{ $t("cspViolation.dismiss") }}</button>
+    </div>
     <!-- Global top bar — shown in every view mode -->
     <div class="shrink-0 bg-white text-gray-900">
       <!-- Row 1: title + plugin launcher -->
@@ -21,25 +32,28 @@
             :active-tool-name="selectedResult?.toolName ?? null"
             :active-view-mode="currentPage"
             :shortcuts="shortcuts"
+            :active-session-count="activeSessionCount"
+            :unread-count="unreadCount"
             @navigate="onPluginNavigate"
             @navigate-shortcut="onShortcutNavigate"
+            @navigate-chat="handleHomeClick"
           />
         </div>
       </div>
-      <!-- Row 2: role selector + session tabs. Shown whenever the
-           side panel is hidden — Row 2 and the side panel are
-           mutually exclusive. The header-controls wrapper is pinned
-           to 264px (w-72 minus px-3 padding on each side) so that
+      <!-- Row 2: role selector + session tabs. Chat-only chrome — shown
+           on /chat whenever the side panel is hidden (Row 2 and the
+           side panel are mutually exclusive). Off /chat the whole row
+           is gone; the always-visible Chat button in Row 1 is the way
+           back into a conversation. The header-controls wrapper is
+           pinned to 264px (w-72 minus px-3 padding on each side) so
            RoleSelector / + / toggle occupy the exact same x-range as
            they do inside the open side panel — toggling the panel
            therefore doesn't shift those controls. -->
-      <div v-if="!sidePanelVisible" class="flex items-center gap-2 px-3 py-2 border-b border-gray-100">
+      <div v-if="isChatPage && !sidePanelVisible" class="flex items-center gap-2 px-3 py-2 border-b border-gray-100">
         <div class="w-[264px] shrink-0">
           <SessionHeaderControls
             :roles="roles"
             :side-panel-visible="sidePanelVisible"
-            :active-session-count="activeSessionCount"
-            :unread-count="unreadCount"
             @role-change="onRoleChange"
             @new-session="handleNewSessionClick"
             @update:side-panel-visible="setSidePanelVisible"
@@ -53,12 +67,12 @@
     <div class="flex flex-1 min-h-0">
       <!-- Session-history side panel. Opt-in column to the left of
            the chat sidebar / canvas, toggled via
-           SessionHistoryToggleButton. Renders on every page when
-           `sidePanelVisible` is true. Row 2 of the top bar hides when
-           the panel is open — the panel's own header supplies the
-           role selector + new-session button instead. -->
+           SessionHistoryToggleButton. Chat-only chrome — renders on
+           /chat when `sidePanelVisible` is true. Row 2 of the top bar
+           hides when the panel is open — the panel's own header
+           supplies the role selector + new-session button instead. -->
       <div
-        v-if="sidePanelVisible"
+        v-if="isChatPage && sidePanelVisible"
         class="relative border-r border-gray-200 bg-white text-gray-900 flex flex-col min-w-0 overflow-hidden"
         :class="sidePanelExpanded ? 'flex-1' : 'w-72 flex-shrink-0'"
         data-testid="session-history-side-panel"
@@ -72,8 +86,6 @@
           <SessionHeaderControls
             :roles="roles"
             :side-panel-visible="sidePanelVisible"
-            :active-session-count="activeSessionCount"
-            :unread-count="unreadCount"
             @role-change="onRoleChange"
             @new-session="handleNewSessionClick"
             @update:side-panel-visible="setSidePanelVisibleAndCollapse"
@@ -140,6 +152,7 @@
           v-model:pasted-files="pastedFiles"
           :is-running="activeSessionRunning"
           :queries="sessionRoleQueries"
+          :session-id="currentSessionId"
           @send="sendMessage()"
           @stop="stopCurrentRun()"
           @suggestion-send="(q) => sendMessage(q)"
@@ -210,6 +223,11 @@
                variants; standalone routes are wrapped here against the
                same `pkg-name + endpoints` pair so the `useRuntime()`
                call resolves. -->
+          <!-- Dashboard — grid of favorite (pinned) collections, each a
+               live embedded view. Host component (no PluginScopedRoot):
+               CollectionView talks to /api/collections directly, same as
+               the collections index below. -->
+          <DashboardView v-else-if="currentPage === 'dashboard'" />
           <FilesView v-else-if="currentPage === 'files'" :refresh-token="filesRefreshToken" @load-session="handleSessionSelect" />
           <PluginScopedRoot v-else-if="currentPage === 'automations'" pkg-name="scheduler" :endpoints="API_ROUTES.scheduler">
             <AutomationsView />
@@ -227,6 +245,13 @@
                directly. -->
           <CollectionView v-else-if="currentPage === 'collections' && route.params.slug" :key="String(route.params.slug)" />
           <CollectionsIndexView v-else-if="currentPage === 'collections'" />
+          <!-- Accounting — the double-entry bookkeeping app. Host
+               component (no PluginScopedRoot): the View talks to
+               /api/accounting via the host's apiCall directly and never
+               calls `useRuntime()`, so it needs no plugin scope. Mounted
+               without a `selected-result` prop — standalone it self-fetches
+               the book list and auto-selects a book on mount. -->
+          <AccountingView v-else-if="currentPage === 'accounting'" />
           <!-- Debug page (encore plan PR 1 follow-up). The View ships
                inside the @mulmoclaude/debug-plugin runtime package; we
                look it up by tool name and render the registered
@@ -263,6 +288,7 @@
             v-model:pasted-files="pastedFiles"
             :is-running="activeSessionRunning"
             :queries="sessionRoleQueries"
+            :session-id="currentSessionId"
             @send="sendMessage()"
             @stop="stopCurrentRun()"
             @suggestion-send="(q) => sendMessage(q)"
@@ -291,15 +317,21 @@
       :docker-mode="sandboxEnabled"
       :gemini-available="geminiAvailable"
       :mcp-tools-error="mcpToolsError"
-      @update:open="showSettings = $event"
+      @update:open="onSettingsOpenChange"
       @ask-gemini="handleAskGemini"
       @saved="refreshGoogleMapsApiKey"
     />
+
+    <!-- Global confirm dialog. Renders the module-global confirm state opened
+         via useConfirm()/the collection plugin's confirm() capability — mounted
+         here at the app root so it survives any single view (CollectionView used
+         to render its own before moving into @mulmoclaude/core/collection). -->
+    <ConfirmModal />
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref, computed, watch, nextTick, onMounted, reactive } from "vue";
+import { ref, computed, watch, nextTick, onMounted, onScopeDispose, reactive } from "vue";
 import { useI18n } from "vue-i18n";
 import { v4 as uuidv4 } from "uuid";
 import { getPlugin } from "./tools";
@@ -316,14 +348,14 @@ import SessionHistoryPanel from "./components/SessionHistoryPanel.vue";
 import SessionSidebar from "./components/SessionSidebar.vue";
 import ThinkingIndicator from "./components/ThinkingIndicator.vue";
 import PluginLauncher from "./components/PluginLauncher.vue";
+import DashboardView from "./components/DashboardView.vue";
 import StackView from "./components/StackView.vue";
 import FilesView from "./components/FilesView.vue";
 import AutomationsView from "./plugins/scheduler/AutomationsView.vue";
 import WikiView from "./plugins/wiki/View.vue";
-import { buildWikiRouteParams } from "./plugins/wiki/route";
-import FeedsView from "./components/FeedsView.vue";
-import CollectionsIndexView from "./components/CollectionsIndexView.vue";
-import CollectionView from "./components/CollectionView.vue";
+import { AccountingView } from "@mulmoclaude/accounting-plugin/vue";
+import { buildWikiRouteParams } from "@mulmoclaude/core/wiki";
+import { CollectionView, CollectionsIndexView, FeedsView } from "@mulmoclaude/collection-plugin/vue";
 import PluginScopedRoot from "./components/PluginScopedRoot.vue";
 import SettingsModal from "./components/SettingsModal.vue";
 import { PAGE_ROUTES, type PageRouteName } from "./router";
@@ -333,11 +365,14 @@ import { EVENT_TYPES } from "./types/events";
 import { buildAgentRequestBody, postAgentRun } from "./utils/agent/request";
 import { resolvePastedAttachment } from "./utils/agent/pastedAttachment";
 import { applyAgentEvent, type AgentEventContext } from "./utils/agent/eventDispatch";
-import { pushErrorMessage, beginUserTurn, updateResult } from "./utils/session/sessionHelpers";
+import { pushErrorMessage, beginUserTurn, updateResult, applyToolResultToSession } from "./utils/session/sessionHelpers";
+import { parseCollectionSlashSeed, makeSyntheticCollectionResult, hasRealCollectionResult } from "./utils/collections/presentSeed";
 import { roleName, roleIcon } from "./utils/role/icon";
 import { createEmptySession } from "./utils/session/sessionFactory";
 import { buildLoadedSession, parseSessionEntries } from "./utils/session/sessionEntries";
 import { usePendingCalls } from "./composables/usePendingCalls";
+import { loadCspExtra } from "./composables/useCspExtra";
+import { cspViolations, dismissCspViolations, installCspViolationListener } from "./composables/useCspViolations";
 import { useRunElapsed } from "./composables/useRunElapsed";
 import { useKeyNavigation } from "./composables/useKeyNavigation";
 import { useDebugBeat } from "./composables/useDebugBeat";
@@ -360,6 +395,12 @@ import { useTranslatedQueries } from "./composables/useTranslatedQueries";
 import { BUILTIN_ROLE_IDS, type Role } from "./config/roles";
 import { usePubSub } from "./composables/usePubSub";
 import { sessionChannel } from "./config/pubsubChannels";
+import ConfirmModal from "./components/ConfirmModal.vue";
+import { useNotifications } from "./composables/useNotifications";
+import { collectionNotifiedSeverities } from "./utils/collections/notifiedItems";
+import { installCollectionAppBindings } from "./composables/collections/uiHost";
+import { useDynamicShortcutIcons } from "./composables/collections/useDynamicShortcutIcons";
+import type { CollectionsListResponse } from "@mulmoclaude/core/collection";
 import { useHealth } from "./composables/useHealth";
 import { useSessionHistory } from "./composables/useSessionHistory";
 import { useRightSidebar } from "./composables/useRightSidebar";
@@ -398,7 +439,7 @@ const currentSessionId = ref("");
 // --- Debug beat (pub/sub) ---
 const { debugTitleStyle } = useDebugBeat();
 
-const { subscribe: pubsubSubscribe } = usePubSub();
+const { subscribe: pubsubSubscribe, onReconnect: pubsubOnReconnect } = usePubSub();
 
 // --- Routing ---
 const route = useRoute();
@@ -455,7 +496,7 @@ const pastedFiles = ref<PastedFile[]>([]);
 const activePane = ref<"sidebar" | "main">("sidebar");
 
 const { sessions, historyError, fetchSessions, setBookmark, deleteSession: deleteSessionFromHistory } = useSessionHistory();
-const { markSessionRead } = useSessionSync({
+const { markSessionRead, refreshSessionStates } = useSessionSync({
   sessionMap,
   currentSessionId,
   fetchSessions,
@@ -537,7 +578,13 @@ useGlobalImageErrorRepair();
 
 const sessionSidebarRef = ref<{ root: HTMLDivElement | null } | null>(null);
 const canvasRef = ref<HTMLDivElement | null>(null);
-const chatInputRef = ref<{ focus: () => void; collapseSuggestions: () => void; addFiles: (files: File[]) => void } | null>(null);
+const chatInputRef = ref<{
+  focus: () => void;
+  collapseSuggestions: () => void;
+  addFiles: (files: File[]) => void;
+  refreshVoiceAvailability: () => Promise<void>;
+} | null>(null);
+
 const { focusChatInput } = useChatScroll({
   sessionSidebarRef,
   toolResults,
@@ -566,6 +613,15 @@ const {
 
 const { showRightSidebar, toggleRightSidebar } = useRightSidebar();
 const showSettings = ref(false);
+
+// When the Settings modal closes, re-check voice-input availability: the
+// user may have just enabled it / started the model download, and the
+// mic button should appear without a reload (the composable then polls
+// until the download finishes). See plans/done/feat-voice-input.md.
+function onSettingsOpenChange(open: boolean): void {
+  showSettings.value = open;
+  if (!open) chatInputRef.value?.refreshVoiceAvailability()?.catch(() => undefined);
+}
 
 const { layoutMode, setLayoutMode } = useLayoutMode();
 const { sidePanelVisible, setSidePanelVisible } = useSidePanelVisible();
@@ -651,10 +707,18 @@ const canvasDropHandlers = computed(() =>
 // don't persist empty sessions on the server. Fires true → false only;
 // an empty → /chat transition is handled by the route-params watcher
 // and onMounted.
+//
+// Also collapse the side panel's transient full-width mode. The panel
+// itself is chat-only chrome (`isChatPage && sidePanelVisible`), so it
+// unmounts off /chat — but the canvas/sidebar stay gated by
+// `!sidePanelExpanded`. Without this reset, leaving /chat while expanded
+// would unmount the panel AND keep the canvas hidden, blanking plugin
+// pages until the panel is collapsed again.
 watch(isChatPage, (isChat, wasChat) => {
   if (!(wasChat && !isChat)) return;
   removeCurrentIfEmpty();
   currentSessionId.value = "";
+  sidePanelExpanded.value = false;
 });
 
 function handleSessionSelect(sessionId: string): void {
@@ -715,6 +779,8 @@ async function refreshGoogleMapsApiKey(): Promise<void> {
   }
 }
 void refreshGoogleMapsApiKey();
+void loadCspExtra();
+installCspViolationListener();
 
 function googleMapKeyFor(toolName: string | undefined): string | null {
   return toolName === TOOL_NAMES.mapControl ? googleMapsApiKey.value : null;
@@ -941,6 +1007,16 @@ function hasPendingGenerations(sessionId: string): boolean {
 }
 
 function handleSessionFinished(sessionId: string): void {
+  // Trust the definitive server signal and flip the local indicator
+  // immediately (#1915 Fix A). Without this, the "thinking" spinner stays
+  // stuck until the `sessions` channel notification arrives via a separate
+  // socket.io frame — which can go missing on a network hiccup or on
+  // Safari's tab-throttling flow while the sessionChannel frame did land.
+  const session = sessionMap.get(sessionId);
+  if (session) {
+    session.isRunning = false;
+    session.statusMessage = "";
+  }
   refreshSessionTranscript(sessionId).catch((err) => {
     console.error("[handleSessionFinished] refresh failed:", err);
   });
@@ -950,6 +1026,50 @@ function handleSessionFinished(sessionId: string): void {
     unsubscribeSession(sessionId);
   }
 }
+
+// After the client silently loses events, this pulls fresh state from the
+// server so the UI recovers without a page reload (#1915). Two trigger
+// surfaces:
+//   - socket.io reconnect (network hiccup, WS bounce)
+//   - document visibility flips to `visible` (Safari's silent tab
+//     throttling — WS keeps `connected` on the server but delivery stops
+//     while the tab is backgrounded, and there's no `disconnect` event to
+//     hook on reconnect)
+// refreshSessionStates() carries its own sequence guard inside
+// useSessionSync so concurrent catch-ups can't overwrite newer live state
+// with an older-but-slower response. refreshSessionTranscript() only
+// upgrades toolResults when the server view is strictly larger, so it's
+// already idempotent against interleaving.
+function catchUpMissedEvents(reason: "reconnect" | "visibility"): void {
+  console.info(`[chat-ui] catching up after ${reason}`);
+  refreshSessionStates().catch((err) => {
+    console.warn("[chat-ui] refreshSessionStates failed:", err);
+  });
+  const currentId = currentSessionId.value;
+  if (currentId) {
+    refreshSessionTranscript(currentId).catch((err) => {
+      console.warn("[chat-ui] refreshSessionTranscript failed:", err);
+    });
+  }
+}
+
+// Capture the unsubscribe so remount / HMR doesn't accumulate stale
+// module-level reconnect handlers (Codex review).
+const unsubReconnect = pubsubOnReconnect(() => catchUpMissedEvents("reconnect"));
+
+function handleVisibilityChange(): void {
+  if (document.visibilityState === "visible") {
+    catchUpMissedEvents("visibility");
+  }
+}
+
+onMounted(() => {
+  document.addEventListener("visibilitychange", handleVisibilityChange);
+});
+onScopeDispose(() => {
+  document.removeEventListener("visibilitychange", handleVisibilityChange);
+  unsubReconnect();
+});
 
 function createSessionEventHandler(session: ActiveSession, ctx: AgentEventContext): (data: unknown) => void {
   return (data: unknown) => {
@@ -1081,6 +1201,57 @@ function startNewChat(message: string, roleId?: string): void {
   // is now handled inside createNewSession via the isChatPage check.
   createNewSession(roleId);
   void sendMessage(message);
+  void seedCollectionPresentation(message);
+}
+
+// A chat started from a collection view carries that collection's slash command
+// (`/<slug> …`). Present the collection in the canvas immediately — a
+// client-side stand-in for the presentCollection call the agent makes when the
+// message is sent — so the collection is visible up front (#1768). Used by both
+// entry points: startNewChat (message sent) and startNewChatDraft (message left
+// as an editable draft). The placeholder is reconciled away once the real tool
+// result arrives (reconcileSyntheticCollection in eventDispatch). No-op for
+// non-collection slash commands (e.g. /deep-research) and plain prose.
+async function seedCollectionPresentation(message: string): Promise<void> {
+  const seed = parseCollectionSlashSeed(message);
+  if (!seed) return;
+  const session = activeSession.value;
+  if (!session) return;
+  if (!(await isKnownCollectionSlug(seed.slug))) return;
+  // The active session can change while the collection-list fetch is in flight
+  // (user starts another chat); only seed the session we parsed for.
+  if (activeSession.value?.id !== session.id) return;
+  // Race guard: if the agent's real presentCollection result already arrived
+  // (fast agent, slow collection-list fetch), reconcile has nothing to remove,
+  // so seeding now would append a stale duplicate. Skip — the real card is up.
+  if (hasRealCollectionResult(session, seed.slug)) return;
+  applyToolResultToSession(session, makeSyntheticCollectionResult(seed.slug, seed.itemId));
+}
+
+// Confirm `slug` names a real collection before seeding — otherwise a
+// non-collection slash command would flash a "not found" collection canvas. On
+// fetch failure we skip the optimistic card; the agent still presents it.
+async function isKnownCollectionSlug(slug: string): Promise<boolean> {
+  const result = await apiGet<CollectionsListResponse>(API_ROUTES.collections.list);
+  if (!result.ok) return false;
+  return result.data.collections.some((collection) => collection.slug === slug);
+}
+
+// Like startNewChat, but prefills the composer with `message` as an editable
+// DRAFT instead of sending it — the user reviews / edits / sends (or clears) it.
+// Used by custom collection views (`__MC_VIEW.startChat`) so a view button can
+// propose a chat without the view's code triggering an agent run on its own.
+// `roleId` is validated against the known roles and falls back to General
+// (createNewSession does not validate the id it is handed). When the draft is a
+// collection slash command, the collection is presented in the canvas up front
+// (#1768) — presentCollection first, then the prefilled draft.
+function startNewChatDraft(message: string, roleId?: string): void {
+  const rId = roleId && roles.value.some((role) => role.id === roleId) ? roleId : BUILTIN_ROLE_IDS.general;
+  createNewSession(rId);
+  userInput.value = message;
+  chatInputRef.value?.collapseSuggestions();
+  nextTick(() => focusChatInput());
+  void seedCollectionPresentation(message);
 }
 
 function handleAskGemini(): void {
@@ -1095,6 +1266,21 @@ provideAppApi({
   navigateToWorkspacePath: (href: string) => navigateToWorkspacePath(href),
   getResultTimestamp: (uuid: string) => activeSession.value?.resultTimestamps.get(uuid),
 });
+
+// Wire the two collection-plugin UI capabilities that need a component context
+// (the rest are configured at module load in composables/collections/uiHost.ts).
+// `useNotifications()` needs onUnmounted + pubsub inject; `startNewChat` is
+// App-owned. Done here so it's set before any CollectionView (a descendant) mounts.
+const { entries: notifierEntries } = useNotifications();
+installCollectionAppBindings({
+  startChat: (prompt: string, role: string) => startNewChat(prompt, role),
+  startNewChatDraft: (prompt: string, role?: string) => startNewChatDraft(prompt, role),
+  notifiedSeverities: (slug: string) => collectionNotifiedSeverities(notifierEntries.value, slug),
+});
+// Keep pinned collection-launcher icons that declare `dynamicIcon` live —
+// mounted here (not inside CollectionsIndexView) so it runs regardless of
+// which page is open.
+useDynamicShortcutIcons();
 // Plugin Views that need to tag background work with the current
 // session (e.g. MulmoScript generations) inject this.
 provideActiveSession(activeSession);

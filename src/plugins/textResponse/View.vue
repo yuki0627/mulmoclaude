@@ -18,8 +18,20 @@
             <span class="material-icons text-gray-400 text-base shrink-0 group-open:rotate-180 transition-transform">expand_more</span>
           </summary>
           <div class="border-t border-purple-200 p-4 bg-white rounded-b-lg">
+            <div
+              v-if="truncationInfo.wasTruncated"
+              class="mb-3 p-3 rounded border border-amber-300 bg-amber-50 text-amber-900 text-sm"
+              data-testid="text-response-seeded-truncation-banner"
+            >
+              {{
+                t("pluginTextResponse.truncatedForRender", {
+                  omitted: truncationInfo.omittedChars.toLocaleString(locale),
+                  total: truncationInfo.originalChars.toLocaleString(locale),
+                })
+              }}
+            </div>
             <!-- eslint-disable vue/no-v-html -- marked.parse output of the plugin-seeded prompt; trusted in-process render matching the standard textResponse path. Multi-line element so disable/enable pair (CLAUDE.md UI rule). -->
-            <div class="markdown-content prose prose-slate max-w-none" @click="openLinksInNewTab" v-html="renderedHtml"></div>
+            <div ref="markdownContainerRef" class="markdown-content prose prose-slate max-w-none" @click="openLinksInNewTab" v-html="renderedHtml"></div>
             <!-- eslint-enable vue/no-v-html -->
             <div v-if="messageAttachments.length > 0" class="space-y-3 mt-3" data-testid="text-response-seeded-attachments">
               <SentAttachmentChip v-for="path in messageAttachments" :key="path" :path="path" variant="block" />
@@ -40,7 +52,17 @@
         <span class="material-icons text-base">{{ pdfDownloading ? "hourglass_empty" : "download" }}</span>
         {{ t("pluginTextResponse.pdf") }}
       </button>
+      <button
+        class="h-8 px-2.5 flex items-center gap-1 rounded border border-gray-300 text-gray-600 hover:bg-gray-50 text-sm disabled:opacity-60 disabled:cursor-not-allowed transition-colors"
+        :disabled="zipDownloading"
+        data-testid="text-response-zip-button"
+        @click="downloadZipFile"
+      >
+        <span class="material-icons text-base">{{ zipDownloading ? "hourglass_empty" : "folder_zip" }}</span>
+        {{ t("common.downloadZip") }}
+      </button>
       <span v-if="pdfError" class="text-xs text-red-500" :title="pdfError">{{ t("pluginTextResponse.pdfFailed") }}</span>
+      <span v-if="zipFailed" class="text-xs text-red-500">{{ t("common.downloadFailed") }}</span>
     </div>
     <div class="flex-1 overflow-hidden relative" @click.capture="openLinksInNewTab">
       <div class="text-response-container">
@@ -52,8 +74,21 @@
                   <span class="font-medium text-gray-700">{{ speakerLabel }}</span>
                   <span v-if="transportKind" class="italic">{{ transportKind }}</span>
                 </div>
+                <div
+                  v-if="truncationInfo.wasTruncated"
+                  class="mb-3 p-3 rounded border border-amber-300 bg-amber-50 text-amber-900 text-sm"
+                  data-testid="text-response-truncation-banner"
+                >
+                  {{
+                    t("pluginTextResponse.truncatedForRender", {
+                      omitted: truncationInfo.omittedChars.toLocaleString(locale),
+                      total: truncationInfo.originalChars.toLocaleString(locale),
+                    })
+                  }}
+                </div>
                 <!-- eslint-disable vue/no-v-html -- marked.parse output of app-owned assistant response text; trusted in-process render. Multi-line element so disable/enable pair (CLAUDE.md UI rule) instead of -next-line. -->
                 <div
+                  ref="markdownContainerRef"
                   class="markdown-content prose prose-slate max-w-none leading-relaxed text-gray-900"
                   :data-testid="isAssistant ? 'text-response-assistant-body' : undefined"
                   v-html="renderedHtml"
@@ -93,13 +128,15 @@ import type { TextResponseData } from "./types";
 import SentAttachmentChip from "../../components/SentAttachmentChip.vue";
 import { handleExternalLinkClick } from "../../utils/dom/externalLink";
 import { classifyWorkspacePath } from "../../utils/path/workspaceLinkRouter";
+import { useMermaidRenderer } from "../../utils/markdown/useMermaid";
 import { useAppApi } from "../../composables/useAppApi";
 import { usePdfDownload } from "../../composables/usePdfDownload";
+import { useMarkdownZip } from "../../composables/useMarkdownZip";
 import { useClipboardCopy } from "../../composables/useClipboardCopy";
 import { buildPdfFilename } from "../../utils/files/filename";
-import { extractTextResponseTitle } from "./utils";
+import { extractTextResponseTitle, truncateForRender } from "./utils";
 
-const { t } = useI18n();
+const { t, locale } = useI18n();
 const appApi = useAppApi();
 
 const props = withDefaults(
@@ -149,19 +186,30 @@ const seededByPlugin = computed<string>(() => props.selectedResult.data?.seededB
 // inherently scoped to the opening message.
 const isSeededUserTurn = computed(() => Boolean(seededByPlugin.value) && messageRole.value === "user");
 
+// Truncation summary surfaced to the template — the banner renders when
+// `wasTruncated` is true, telling the user the visible content is a preview
+// and the raw text is available via Copy. See #1863 for the pathological
+// input this defends against (Opus 4.8 degenerate repetition freezing Safari).
+const truncationInfo = computed(() => truncateForRender(messageText.value ?? ""));
+
 const renderedHtml = computed(() => {
-  if (!messageText.value) return "";
+  const { displayText } = truncationInfo.value;
+  if (!displayText) return "";
 
-  let processedText = messageText.value;
+  let processedText = displayText;
 
-  // Detect and wrap JSON content in code fences
-  const trimmedText = processedText.trim();
-  if ((trimmedText.startsWith("{") && trimmedText.endsWith("}")) || (trimmedText.startsWith("[") && trimmedText.endsWith("]"))) {
-    try {
-      JSON.parse(trimmedText);
-      processedText = `\`\`\`json\n${trimmedText}\n\`\`\``;
-    } catch {
-      // Not valid JSON, continue with original text
+  // Detect and wrap JSON content in code fences (skip for truncated views —
+  // JSON.parse of a truncated tail would throw anyway, and a partial JSON
+  // dump is more informative rendered as markdown).
+  if (!truncationInfo.value.wasTruncated) {
+    const trimmedText = processedText.trim();
+    if ((trimmedText.startsWith("{") && trimmedText.endsWith("}")) || (trimmedText.startsWith("[") && trimmedText.endsWith("]"))) {
+      try {
+        JSON.parse(trimmedText);
+        processedText = `\`\`\`json\n${trimmedText}\n\`\`\``;
+      } catch {
+        // Not valid JSON, continue with original text
+      }
     }
   }
 
@@ -202,6 +250,13 @@ const hasChanges = computed(() => editedText.value !== editorSource.value);
 // just below, but hoisted up here so `applyChanges` can close the
 // panel after a save without TDZ ordering trouble.
 const detailsEl = ref<HTMLDetailsElement>();
+
+// Container for the rendered markdown surface (seeded-turn card OR
+// assistant response body — only one mounts at a time via v-if/v-else,
+// so a single ref binds to whichever branch is live). Feeds the
+// mermaid post-render pass.
+const markdownContainerRef = ref<HTMLElement | null>(null);
+useMermaidRenderer(markdownContainerRef, renderedHtml);
 
 function applyChanges() {
   if (!hasChanges.value) return;
@@ -246,6 +301,7 @@ function openLinksInNewTab(event: MouseEvent): void {
 }
 
 const { pdfDownloading, pdfError, downloadPdf: rawDownloadPdf } = usePdfDownload();
+const { zipDownloading, zipFailed, downloadZip: rawDownloadZip } = useMarkdownZip();
 
 const editing = ref(false);
 
@@ -275,23 +331,29 @@ async function copyText() {
   await copy(props.selectedResult.data?.text ?? "");
 }
 
-async function downloadPdf() {
+// PDF and zip share the same source: display text and export source can
+// diverge (Files Explorer's .md preview pre-rewrites image refs to
+// `/api/files/raw?...` for the browser, which the server inliner can't
+// resolve back to disk), so prefer the original source when provided.
+function markdownExport(): { text: string; filename: string; baseDir?: string; stripFrontmatter?: boolean } {
   const { data } = props.selectedResult;
-  // Display text and PDF source can diverge: Files Explorer's .md
-  // preview pre-rewrites image refs to `/api/files/raw?...` for
-  // browser display, but the server PDF inliner can't resolve those
-  // back to disk. Use the original source when the caller passes it.
-  const pdfText = data?.pdfSourceText ?? data?.text ?? "";
-  const displayText = data?.text ?? "";
+  const text = data?.pdfSourceText ?? data?.text ?? "";
   const filename = buildPdfFilename({
-    name: extractTextResponseTitle(displayText),
+    name: extractTextResponseTitle(data?.text ?? ""),
     fallback: "chat",
     timestampMs: appApi.getResultTimestamp(props.selectedResult.uuid),
   });
-  await rawDownloadPdf(pdfText, filename, {
-    baseDir: data?.pdfBaseDir,
-    stripFrontmatter: data?.pdfStripFrontmatter,
-  });
+  return { text, filename, baseDir: data?.pdfBaseDir, stripFrontmatter: data?.pdfStripFrontmatter };
+}
+
+async function downloadPdf() {
+  const { text, filename, baseDir, stripFrontmatter } = markdownExport();
+  await rawDownloadPdf(text, filename, { baseDir, stripFrontmatter });
+}
+
+async function downloadZipFile() {
+  const { text, filename, baseDir, stripFrontmatter } = markdownExport();
+  await rawDownloadZip(text, filename, { baseDir, stripFrontmatter });
 }
 </script>
 
@@ -356,7 +418,7 @@ async function downloadPdf() {
   background-color: #f5f5f5;
   padding: 0.2em 0.4em;
   border-radius: 3px;
-  font-family: monospace;
+  font-family: Consolas, "MS Gothic", "BIZ UDGothic", monospace;
   font-size: 0.9em;
 }
 
@@ -450,7 +512,7 @@ async function downloadPdf() {
   padding: 0.5rem;
   background: #f5f5f5;
   border-top: 1px solid #e0e0e0;
-  font-family: monospace;
+  font-family: Consolas, "MS Gothic", "BIZ UDGothic", monospace;
   font-size: 0.85rem;
   flex-shrink: 0;
 }
@@ -481,7 +543,7 @@ async function downloadPdf() {
   border: 1px solid #ccc;
   border-radius: 4px;
   color: #333;
-  font-family: "Courier New", monospace;
+  font-family: "Courier New", "MS Gothic", "BIZ UDGothic", monospace;
   font-size: 0.9rem;
   resize: vertical;
   margin-bottom: 0.5rem;

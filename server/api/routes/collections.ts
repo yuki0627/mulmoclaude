@@ -10,8 +10,9 @@
 
 import { Router, Request, Response, NextFunction } from "express";
 import { API_ROUTES } from "../../../src/config/apiRoutes.js";
-import { actionVisible } from "../../../src/utils/collections/actionVisible.js";
+import { actionVisible } from "@mulmoclaude/core/collection";
 import {
+  computeCollectionIcon,
   discoverCollections,
   generateItemId,
   deleteCollection,
@@ -23,8 +24,10 @@ import {
   readItem,
   readSkillTemplate,
   readCustomViewHtml,
+  readCustomViewI18n,
   buildActionSeedPrompt,
   buildCollectionActionSeedPrompt,
+  promptPathsFor,
   resolveCreateItemId,
   toDetail,
   toSummary,
@@ -40,11 +43,23 @@ import type {
   LoadedCollection,
   RecordIssue,
 } from "../../workspace/collections/index.js";
+import {
+  buildRemoteView,
+  mutateRemoteView,
+  mutateRemoteViewFailureMessage,
+  remoteViewFailureMessage,
+  remoteViewItems,
+  remoteViewItemsFailureMessage,
+  type MutateRemoteViewResult,
+  type RemoteViewBuildResult,
+  type RemoteViewItemsResult,
+} from "../../workspace/collections/remoteView.js";
+import { clampLimit, clampOffset, normalizeFields, normalizeMutate } from "@mulmoclaude/core/remote-view";
 import { badRequest, notFound, conflict, forbidden, serverError } from "../../utils/httpError.js";
 import { errorMessage } from "../../utils/errors.js";
 import { log } from "../../system/logger/index.js";
 import { workspacePath } from "../../workspace/workspace.js";
-import { refreshOne } from "../../workspace/feeds/index.js";
+import { refreshOne } from "@mulmoclaude/core/feeds/server";
 import { manageCollection } from "../../agent/mcp-tools/manageCollection.js";
 import { clampCapabilities, mintViewToken, requireViewToken, type ViewCapability } from "../auth/viewToken.js";
 
@@ -93,10 +108,24 @@ interface ActionSeedResponse {
   role: string;
 }
 
+// Client-list summary: the static `toSummary` plus, for a collection that
+// declares `dynamicIcon`, the computed icon + the source slug(s) a live
+// view should watch (see `useDynamicShortcutIcons`). Collections without
+// `dynamicIcon` take the fast path (no record read) — only this endpoint
+// pays the compute cost; `toDetail`/`toSummary` elsewhere stay static.
+async function toClientSummary(collection: LoadedCollection): Promise<CollectionSummary> {
+  const summary = toSummary(collection);
+  const spec = collection.schema.dynamicIcon;
+  if (!spec) return summary;
+  const icon = await computeCollectionIcon(collection);
+  return { ...summary, icon, iconSources: [spec.source.collection] };
+}
+
 router.get(API_ROUTES.collections.list, async (_req: Request, res: Response<CollectionsListResponse>) => {
   try {
     const collections = await discoverCollections();
-    res.json({ collections: collections.map(toSummary) });
+    const summaries = await Promise.all(collections.map(toClientSummary));
+    res.json({ collections: summaries });
   } catch (err) {
     log.warn("collections", "list failed", { error: errorMessage(err) });
     serverError(res, errorMessage(err));
@@ -180,7 +209,7 @@ router.post(API_ROUTES.collections.items, async (req: Request<{ slug: string }>,
   const itemId = resolveCreateItemId(collection.schema, record) ?? generateItemId();
   const recordWithId: CollectionItem = { ...record, [collection.schema.primaryKey]: itemId };
   try {
-    const result = await writeItem(collection.dataDir, itemId, recordWithId, { refuseOverwrite: true });
+    const result = await writeItem(collection.dataDir, itemId, recordWithId, { refuseOverwrite: true, slug: collection.slug });
     if (result.kind === "invalid-id") {
       badRequest(res, `invalid item id: ${result.itemId}`);
       return;
@@ -224,7 +253,7 @@ router.put(API_ROUTES.collections.item, async (req: Request<{ slug: string; item
   // record id never drift.
   const recordWithId: CollectionItem = { ...record, [primaryKey]: req.params.itemId };
   try {
-    const result = await writeItem(collection.dataDir, req.params.itemId, recordWithId);
+    const result = await writeItem(collection.dataDir, req.params.itemId, recordWithId, { slug: collection.slug });
     if (result.kind === "invalid-id") {
       badRequest(res, `invalid item id: ${result.itemId}`);
       return;
@@ -254,7 +283,7 @@ router.delete(API_ROUTES.collections.item, async (req: Request<{ slug: string; i
     return;
   }
   try {
-    const result = await deleteItem(collection.dataDir, req.params.itemId);
+    const result = await deleteItem(collection.dataDir, req.params.itemId, { slug: collection.slug });
     if (result.kind === "invalid-id") {
       badRequest(res, `invalid item id: ${result.itemId}`);
       return;
@@ -279,6 +308,13 @@ interface RefreshResponse {
   refreshed: true;
   written: number;
   errors: string[];
+  /** True when an agent-ingest refresh dispatched a worker (fire-and-forget):
+   *  records update asynchronously, so the client shows a note rather than a
+   *  written count. */
+  dispatched?: boolean;
+  /** The visible worker's chat session id (manual Refresh only) so the client
+   *  can open it to watch the refresh run. */
+  chatId?: string;
 }
 
 // Re-run a feed collection's retrieval now. Generic over kind — the
@@ -296,9 +332,12 @@ router.post(API_ROUTES.collections.refresh, async (req: Request<{ slug: string }
     return;
   }
   try {
-    const result = await refreshOne(workspacePath, collection);
-    log.info("collections", "feed refreshed via collection route", { slug: collection.slug, written: result.written });
-    res.json({ refreshed: true, written: result.written, errors: result.errors });
+    // Manual Refresh button → run a VISIBLE worker (hidden:false) so the user
+    // can open the session and watch/debug it. Scheduled refreshes (the
+    // `refreshDue` loop) stay hidden. Declarative feeds ignore the flag.
+    const result = await refreshOne(workspacePath, collection, { hidden: false });
+    log.info("collections", "feed refreshed via collection route", { slug: collection.slug, written: result.written, dispatched: result.dispatched ?? false });
+    res.json({ refreshed: true, written: result.written, errors: result.errors, dispatched: result.dispatched, chatId: result.chatId });
   } catch (err) {
     log.warn("collections", "feed refresh failed", { slug: collection.slug, error: errorMessage(err) });
     serverError(res, errorMessage(err));
@@ -340,7 +379,7 @@ router.post(API_ROUTES.collections.itemAction, async (req: Request<{ slug: strin
       return;
     }
     log.info("collections", "action seed built", { slug: collection.slug, itemId: req.params.itemId, actionId: action.id });
-    res.json({ prompt: buildActionSeedPrompt(record, template), role: action.role });
+    res.json({ prompt: buildActionSeedPrompt(record, template, promptPathsFor(collection, workspacePath)), role: action.role });
   } catch (err) {
     log.warn("collections", "action seed failed", {
       slug: collection.slug,
@@ -361,7 +400,7 @@ async function buildCollectionActionSeed(collection: LoadedCollection, action: C
   if (template === null) return null;
   const items = await listItems(collection.dataDir);
   log.info("collections", "collection action seed built", { slug: collection.slug, actionId: action.id, items: items.length });
-  return { prompt: buildCollectionActionSeedPrompt(items, collection.schema, template), role: action.role };
+  return { prompt: buildCollectionActionSeedPrompt(items, collection.schema, template, promptPathsFor(collection, workspacePath)), role: action.role };
 }
 
 // Like the per-record route but with no `itemId`: there is no record to read or
@@ -467,6 +506,171 @@ router.get(API_ROUTES.collections.viewFile, async (req: Request<{ slug: string }
     res.type("text/html").send(html);
   } catch (err) {
     log.warn("collections", "view-file read failed", { slug: req.params.slug, error: errorMessage(err) });
+    serverError(res, errorMessage(err));
+  }
+});
+
+/** Map a non-ok remote-view build to its HTTP error (message shared with the
+ *  channel handler via `remoteViewFailureMessage`). */
+function sendRemoteViewFailure(res: Response, result: Exclude<RemoteViewBuildResult, { kind: "ok" }>, slug: string): void {
+  const message = remoteViewFailureMessage(result, slug);
+  if (result.kind === "view-not-found" || result.kind === "file-missing") notFound(res, message);
+  else badRequest(res, message);
+}
+
+// Serve a mobile (`target: "mobile"`) custom view wrapped into its sandboxed
+// srcdoc — the desktop phone-frame preview's data source. Behind the global
+// bearer. Same builder as the command channel's `getRemoteView`, so the
+// preview renders the exact artifact the phone receives
+// (plans/feat-remote-custom-view.md).
+router.get(API_ROUTES.collections.remoteView, async (req: Request<{ slug: string }>, res: Response) => {
+  try {
+    const { slug } = req.params;
+    const viewId = typeof req.query.id === "string" ? req.query.id : "";
+    const locale = typeof req.query.locale === "string" ? req.query.locale : "";
+    const collection = await loadCollection(slug);
+    if (!collection) {
+      notFound(res, `collection '${slug}' not found`);
+      return;
+    }
+    const result = await buildRemoteView(collection, viewId, locale);
+    if (result.kind !== "ok") {
+      sendRemoteViewFailure(res, result, slug);
+      return;
+    }
+    res.json({ view: result.view, srcdoc: result.srcdoc, bytes: result.bytes });
+  } catch (err) {
+    log.warn("collections", "remote-view build failed", { slug: req.params.slug, error: errorMessage(err) });
+    serverError(res, errorMessage(err));
+  }
+});
+
+/** Map a non-ok mutate to its HTTP error (message shared with the channel
+ *  handler via `mutateRemoteViewFailureMessage`). */
+function sendMutateRemoteViewFailure(res: Response, result: Exclude<MutateRemoteViewResult, { kind: "ok" }>, slug: string): void {
+  const message = mutateRemoteViewFailureMessage(result, slug);
+  if (result.kind === "view-not-found" || result.kind === "item-not-found") notFound(res, message);
+  else if (result.kind === "not-writable" || result.kind === "delete-not-allowed" || result.kind === "field-not-editable" || result.kind === "path-escape")
+    forbidden(res, message);
+  else badRequest(res, message);
+}
+
+// Apply one update/delete on behalf of a mobile view — the desktop phone-frame
+// preview's write channel. Behind the global bearer. Same builder + policy as
+// the command channel's `mutateRemoteViewItem`, so a preview mutation runs the
+// EXACT enforcement the phone will (plans/feat-remote-writable-view.md).
+router.post(API_ROUTES.collections.remoteViewMutate, async (req: Request<{ slug: string; viewId: string }>, res: Response) => {
+  try {
+    const { slug, viewId } = req.params;
+    const body = (req.body ?? {}) as { op?: unknown; id?: unknown; patch?: unknown };
+    const request = normalizeMutate(body);
+    if (!request) {
+      badRequest(res, "invalid mutate request — expected { op: 'update'|'delete', id, patch? }");
+      return;
+    }
+    const collection = await loadCollection(slug);
+    if (!collection) {
+      notFound(res, `collection '${slug}' not found`);
+      return;
+    }
+    const result = await mutateRemoteView(collection, viewId, request);
+    if (result.kind !== "ok") {
+      sendMutateRemoteViewFailure(res, result, slug);
+      return;
+    }
+    log.info("collections", "remote-view mutate", { slug, viewId, op: result.op });
+    res.json(result.op === "delete" ? { op: "delete", id: result.id } : { op: "update", item: result.item });
+  } catch (err) {
+    log.warn("collections", "remote-view mutate failed", { slug: req.params.slug, viewId: req.params.viewId, error: errorMessage(err) });
+    serverError(res, errorMessage(err));
+  }
+});
+
+/** A `fields` projection arrives as a CSV query string (`?fields=title,photo`)
+ *  or repeated params; hand `normalizeFields` an array either way. */
+function csvParam(value: unknown): string[] | undefined {
+  if (Array.isArray(value)) return value.map((entry) => String(entry));
+  if (typeof value === "string" && value.length > 0) return value.split(",");
+  return undefined;
+}
+
+/** Map a non-ok item-page build to its HTTP error (message shared with the
+ *  channel handler via `remoteViewItemsFailureMessage`). */
+function sendRemoteViewItemsFailure(res: Response, result: Exclude<RemoteViewItemsResult, { kind: "ok" }>, slug: string): void {
+  const message = remoteViewItemsFailureMessage(result, slug);
+  if (result.kind === "view-not-found") notFound(res, message);
+  else badRequest(res, message);
+}
+
+// One page of a mobile view's records with its declared `imageFields` inlined as
+// `data:` URL thumbnails — the desktop phone-frame preview's paging source.
+// Behind the global bearer. Same builder as the command channel's
+// `getRemoteViewItems`, so the preview pages the exact data (real thumbnails)
+// the phone will (plans/feat-remote-view-images.md).
+router.get(API_ROUTES.collections.remoteViewItems, async (req: Request<{ slug: string; viewId: string }>, res: Response) => {
+  try {
+    const { slug, viewId } = req.params;
+    const request = { offset: clampOffset(req.query.offset), limit: clampLimit(req.query.limit), fields: normalizeFields(csvParam(req.query.fields)) };
+    const collection = await loadCollection(slug);
+    if (!collection) {
+      notFound(res, `collection '${slug}' not found`);
+      return;
+    }
+    const result = await remoteViewItems(collection, viewId, request);
+    if (result.kind !== "ok") {
+      sendRemoteViewItemsFailure(res, result, slug);
+      return;
+    }
+    res.json({ page: result.page, inlined: result.inlined, omitted: result.omitted });
+  } catch (err) {
+    // Strip CR/LF from request-derived params before logging (log-injection
+    // resistance, same convention as the view-i18n handler below).
+    log.warn("collections", "remote-view items failed", {
+      slug: req.params.slug.replace(/[\r\n]/g, " "),
+      viewId: req.params.viewId.replace(/[\r\n]/g, " "),
+      error: errorMessage(err),
+    });
+    serverError(res, errorMessage(err));
+  }
+});
+
+// Translation dict for ONE custom view, locale-filtered server-side. The
+// client passes its active app locale; the host returns only that locale's
+// strings (fallback `"en"`, then `{}`). The view never sees other locales'
+// strings — the host is the picker, the iframe is the consumer. Empty dict
+// + `locale: ""` when the view has no `i18n` declared or the file is
+// absent / malformed; the iframe-side `__MC_VIEW.t(key)` falls back to the
+// key, so an i18n-less view keeps working unchanged.
+router.get(API_ROUTES.collections.viewI18n, async (req: Request<{ slug: string }>, res: Response) => {
+  try {
+    const { slug } = req.params;
+    const viewId = typeof req.query.id === "string" ? req.query.id : "";
+    const locale = typeof req.query.locale === "string" ? req.query.locale : "";
+    const collection = await loadCollection(slug);
+    if (!collection) {
+      notFound(res, `collection '${slug}' not found`);
+      return;
+    }
+    const view = (collection.schema.views ?? []).find((entry) => entry.id === viewId);
+    if (!view) {
+      notFound(res, `custom view '${viewId}' not found on collection '${slug}'`);
+      return;
+    }
+    if (!view.i18n) {
+      // The view declared no translation file — return the empty contract so
+      // the client doesn't have to special-case "no i18n" with a different
+      // shape. `t(key)` will just echo the key.
+      res.json({ locale: "", dict: {} });
+      return;
+    }
+    const result = await readCustomViewI18n(collection, view.i18n, locale);
+    res.json(result);
+  } catch (err) {
+    // Strip CR/LF before logging — `loadCollection` already rejects malformed
+    // slugs above (so this path always has a safe slug in practice), but
+    // belt-and-suspenders for log-injection / forged-line resistance per
+    // CodeRabbit review on #1842.
+    log.warn("collections", "view-i18n read failed", { slug: req.params.slug.replace(/[\r\n]/g, " "), error: errorMessage(err) });
     serverError(res, errorMessage(err));
   }
 });

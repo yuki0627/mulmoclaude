@@ -8,27 +8,27 @@
 
 **English** · [日本語](README.ja.md) · [简体中文](README.zh.md) · [한국어](README.ko.md) · [Español](README.es.md) · [Português (BR)](README.pt-BR.md) · [Français](README.fr.md) · [Deutsch](README.de.md)
 
+**An AI assistant that knows everything about you and supports you around the clock is not sold anywhere. You cannot buy one — you can only nurture one. MulmoClaude is a tool for nurturing your own AI assistant, on your own computer.**
+
+The substance of an assistant is not the AI model — the model is just the engine. What makes an assistant valuable is how much it knows about you: your conversations, your calendar, your notes, your data, and the apps you use. Something that important should not be entrusted to any single service provider — the longer you use it, the harder it becomes to leave. MulmoClaude is open source and runs locally, so everything your assistant accumulates — memories, data, apps — stays in your own hands, as plain files in your workspace.
+
+Nurturing takes an environment, and MulmoClaude provides one: a place to accumulate memories (a personal wiki that Claude builds and maintains itself), a place to keep your data (schema-driven collections, feeds, plain files), and a place to build apps just for you — no programming knowledge required. You say "I want something like this" in everyday words, and Claude builds the small app you need: a restaurant list, an invoice tracker, vocabulary practice — software for an audience of one. Right after install the garden is empty; you plant seeds and tend the soil, and grow an assistant that is yours alone.
+
+And the assistant is not tied to your desk. Log in from your phone — or a messaging app you already use — and you reach the same assistant living on your computer. The relay server only carries messages in transit — your memories, data, and apps never leave your computer.
+
+Under the hood, MulmoClaude is an AI-native application platform: capabilities are plugins in a single registry (today: a full accounting system with real server-side bookkeeping logic, a personal wiki, an SEC-filings reader, and more), Claude acts as a universal controller that composes across them, and chat summons the right GUI for each task — markdown, charts, forms, wikis, spreadsheets, or 3D scenes.
+
 > **[How AI-Native Applications Should Be Built](MANIFEST.md)** — the architecture, UX, and protocol thesis behind MulmoClaude.
-
-MulmoClaude is an open-source, AI-native application platform that runs locally on your machine. Instead of siloed apps, capabilities are built as plugins within a single registry. Applications running on it today include a full accounting system (real server-side bookkeeping logic), a personal wiki, and an SEC-filings reader (Edgar). Claude acts as a universal controller that composes across these plugins.
-
-You interact in natural language, and Claude summons the right GUI for the task — replying in markdown, charts, forms, wikis, spreadsheets, or 3D scenes. All data lives as plain files in your workspace.
 
 ## Quick Start
 
 ```bash
-# 1. Clone and install
-git clone git@github.com:receptron/mulmoclaude.git
-cd mulmoclaude && yarn install
-
-# 2. Configure (optional — image generation requires Gemini API key)
-cp .env.example .env   # edit .env to add GEMINI_API_KEY
-
-# 3. Run
-yarn dev
+npx mulmoclaude@latest
 ```
 
-Open [http://localhost:5173](http://localhost:5173). That's it — start chatting.
+The launcher boots the server and opens [http://localhost:3001](http://localhost:3001) in your browser. That's it — start chatting.
+
+> **Keep it running**: closing the terminal stops the server. To run in the background, launch inside `tmux` / `screen` (macOS/Linux) or as a startup task (Windows Task Scheduler).
 
 ### Prerequisites
 
@@ -39,8 +39,22 @@ Open [http://localhost:5173](http://localhost:5173). That's it — start chattin
   - Linux: `apt install ffmpeg`
   - Windows: `winget install Gyan.FFmpeg`
 - **Docker Desktop** (optional but recommended) — enables sandbox mode. See [Installing Docker Desktop](#installing-docker-desktop) below
+- **whisper.cpp** (optional, macOS only) — enables local voice input (dictate chat messages). See [Optional: Local Voice Input](#optional-local-voice-input-macos) below
 
 > **UI language**: 8 locales are supported (English, Japanese, Simplified Chinese, Korean, Spanish, Brazilian Portuguese, French, German). The default is auto-detected from the browser / OS language. To set it explicitly, put `VITE_LOCALE=ja` (or `zh` / `ko` / `es` / `pt-BR` / `fr` / `de`) in `.env`. Locale is picked at build/dev time; restart `yarn dev` after changing it. See [`docs/developer.md`](docs/developer.md#i18n-vue-i18n) for how to add strings.
+
+### Run from source (for developers)
+
+To modify the code instead of just running it:
+
+```bash
+git clone git@github.com:receptron/mulmoclaude.git
+cd mulmoclaude && yarn install
+cp .env.example .env   # optional — add GEMINI_API_KEY for image generation
+yarn dev
+```
+
+Open [http://localhost:5173](http://localhost:5173). See [`docs/developer.md`](docs/developer.md) for architecture and scripts.
 
 ## What can you do?
 
@@ -413,6 +427,39 @@ These tools are **only available in custom roles**. The built-in roles do not in
 
 Once configured, you can paste any `x.com` or `twitter.com` URL into the chat and Claude will fetch and read it automatically.
 
+## Optional: Local Voice Input (macOS)
+
+Dictate chat messages instead of typing them. Click the mic button to start listening; as you pause, each spoken segment is transcribed and appended to the input for review before you send it. Click again to stop. Once turned on, the mic stays armed for the session — it pauses while the agent is responding and resumes automatically on your next turn. Transcription runs **entirely on the machine running MulmoClaude** via [whisper.cpp](https://github.com/ggml-org/whisper.cpp) with Metal acceleration: no audio leaves the device, no per-minute API cost. The transcribed text is never auto-sent — you review and send it yourself.
+
+This is **disabled by default** and **macOS-only** (Apple Silicon recommended). The mic button stays hidden until the feature is set up and enabled.
+
+### Setup
+
+1. **Install `cmake` first.** The build script compiles whisper.cpp from source and requires `cmake` — it aborts with an error if `cmake` is missing. Install it before running the script:
+
+   ```bash
+   brew install cmake
+   ```
+
+2. **Build and install the `whisper-server` binary.** Homebrew's `whisper-cpp` formula ships only `whisper-cli` (it builds with the server target off), so build from source with the bundled script:
+
+   ```bash
+   yarn build:whisper      # clones + builds whisper.cpp, links whisper-server onto PATH
+   ```
+
+   Verify with `whisper-server --help`. By default the binaries are linked into `/opt/homebrew/bin`; pass `--link-dir=<dir>` (a directory on your `PATH`) or `--ref=<git-tag>` to customize. `ffmpeg` is also required (see [Prerequisites](#prerequisites)).
+
+3. **Restart `yarn dev`** so the server re-probes for the binary.
+
+4. **Enable it in the app.** Open **Settings → Voice**, turn on **Enable voice input**. This downloads the speech model (`large-v3-turbo`, ~1.5 GB) once into `~/mulmoclaude/models/` with a progress bar. When it reaches "Model ready," the mic button appears in the chat input.
+
+### Notes
+
+- **Language** is auto-detected from your UI/browser locale, with a per-session override and an `auto` option that lets Whisper detect the spoken language from the audio.
+- **Model choice**: `large-v3-turbo` (default), `small`, and `base` are selectable in Settings → Voice; the lighter models suit lower-RAM machines.
+- **Privacy**: audio is processed on-device and temporary files are deleted immediately after transcription. (The "on-device" guarantee assumes you run the server on your own machine.)
+- Models live under `~/mulmoclaude/models/` — deliberately outside the git-managed `data/` workspace tree. Disabling the feature offers to delete the downloaded weights.
+
 ## Configuring Additional Tools (Web Settings)
 
 The gear icon in the sidebar opens a Settings modal where you can extend Claude's tool set without editing code. Changes apply on the next message (no server restart required).
@@ -527,6 +574,27 @@ The canvas (right panel) supports 8 view modes, switchable via the launcher tool
 
 Every view mode is URL-driven: clicking a launcher button updates `?view=`, and landing on a URL with `?view=wiki` (for example) restores the corresponding view. The view mode list is defined once in `src/utils/canvas/viewMode.ts` — adding a new mode is a single array append.
 
+## Remote Access
+
+Reach your running MulmoClaude from a phone (or any browser) — browse its collections, feeds, and custom views, and start chats, from anywhere. There is no separate account or server to set up: access is granted simply by signing in to **both** ends with the **same Google account**.
+
+**How to connect**
+
+1. On the desktop, click the **phonelink** icon in the header to open the _Remote host_ popover, then choose **Sign in with Google**. MulmoClaude signs in as your Google user and opens a command channel over Firebase (the shared public [`mulmoserver`](https://mulmoserver.web.app) project). The icon turns green while the host is online.
+2. On your phone, open **[https://mulmoserver.web.app](https://mulmoserver.web.app)** and sign in with the **same Google account**. The web app finds your online host and connects to it.
+
+Because both ends authenticate as the same Firebase user, the phone and the desktop only ever meet inside your own user space — no third party can reach your host.
+
+**Firebase and Firestore are used purely as a transport** — a relay to pass commands and responses between your phone and your desktop. Your data is **never stored or retained** on either. Nothing lives on the host except your local workspace files; anything that must cross the channel (such as an attachment staged through Firebase Storage) is deleted as soon as it reaches its destination.
+
+**What you can do from the phone**
+
+- Browse and page through your **collections** and **feeds**.
+- Open **custom remote views** — mobile-friendly pages Claude builds for you. Ask Claude to build a _custom remote view_ (not a regular custom view), which can be read-only or writable.
+- **Start a chat** on the host and attach **photos, videos, or PDFs** from the phone. Attachment bytes are too large for the command channel, so they stage through Firebase Storage; the host downloads each file into its workspace (`data/attachments/`), deletes the staged copy, and hands the file to Claude alongside your message.
+
+The channel is command-based and host-driven: the phone issues requests and your desktop MulmoClaude answers them. Use **Disconnect** in the popover (or quit MulmoClaude) to take the host offline.
+
 ## Workspace
 
 All data is stored as plain files in the workspace directory, grouped into four semantic buckets (#284):
@@ -551,6 +619,18 @@ dedicated view. Ask Claude to "set up a todo list" and it follows
 status enum (`Backlog / Todo / In Progress / Done`) with a `done`
 toggle, optional priority / due-date fields, and a kanban / table /
 calendar view picked automatically from the schema.
+
+### Sharing collections — Discover and Contribute
+
+The `/collections` page has a **Discover** tab that lists collections curated
+in public **registries**. Click **Import** on any card to install a collection
+into your workspace; click the small **Contribute** icon on an installed
+collection to publish it back as a PR to the registry. By default only the
+official [`receptron/mulmoclaude-collections`](https://github.com/receptron/mulmoclaude-collections)
+registry is shown — you can add your own org / community / private registries
+by dropping a `config/collections-registries.json` file in your workspace. See
+[`docs/collection-registries.md`](docs/collection-registries.md) for the file
+format, how multi-registry merging works, and how to author your own registry.
 
 ### Scheduler and skill scheduling
 

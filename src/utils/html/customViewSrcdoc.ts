@@ -1,5 +1,5 @@
 // Build the sandboxed-iframe `srcdoc` for a custom collection view (see
-// plans/feat-collections-custom-views.md). Pure (takes the server origin
+// plans/done/feat-collections-custom-views.md). Pure (takes the server origin
 // explicitly instead of reading `window`), so it's unit-testable and keeps
 // the script-tag string out of the .vue SFC source.
 //
@@ -7,10 +7,71 @@
 // view's own scripts:
 //   1. a CSP <meta> with connect-src = the server origin (the view may fetch
 //      its data endpoint but no third party), and
-//   2. `window.__MC_VIEW = { slug, token, dataUrl }` — the scoped capability
-//      token + the absolute data URL the view reads.
+//   2. `window.__MC_VIEW = { slug, token, dataUrl, origin, onChange, openItem,
+//      startChat }` — the scoped capability token + the absolute data URL the
+//      view reads, plus an `onChange(cb)` live-refresh subscription, an
+//      `openItem(id, mode)` helper that asks the host to open a record in its
+//      shared modal, and a `startChat(prompt, role)` helper that asks the host
+//      to open a new chat with `prompt` prefilled for the user to approve (see
+//      below).
 
-import { buildCustomViewCsp } from "./previewCsp";
+import { buildCustomViewCsp, type CspExtraHosts } from "./previewCsp";
+
+/** Debounce (ms) for the in-iframe live-refresh helper — collapses a burst of
+ *  parent change-pings (e.g. a bulk write) into a single `onChange` callback. */
+const ONCHANGE_DEBOUNCE_MS = 150;
+
+/** The in-iframe bootstrap appended after `window.__MC_VIEW = {…}`. It installs
+ *  the view↔host bridge:
+ *
+ *  - `onChange(cb)`: the view author's one-line opt-in to live refresh. The host
+ *    parent (`CollectionCustomView.vue`) relays a `{ type: "mc-collection-changed",
+ *    slug }` message into the iframe whenever the collection's data changes; this
+ *    validates the message came from the parent, is for THIS collection,
+ *    debounces, and invokes every registered callback. The message carries no
+ *    secret and only triggers a re-fetch through the token the view already holds.
+ *  - `openItem(id, mode)`: posts a `{ type: "mc-open-item", slug, id, mode }`
+ *    ping up to the parent, which opens the record in the host's shared modal.
+ *    The payload carries no secret (slug + id are already known to the view) and
+ *    is sent to the known parent origin (`v.origin`). Opening the host's own
+ *    modal is a user action through trusted UI, so it needs no `write`
+ *    capability even for `mode: "edit"` — the save still goes through the host.
+ *  - `startChat(prompt, role)`: posts a `{ type: "mc-start-chat", slug, prompt,
+ *    role }` ping up to the parent, which opens a NEW chat session with `prompt`
+ *    prefilled in the composer as an editable draft — it does NOT auto-send. The
+ *    user reviews / edits / sends (or clears) it, so the view's code can only
+ *    propose text; no capability is required. `role` is optional and validated
+ *    host-side (falls back to the general role). Sent to `v.origin`, no secret.
+ *  - CSP-violation reporter: a `securitypolicyviolation` listener posts a
+ *    `{ type: "mc-csp-violation", slug, blockedURI, violatedDirective }` ping
+ *    to the host (#1989) so a blocked resource (e.g. a Google Maps embed the
+ *    user hasn't allowed in `config/csp.json`) surfaces as an actionable
+ *    notice instead of failing silently. Informational only, carries no secret.
+ *
+ *  Self-contained string (no `</script>` sequence, no `<`, no `${`). */
+function viewBridgeBootstrap(): string {
+  // One line on purpose — it's inlined into the iframe's bootstrap <script>.
+  // Uses single quotes throughout (no `</script>`, no `<`, no `${`) so it stays
+  // intact inside the template literal and inside the script element.
+  // `cbs.slice()` snapshots the listeners before dispatch so a callback that
+  // unsubscribes itself can't shift the array and skip the next one.
+  //
+  // `v.t(key, named)` is a tiny **vue-i18n-compatible** translation helper.
+  // The on-disk dict shape mirrors vue-i18n's locale messages so an author can
+  // copy their app's locale JSON verbatim, and the iframe API mirrors
+  // vue-i18n's `t('msg', { name: 'x' })` signature:
+  //   - lookup `v.dict[key]` (host-picked, locale-filtered server-side);
+  //   - substitute `{name}` placeholders from `named` (vue-i18n "named
+  //     interpolation"; numeric `{0}` works too — same `\w+` token);
+  //   - fall back to the key itself when the dict is missing or the entry
+  //     isn't a string.
+  // v1 scope: named interpolation only — no pluralization, no linked
+  // messages, no formatter. Most view-level UIs need exactly this, and
+  // shipping the full vue-i18n runtime into every sandboxed iframe (~50KB)
+  // would dominate the page weight. Authors who need plurals can pre-pick
+  // per-count keys client-side.
+  return `(function(){var v=window.__MC_VIEW,cbs=[],t;function fire(){t=undefined;cbs.slice().forEach(function(cb){try{cb()}catch(e){}});}window.addEventListener('message',function(e){if(e.source!==window.parent)return;var d=e.data;if(!d||d.type!=='mc-collection-changed'||d.slug!==v.slug)return;if(t)clearTimeout(t);t=setTimeout(fire,${ONCHANGE_DEBOUNCE_MS});});v.onChange=function(cb){if(typeof cb!=='function')return function(){};cbs.push(cb);return function(){var i=cbs.indexOf(cb);if(i>=0)cbs.splice(i,1);};};v.openItem=function(id,mode){window.parent.postMessage({type:'mc-open-item',slug:v.slug,id:String(id),mode:mode==='edit'?'edit':'view'},v.origin);};v.startChat=function(prompt,role){window.parent.postMessage({type:'mc-start-chat',slug:v.slug,prompt:String(prompt),role:typeof role==='string'?role:undefined},v.origin);};v.dict=v.dict||{};v.t=function(key,named){var s=v.dict[key];if(typeof s!=='string')return typeof key==='string'?key:String(key);if(!named||typeof named!=='object')return s;return s.replace(/\\{(\\w+)\\}/g,function(m,n){var x=named[n];return x==null?m:String(x);});};document.addEventListener('securitypolicyviolation',function(e){window.parent.postMessage({type:'mc-csp-violation',slug:v.slug,nonce:v.cspNonce,blockedURI:e.blockedURI,violatedDirective:e.violatedDirective,effectiveDirective:e.effectiveDirective},v.origin);});})();`;
+}
 
 export interface CustomViewBootstrap {
   slug: string;
@@ -23,22 +84,37 @@ export interface CustomViewBootstrap {
   /** Explicit server origin — used for both the CSP and the absolute
    *  dataUrl (the sandboxed iframe's own origin is opaque). */
   origin: string;
+  /** The locale the dict was picked for (e.g. `"en"`, `"ja"`); empty when the
+   *  view has no `i18n` declared or no locale block matched. The bootstrap
+   *  always exposes `__MC_VIEW.locale`; an empty string means "no
+   *  translations available". */
+  locale?: string;
+  /** Flat key→string map the host already locale-filtered server-side. The
+   *  iframe sees ONLY this locale's strings (never the full multi-locale
+   *  JSON). Optional / may be `{}` — the `t()` helper falls back to the key. */
+  dict?: Record<string, string>;
 }
 
 function absoluteDataUrl(dataUrl: string, origin: string): string {
   return dataUrl.startsWith("/") ? `${origin}${dataUrl}` : dataUrl;
 }
 
-export function buildCustomViewSrcdoc(html: string, boot: CustomViewBootstrap): string {
-  const cspMeta = `<meta http-equiv="Content-Security-Policy" content="${buildCustomViewCsp(boot.origin)}">`;
+export function buildCustomViewSrcdoc(html: string, boot: CustomViewBootstrap, cspExtra: CspExtraHosts = {}, cspNonce = ""): string {
+  const cspMeta = `<meta http-equiv="Content-Security-Policy" content="${buildCustomViewCsp(boot.origin, undefined, cspExtra)}">`;
   // `<`-escape the JSON so a hostile token/slug value can't break out of the
-  // <script> element.
+  // <script> element. The same escape covers translation strings dropped into
+  // `dict` — a malicious author who managed to land a `</script>` literal in
+  // a translation value still can't break out of the bootstrap.
   const json = JSON.stringify({
     slug: boot.slug,
     token: boot.token,
     dataUrl: absoluteDataUrl(boot.dataUrl, boot.origin),
+    origin: boot.origin, // target origin for openItem's postMessage to the parent
+    cspNonce, // echoed in mc-csp-violation so the host can trust the sender (#1989)
+    locale: boot.locale ?? "",
+    dict: boot.dict ?? {},
   }).replace(/</g, "\\u003c");
-  const injection = `${cspMeta}<script>window.__MC_VIEW=${json};</script>`;
+  const injection = `${cspMeta}<script>window.__MC_VIEW=${json};${viewBridgeBootstrap()}</script>`;
   if (/<head\b[^>]*>/i.test(html)) {
     return html.replace(/(<head\b[^>]*>)/i, `$1${injection}`);
   }

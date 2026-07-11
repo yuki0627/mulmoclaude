@@ -19,7 +19,9 @@ const router = Router();
 
 const MARKDOWN_CSS = `
   body {
-    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial,
+                 "Hiragino Sans", "Hiragino Kaku Gothic ProN", "Yu Gothic", Meiryo,
+                 "Noto Sans CJK JP", "Noto Sans JP", sans-serif;
     font-size: 13px;
     line-height: 1.6;
     color: #1f2937;
@@ -246,7 +248,7 @@ async function renderPdf(fullHtml: string, format: "Letter" | "A4" = "Letter"): 
   }
 }
 
-async function renderMarpPdf(markdown: string, baseDir?: string): Promise<Buffer> {
+async function renderMarpHtml(markdown: string, baseDir?: string): Promise<{ fullHtml: string; slideWidth: number; slideHeight: number }> {
   // Shared render core (@mulmoclaude/markdown-plugin) — the MarpView
   // preview and every host's PDF export use the same Marp config + theme
   // registration + custom-size bridging, so they can't drift. Twemoji
@@ -273,7 +275,28 @@ div.marpit > svg > foreignObject > section img:not([data-marp-twemoji]) {
   max-height: 60cqh;
   object-fit: contain;
 }
+/* CJK font fallback for headless-Chromium PDF render (#1821). The Marp
+   default theme's font-family is Latin-only, so puppeteer renders
+   Japanese / Chinese / Korean glyphs as tofu on hosts without a CJK
+   font. Append a CJK stack on the section root — macOS / Windows hit
+   Hiragino / Yu Gothic / Meiryo, Linux hits Noto Sans CJK (must be
+   installed on the host). Scoped to the section selector only (no
+   descendant combinator) so the cascade still lets the theme's
+   per-element fonts win — code and pre keep their monospace stack
+   and are not silently replaced with this sans-serif chain. Code
+   blocks containing CJK still fall through to the OS's monospace
+   CJK substitution (e.g. macOS Osaka / Linux Noto Sans Mono CJK). */
+div.marpit > svg > foreignObject > section {
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial,
+               "Hiragino Sans", "Hiragino Kaku Gothic ProN", "Yu Gothic", Meiryo,
+               "Noto Sans CJK JP", "Noto Sans JP", sans-serif;
+}
 </style></head><body>${inlinedHtml}</body></html>`;
+  return { fullHtml, slideWidth, slideHeight };
+}
+
+async function renderMarpPdf(markdown: string, baseDir?: string): Promise<Buffer> {
+  const { fullHtml, slideWidth, slideHeight } = await renderMarpHtml(markdown, baseDir);
   const browser = await puppeteer.launch({ headless: true });
   try {
     const page = await browser.newPage();
@@ -302,18 +325,34 @@ export interface RenderMarkdownPdfOptions {
   stripFrontmatter?: boolean;
 }
 
+export interface RenderMarkdownHtmlOptions {
+  markdown: string;
+  /** Render via Marp (slide deck) instead of the `marked` pipeline. */
+  marp?: boolean;
+  /** Workspace-relative source dir for resolving relative `<img>` refs. */
+  baseDir?: string;
+  stripFrontmatter?: boolean;
+}
+
+/** Markdown (or a Marp deck) → a self-contained HTML string: CSS inlined
+ *  and local images embedded as data URIs. Shared by the PDF render
+ *  (`renderMarkdownPdf`) and the zip share (`packMarkdownZip`) so the two
+ *  can never drift. */
+export async function renderMarkdownHtml(options: RenderMarkdownHtmlOptions): Promise<string> {
+  const { markdown, marp = false, baseDir, stripFrontmatter = false } = options;
+  if (marp) return (await renderMarpHtml(markdown, baseDir)).fullHtml;
+  const source = stripFrontmatter ? parseFrontmatter(markdown).body : markdown;
+  return wrapHtml(inlineImages(await marked.parse(source), { sourceDir: baseDir }), MARKDOWN_CSS);
+}
+
 /** Render markdown (or a Marp deck) to a PDF buffer. The single code
  *  path behind both `POST /api/pdf/markdown` and the markdown plugin's
  *  `exportPdf` host capability (`server/plugins/markdown-builtin.ts`),
  *  so the HTTP route and the plugin dispatch can never drift. */
 export async function renderMarkdownPdf(options: RenderMarkdownPdfOptions): Promise<Buffer> {
-  const { markdown, marp = false, baseDir, format = "Letter", stripFrontmatter = false } = options;
-  if (marp) {
-    return renderMarpPdf(markdown, baseDir);
-  }
-  const source = stripFrontmatter ? parseFrontmatter(markdown).body : markdown;
-  const html = inlineImages(await marked.parse(source), { sourceDir: baseDir });
-  return renderPdf(wrapHtml(html, MARKDOWN_CSS), format);
+  const { markdown, marp = false, baseDir, format = "Letter" } = options;
+  if (marp) return renderMarpPdf(markdown, baseDir);
+  return renderPdf(await renderMarkdownHtml(options), format);
 }
 
 function sendPdf(res: Response, buffer: Buffer, filename: string): void {

@@ -30,6 +30,11 @@ export const WORKSPACE_FILES = {
    *  data — tied to specific content slugs — so it lives with the
    *  workspace, not in browser localStorage. Shape: `{ shortcuts: [] }`. */
   shortcuts: "config/shortcuts.json",
+  /** Dashboard layout — per-tile view mode + tile order for the grid of
+   *  favorite collections on the /dashboard page. Workspace data (tied
+   *  to content slugs), so it lives with the workspace, not in browser
+   *  localStorage. Shape: `{ tiles: [] }`. */
+  dashboard: "config/dashboard.json",
   /** Install ledger for runtime-loaded plugins (#1043 C-2). One row
    *  per installed plugin; the tgz files sit alongside in `plugins/`,
    *  extracted to `plugins/.cache/<name>/<version>/` on first boot. */
@@ -41,4 +46,15 @@ export const WORKSPACE_FILES = {
   /** Terminated notifier entries (cleared / cancelled), newest-first,
    *  FIFO-capped. Source for the bell popup's History section. */
   notifierHistory: "data/notifier/history.json",
+  /** Optional user-supplied list of extra collection registries to surface in
+   *  the Discover tab alongside the official one. Shape:
+   *  `[{ name, indexUrl, rawBaseUrl }]`. Absent file ⇒ only the official
+   *  registry is shown. */
+  collectionsRegistries: "config/collections-registries.json",
+  /** Optional user-supplied CSP extension for sandboxed HTML views (#1989).
+   *  Per-directive extra hosts ADDED to the hardcoded base policy so a view
+   *  can load e.g. a Google Maps embed. Shape:
+   *  `{ "frame-src": ["https://www.google.com"], ... }`. Absent ⇒ base policy
+   *  only. Widening CSP is a supply-chain / exfiltration surface — see #1989. */
+  csp: "config/csp.json",
 } as const;

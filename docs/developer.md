@@ -79,6 +79,8 @@ All env vars are **optional unless flagged "required"**. The server reads them a
 | `MACOS_REMINDER_NOTIFICATIONS`         | `1` (Darwin) / unset elsewhere | Set to `0` to disable the macOS Reminders sink. The sink mirrors notifications into the system Reminders app via `osascript`. Title and body are passed via argv (not via `osascript` attribute) so notification text containing `osascript`-meta characters can't escape into the script (#789). |
 | `DISABLE_MACOS_REMINDER_NOTIFICATIONS` | unset                          | Alternate kill-switch for the same sink — set to `1` to silence it without changing the primary flag. Auto-enabled in `node:test` runs to keep test output clean.                                                                                                                                 |
 | `MULMOCLAUDE_TRUSTED_ORIGINS`          | unset                          | CSV of additional `Origin` values allowed by the CSRF guard (`server/api/csrfGuard.ts`) for cross-origin state-changing requests. Use to permit a LAN device (e.g. an iPad on `http://192.168.1.42:5173`) to reach the Vite dev server. Match is verbatim — include the scheme and port, no trailing slash. Localhost is always allowed regardless of this list. The literal string `null` (browsers send it for sandboxed iframes / `file://` / `data:` pages) is rejected even if listed — there is no opt-in escape hatch for opaque origins. |
+| `CLAUDE_CONFIG_DIR`                    | `<homedir>/.claude`            | Absolute path to the user's Claude Code CLI config directory. Resolved by `server/utils/claudeConfigPath.ts` and consumed by the sandbox pre-flight (`server/system/docker.ts`), the Docker bind mounts (`server/agent/config.ts`), the credentials probe (`server/index.ts`), and the user-scope skills lookup (`server/workspace/skills/paths.ts`). Override when your install writes elsewhere (corporate Windows redirect, sandboxed test fixture, future Anthropic location change). Issue #87 §2. |
+| `CLAUDE_CONFIG_JSON`                   | `<homedir>/.claude.json`       | Absolute path to the user's top-level Claude Code CLI JSON config. Same override surface as `CLAUDE_CONFIG_DIR` above; resolved by the same helper. |
 
 ### Bridges & relay
 
@@ -206,6 +208,7 @@ Three independent Node processes cooperate at runtime:
   config/             # app configuration
     settings.json     (web Settings UI — extraAllowedTools)
     mcp.json          (Claude CLI --mcp-config compatible)
+    csp.json          (optional — extend the sandbox-view CSP; see csp-config.md)
     roles/            user-defined role overrides
     helps/            synced from server/workspace/helps/ at every boot
   conversations/      # chat + distilled context
@@ -234,7 +237,7 @@ Three independent Node processes cooperate at runtime:
   .mulmoclaude/       internal: per-session MCP config files
 ```
 
-The `config/` dir is the home for the [web Settings UI](../README.md#configuring-additional-tools-web-settings) — `settings.json` carries `extraAllowedTools`, `mcp.json` follows Claude CLI's `--mcp-config` format so you can copy it between machines.
+The `config/` dir is the home for the [web Settings UI](../README.md#configuring-additional-tools-web-settings) — `settings.json` carries `extraAllowedTools`, `mcp.json` follows Claude CLI's `--mcp-config` format so you can copy it between machines. The optional `csp.json` extends the sandbox-view Content Security Policy (e.g. to allow a Google Maps embed) — see [csp-config.md](csp-config.md) for the schema and the security tradeoffs.
 
 Pre-#284 workspaces (with `chat/`, `summaries/`, `memory.md` at the workspace root) are still accepted by the server — old directory names continue to work alongside the modern layout. If you want to clean them up by hand, move them under `conversations/` and `data/` per the tree above.
 

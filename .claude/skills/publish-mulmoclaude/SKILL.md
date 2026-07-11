@@ -64,9 +64,13 @@ For each drifted package:
 # Bump in that package's package.json, then:
 yarn install
 yarn build:packages
-cd packages/<name> && npm publish --access public
+cd packages/<name> && npm publish --access public --registry https://registry.npmjs.org/
 # Tag + GitHub release: see §7.
 ```
+
+> MUST pass `--registry https://registry.npmjs.org/` on every `npm publish`
+> below. The environment's default registry is a private mirror, so
+> without it the package publishes to the wrong registry (or fails auth).
 
 Update mulmoclaude's refs to the new versions. If `chat-service` depends on `protocol`, bump its dep there too.
 
@@ -75,6 +79,28 @@ Update mulmoclaude's refs to the new versions. If `chat-service` depends on `pro
 ```bash
 yarn install         # picks up any new deps from §1
 yarn build           # builds workspace packages AND dist/client (Vite)
+```
+
+### 3.5. README content check (catches "npm-shown README is stale")
+
+`packages/mulmoclaude/README.md` is the file npm displays on the package page. It is hand-curated, NOT auto-copied from the repo root README — so every release should re-read it against what's actually shipping. Run BEFORE §4 / §6.
+
+Open `packages/mulmoclaude/README.md` and verify each of:
+
+- **Features added since the last release** are reflected (collections / Discover / Contribute, Marp slides, sandbox credential flags, new bridges, voice input, plugin authoring, etc.) — at least a one-line mention each.
+- **Removed / renamed features** no longer appear (don't ship `npx mulmoclaude --old-flag` examples after the flag was renamed).
+- **CLI flags** in the "Options" table match `bin/mulmoclaude.js` exactly. Diff: `grep -E "^  --" packages/mulmoclaude/bin/mulmoclaude.js | head -20`.
+- **Env vars** (`MULMOCLAUDE_AUTH_TOKEN`, `SANDBOX_FORWARD_SSH_AGENT`, `SANDBOX_MOUNT_CONFIGS`, `GEMINI_API_KEY`, `DISABLE_SANDBOX`) match the launcher's behaviour.
+- **Bridge npm names** (`@mulmobridge/<x>`) match what's currently published. New bridges added since last release? Add them. Drop any deprecated.
+- **Length** is in the right zone — the file is a focused npm landing page, not a full developer guide. Don't paste in the full repo README (~700 lines today). Target: ~150-200 lines; defer the rest to `docs/` in the repo via links.
+
+When in doubt about a feature's npm-user relevance, default to including a short mention with a "see docs/<file>.md" link rather than a full how-to.
+
+The README is shipped via `package.json`'s standard inclusion — no explicit `files: [...]` entry needed for it. Confirm it's in the tarball:
+
+```bash
+cd packages/mulmoclaude && npm pack --dry-run 2>&1 | grep -E "README" | head -3
+# expect: npm notice <kB> README.md
 ```
 
 ### 4. Local tarball test — verified by CI on every PR, rerun locally when needed
@@ -110,20 +136,49 @@ Expected: **`✓ MulmoClaude is ready` banner + `HTTP 200`**. Any ERR_MODULE_NOT
 
 ### 5. Test-only version rule
 
-When iterating (known-broken 0.1.0 → fixed 0.1.1), keep the published version on a throwaway `0.1.x` line and **don't commit the bumps** until a real test-passed version is confirmed. The `console.log("mulmoclaude X.Y.Z")` string inside `bin/mulmoclaude.js` must match the `package.json` version — update both together (both uncommitted while iterating).
+When iterating (known-broken 0.1.0 → fixed 0.1.1), keep the published version on a throwaway `0.1.x` line and **don't commit the bumps** until a real test-passed version is confirmed. The `console.log("mulmoclaude X.Y.Z")` string inside `bin/mulmoclaude.js` must match the `package.json` version — update both together (both uncommitted while iterating). Recent versions read `version` dynamically from `package.json`, so only `package.json` needs the bump — confirm with `grep "mulmoclaude \${version}" packages/mulmoclaude/bin/mulmoclaude.js` before touching bin.
+
+### 5.5. Sync the ROOT `package.json` version
+
+The launcher's `packages/mulmoclaude/package.json` version is the identity that ships to npm. But the ROOT `package.json` is the identity `/release-app` tags — and they MUST stay in lockstep so a v0.9.5 GitHub Release always corresponds to `mulmoclaude@0.9.5` on npm (no "which one am I running?" ambiguity).
+
+`/publish-mulmoclaude` bumps ROOT to the same version as the launcher, in the same commit. `/release-app` then just reads root, tags it, and writes CHANGELOG — it does NOT bump root again.
+
+```bash
+# Same X.Y.Z as the launcher bump in §5.
+node -e "const fs=require('fs');const p='package.json';const d=JSON.parse(fs.readFileSync(p,'utf8'));d.version='<X.Y.Z>';fs.writeFileSync(p, JSON.stringify(d,null,2)+'\n');"
+jq -r .version package.json   # → <X.Y.Z>
+jq -r .version packages/mulmoclaude/package.json   # must match
+```
 
 ### 6. Publish
 
 ```bash
-cd packages/mulmoclaude && npm publish --access public
+cd packages/mulmoclaude && npm publish --access public --registry https://registry.npmjs.org/
 ```
 
-Verify:
+Verify. The verify's `npx` step needs `--registry=https://registry.npmjs.org/` explicitly — the local environment's default registry is a private mirror that lags the public npm registry by a few minutes after a fresh publish, so the plain `npx --yes mulmoclaude@X.Y.Z` fails with `ETARGET / No matching version found` even when npm.org already has it:
 
 ```bash
-npm view mulmoclaude version
+npm view mulmoclaude version --registry https://registry.npmjs.org/
 rm -rf /tmp/npx-fresh && mkdir /tmp/npx-fresh && cd /tmp/npx-fresh
-npx --yes mulmoclaude@<X.Y.Z> --version
+npx --yes --registry=https://registry.npmjs.org/ mulmoclaude@<X.Y.Z> --version
+```
+
+`/publish-mulmoclaude`'s §2 drift check only covers `@mulmobridge/*` scope — `@mulmoclaude/*` workspace packages (core + plugins under `packages/plugins/*`) are NOT audited. Before publishing the launcher, manually verify every `@mulmoclaude/<name>` in `packages/mulmoclaude/package.json`'s `dependencies` resolves on the public registry:
+
+```bash
+# Local vs npm — a mismatch means a prior chore(release) bumped local
+# without publishing. Publish the missing one from packages/<pkg-dir>
+# BEFORE republishing the launcher, or `npx mulmoclaude@X.Y.Z` fails
+# with ETARGET on the first install.
+for pkg in $(jq -r '.dependencies | keys[] | select(startswith("@mulmoclaude/"))' packages/mulmoclaude/package.json); do
+  dir=$(echo "$pkg" | sed 's|@mulmoclaude/|packages/plugins/|; s|^packages/plugins/core$|packages/core|')
+  local=$(jq -r .version "$dir/package.json" 2>/dev/null)
+  npmv=$(npm view "$pkg" version --registry https://registry.npmjs.org/ 2>/dev/null)
+  marker=" "; [ "$local" != "$npmv" ] && marker="⚠"
+  echo " $marker $pkg local=$local npm=$npmv"
+done
 ```
 
 ### 7. Tag + GitHub release (only for @mulmobridge/* packages that were cascade-bumped)
@@ -154,13 +209,14 @@ EOF
 
 ### 8. Commit + PR
 
-Commit the real (non-test) version bumps + dep additions, push to a feature branch, open a PR. Never push directly to main.
+Commit the real (non-test) version bumps + dep additions, push to a feature branch, open a PR. Never push directly to main. **The root `package.json` bump from §5.5 MUST be part of this commit** so `/release-app` reads the correct version straight away.
 
 ```bash
-git add packages/protocol/package.json packages/chat-service/package.json \
+git add package.json \
+        packages/protocol/package.json packages/chat-service/package.json \
         packages/mulmoclaude/package.json packages/mulmoclaude/bin/mulmoclaude.js \
         yarn.lock
-git commit -m "fix(mulmoclaude): <what>"
+git commit -m "chore(mulmoclaude): bump launcher + root to X.Y.Z"
 git push -u origin <branch>
 gh pr create --title "..." --body "..."
 ```
@@ -175,3 +231,5 @@ gh pr create --title "..." --body "..."
 - `npm pack` in npm 10+ no longer fires `prepublishOnly` — a §4 tarball smoke with the old hook would ship a 4-file stub (just `bin/*`). The package now uses `prepack`, which fires on both `npm pack` and `npm publish`. Caught by the smoke workflow's first real CI run.
 - Dynamic `import("pkg")` with try/catch is a legit pattern for optional native modules (`node-pty`). The audit flags it anyway; declare the package in `optionalDependencies` to signal intent.
 - The launcher's pre-flight refuses to start if `claude --version` fails AND if `~/.claude/*` are absent. CI uses a `claude` stub on PATH + `DISABLE_SANDBOX=1` to bypass both; the smoke only needs the server to serve `/`, no real agent calls.
+- `mulmoclaude@0.9.5` failed the §6 `npx` verify with `ETARGET: @mulmoclaude/collection-plugin@^0.7.4` — a prior `chore(release)` had bumped `packages/plugins/collection-plugin/package.json` to 0.7.4 without publishing. The §2 drift check only audits `@mulmobridge/*`, so `@mulmoclaude/*` slipped through. §6 now includes a manual loop over every `@mulmoclaude/*` dep; extend `scripts/mulmoclaude/drift.mjs` to cover them when appetite for the CI change surfaces.
+- v0.9.3 release-app tagged root=0.9.3 while `mulmoclaude@0.9.4` was already on npm — one patch of drift that made "which one am I running?" ambiguous. §5.5 (root bump in this flow) exists so the launcher npm version and the `/release-app` tag always match.

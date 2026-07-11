@@ -1,9 +1,12 @@
 import "dotenv/config";
+// Wire @mulmoclaude/core/collection/server to this host's workspace + logger
+// before any module that touches collection storage loads.
+import "./workspace/collections/configure.js";
 import express, { Request, Response, NextFunction } from "express";
 import path from "path";
 import { fileURLToPath } from "url";
-import agentRoutes, { startChat } from "./api/routes/agent.js";
-import accountingRoutes from "./api/routes/accounting.js";
+import agentRoutes, { startChat, spawnSystemWorker } from "./api/routes/agent.js";
+import { createAccountingRouter, initAccountingEventPublisher, configureAccountingServer } from "@mulmoclaude/accounting-plugin/server";
 import photoLocationsRoutes from "./api/routes/photo-locations.js";
 import schedulerRoutes from "./api/routes/scheduler.js";
 import sessionsRoutes, { loadAllSessions } from "./api/routes/sessions.js";
@@ -12,11 +15,15 @@ import feedsRoutes from "./api/routes/feeds.js";
 import pluginsRoutes from "./api/routes/plugins.js";
 import imageRoutes from "./api/routes/image.js";
 import attachmentRoutes from "./api/routes/attachment.js";
+import transcribeRoutes from "./api/routes/transcribe.js";
 import presentHtmlRoutes from "./api/routes/presentHtml.js";
+import shareRoutes from "./api/routes/share.js";
+import remoteHostRoutes from "./api/routes/remoteHost.js";
 import presentSvgRoutes from "./api/routes/presentSvg.js";
 import chartRoutes from "./api/routes/chart.js";
 import rolesRoutes from "./api/routes/roles.js";
 import shortcutsRoutes from "./api/routes/shortcuts.js";
+import dashboardRoutes from "./api/routes/dashboard.js";
 import { DEFAULT_ROLE_ID } from "../src/config/roles.js";
 import mulmoScriptRoutes from "./api/routes/mulmo-script.js";
 import wikiRoutes from "./api/routes/wiki.js";
@@ -30,11 +37,15 @@ import configRefreshRoutes from "./api/routes/config-refresh.js";
 import hookLogRoutes from "./api/routes/hookLog.js";
 import skillsRoutes from "./api/routes/skills.js";
 import collectionsRoutes from "./api/routes/collections.js";
+import collectionsRegistryRoutes from "./api/routes/collectionsRegistry.js";
 import { startCollectionWatchers } from "./workspace/collections/watcher.js";
 import runtimePluginRoutes from "./api/routes/runtime-plugin.js";
 // Side-effect: registers the built-in "markdown" dispatch handler so the
 // markdown View's useRuntime().dispatch({ kind }) resolves (task #6).
 import "./plugins/markdown-builtin.js";
+// Side-effect: registers the built-in "html" dispatch handler so the
+// presentHtml View's useRuntime().dispatch({ kind }) resolves (phase 2).
+import "./plugins/html-builtin.js";
 import { loadRuntimePlugins } from "./plugins/runtime-loader.js";
 import { evaluateDevPluginGate, loadDevPlugins, parseDevPluginsEnv } from "./plugins/dev-loader.js";
 import { watchDevPlugins } from "./plugins/dev-watcher.js";
@@ -42,6 +53,7 @@ import { loadPresetPlugins } from "./plugins/preset-loader.js";
 import { registerRuntimePlugins } from "./plugins/runtime-registry.js";
 import { makePluginRuntime } from "./plugins/runtime.js";
 import { MCP_PLUGIN_NAMES } from "./agent/plugin-names.js";
+import { claudeCredentialsPath } from "./utils/claudeConfigPath.js";
 import { setActiveBackend } from "./agent/backend/index.js";
 import { fakeEchoBackend } from "./agent/backend/fake-echo.js";
 import { startMacosReminderAdapter } from "./notifier/macosReminderAdapter.js";
@@ -56,10 +68,11 @@ import { announceOptionalDeps } from "./system/announceOptionalDeps.js";
 import { migrateLegacyBillingPresets } from "./workspace/billing-migration.js";
 import { APP_VERSION } from "./system/appVersion.js";
 import { createChatService } from "@mulmobridge/chat-service";
-import { readSessionJsonl } from "./utils/files/session-io.js";
+import { readSessionJsonl, readSessionMeta } from "./utils/files/session-io.js";
+import { resolveBridgeSessionRole } from "./api/bridge/sessionRole.js";
 import { onSessionEvent, initSessionStore } from "./events/session-store/index.js";
 import { initFileChangePublisher } from "./events/file-change.js";
-import { initAccountingEventPublisher } from "./accounting/eventPublisher.js";
+import { initCollectionChangePublisher } from "./events/collection-change.js";
 import { getRole, loadAllRoles } from "./workspace/roles.js";
 import { discoverSkills } from "./workspace/skills/index.js";
 import { WORKSPACE_PATHS } from "./workspace/paths.js";
@@ -68,7 +81,8 @@ import { serverError } from "./utils/httpError.js";
 import { makeUuid } from "./utils/id.js";
 import { mcpToolsRouter, mcpTools, isMcpToolEnabled } from "./agent/mcp-tools/index.js";
 import { preflightUserServers, logPreflightResult } from "./agent/mcpPreflight.js";
-import { loadMcpConfig } from "./system/config.js";
+import { loadMcpConfig, loadSettings } from "./system/config.js";
+import { getVoiceInputStatus, stopWhisperSidecar, warmupVoiceInput } from "./system/whisper/index.js";
 import { initWorkspace, workspacePath } from "./workspace/workspace.js";
 import { runMemoryMigrationOnce } from "./workspace/memory/run.js";
 import { runTopicMigrationOnce } from "./workspace/memory/topic-run.js";
@@ -78,11 +92,12 @@ import { buildSandboxStatus } from "./api/sandboxStatus.js";
 import { existsSync, readFileSync } from "fs";
 import { realpath as fsRealpath } from "fs/promises";
 import { containsDotfileSegment, resolveWithinRoot } from "./utils/files/safe.js";
-import { cpus, homedir, loadavg } from "os";
+import { cpus, loadavg } from "os";
 import { isDockerAvailable, ensureSandboxImage } from "./system/docker.js";
 import { maybeRunJournal } from "./workspace/journal/index.js";
 import { backfillAllSessions } from "./workspace/chat-index/index.js";
-import { refreshDue as refreshDueFeeds } from "./workspace/feeds/index.js";
+import { feedRefreshTaskDef } from "@mulmoclaude/core/feeds/server";
+import { configureFeeds } from "./workspace/feeds/configure.js";
 import { createPubSub } from "./events/pub-sub/index.js";
 import { PUBSUB_CHANNELS } from "../src/config/pubsubChannels.js";
 import { createTaskManager } from "./events/task-manager/index.js";
@@ -105,6 +120,7 @@ import { API_ROUTES } from "../src/config/apiRoutes.js";
 import { EVENT_TYPES } from "../src/types/events.js";
 import { SESSION_ORIGINS } from "../src/types/session.js";
 import { buildHtmlPreviewCsp } from "../src/utils/html/previewCsp.js";
+import { readCspExtraSync, warnIfCspExtended } from "./utils/files/csp-io.js";
 import { readAndInjectHtmlArtifact } from "./utils/html/htmlArtifactSplicer.js";
 import { ONE_SECOND_MS, ONE_MINUTE_MS, ONE_HOUR_MS, STARTUP_FAILURE_FORCE_EXIT_MS, FATAL_LOG_FLUSH_MS } from "./utils/time.js";
 import { isPortFree, findAvailablePort, MAX_PORT_PROBES } from "./utils/port.mjs";
@@ -133,14 +149,14 @@ const debugMode = process.argv.includes("--debug");
 // `process.exit(1)` is non-zero so supervisors that branch on exit
 // code treat the bounce as an error condition.
 process.on("uncaughtException", (err) => {
-  log.error("uncaughtException", err instanceof Error ? err.message : String(err), {
+  log.error("uncaughtException", errorMessage(err), {
     stack: err instanceof Error ? err.stack : undefined,
   });
   // Tiny grace so the log line flushes to disk before we exit.
   setTimeout(() => process.exit(1), FATAL_LOG_FLUSH_MS);
 });
 process.on("unhandledRejection", (reason) => {
-  log.error("unhandledRejection", reason instanceof Error ? reason.message : String(reason), {
+  log.error("unhandledRejection", errorMessage(reason), {
     stack: reason instanceof Error ? reason.stack : undefined,
   });
   setTimeout(() => process.exit(1), FATAL_LOG_FLUSH_MS);
@@ -158,6 +174,7 @@ if (process.env.MULMOCLAUDE_FAKE_AGENT === "1") {
 }
 
 initWorkspace();
+warnIfCspExtended();
 
 // Fire-and-forget memory migrations: legacy `memory.md` → atomic
 // (#1029), then atomic → topic-format staging (#1070). Chained so
@@ -493,7 +510,7 @@ app.use(
     }
     if (HTML_DOCUMENT_EXT_RE.test(req.path)) {
       const origin = browserVisibleOrigin(req);
-      res.setHeader("Content-Security-Policy", buildHtmlPreviewCsp(origin));
+      res.setHeader("Content-Security-Policy", buildHtmlPreviewCsp(origin, undefined, readCspExtraSync()));
       res.setHeader("X-Content-Type-Options", "nosniff");
       const spliced = await readAndInjectHtmlArtifact(root, relPath);
       if (spliced === null) {
@@ -599,6 +616,10 @@ app.get(API_ROUTES.health, (_req: Request, res: Response) => {
     version: APP_VERSION,
     geminiAvailable: isGeminiAvailable(),
     sandboxEnabled,
+    // Local voice input: `capable` (platform + whisper binary) is
+    // distinct from `enabled` (user opt-in) and `model.state` (download
+    // readiness). The mic button gates on all three. See useHealth.ts.
+    voiceInput: getVoiceInputStatus(loadSettings()),
     cpu: { load1, cores },
   });
 });
@@ -623,7 +644,23 @@ app.get(API_ROUTES.sandbox, (_req: Request, res: Response) => {
 // `app.use("/api", ...)` prefix was dropped when #289 part 1 moved
 // the `/api` literal into each `router.post(API_ROUTES.…)` call.
 app.use(agentRoutes);
-app.use(accountingRoutes);
+// Configure the accounting backend's host seams (workspace root +
+// logger) at module load — BEFORE app.listen — so a request landing in
+// the gap before startRuntimeServices runs can't hit an unconfigured
+// defaultWorkspaceRoot() and 500. Same rationale as the module-load
+// route registration noted above. (Pub/sub init stays in
+// startRuntimeServices, where the pubsub instance is created; a missed
+// fire-and-forget event in the boot window is the same accepted
+// tradeoff as the file-change / collection publishers.)
+configureAccountingServer({ workspaceRoot: workspacePath, logger: log });
+// Wire @mulmoclaude/core/feeds/server (workspace, logger, atomic writer, and the
+// agent-ingest worker launcher) at module load — BEFORE app.listen — for the same
+// reason as the accounting config above: a `POST /api/collections/:slug/refresh`
+// landing in the gap before startRuntimeServices runs must not hit an unconfigured
+// feeds host. `spawnSystemWorker` is injected here because workspace code must not
+// import the routes layer.
+configureFeeds(spawnSystemWorker);
+app.use(createAccountingRouter());
 app.use(photoLocationsRoutes);
 app.use(schedulerRoutes);
 app.use(sessionsRoutes);
@@ -632,11 +669,15 @@ app.use(feedsRoutes);
 app.use(pluginsRoutes);
 app.use(imageRoutes);
 app.use(attachmentRoutes);
+app.use(transcribeRoutes);
 app.use(presentHtmlRoutes);
+app.use(shareRoutes);
+app.use(remoteHostRoutes);
 app.use(presentSvgRoutes);
 app.use(chartRoutes);
 app.use(rolesRoutes);
 app.use(shortcutsRoutes);
+app.use(dashboardRoutes);
 app.use(mulmoScriptRoutes);
 app.use(wikiRoutes);
 // Mounted under /api/wiki so the inner router's relative paths
@@ -651,6 +692,7 @@ app.use(configRefreshRoutes);
 app.use(hookLogRoutes);
 app.use(skillsRoutes);
 app.use(collectionsRoutes);
+app.use(collectionsRegistryRoutes);
 app.use(runtimePluginRoutes);
 async function listSessionsForBridge(opts: { limit: number; offset: number }) {
   const rows = await loadAllSessions();
@@ -663,6 +705,12 @@ async function listSessionsForBridge(opts: { limit: number; offset: number }) {
     updatedAt: row.summary.updatedAt,
   }));
   return { sessions, total };
+}
+// See `resolveBridgeSessionRole` for the safe-id shape check + IO-error
+// degradation contract (extracted for direct unit testing under
+// test/server/api/bridge/test_sessionRole.ts; codex review on #1895).
+async function getSessionRoleForBridge(sessionId: string): Promise<string | null> {
+  return resolveBridgeSessionRole(sessionId, readSessionMeta);
 }
 async function getSessionHistoryForBridge(sessionId: string, opts: { limit: number; offset: number }) {
   const content = await readSessionJsonl(sessionId);
@@ -715,6 +763,7 @@ const chatService = createChatService({
   tokenProvider: getCurrentToken,
   listSessions: listSessionsForBridge,
   getSessionHistory: getSessionHistoryForBridge,
+  getSessionRole: getSessionRoleForBridge,
   listRegisteredSkills,
 });
 app.use(chatService.router);
@@ -799,7 +848,7 @@ async function resolvePort(): Promise<number> {
 }
 
 async function ensureCredentialsAvailable(): Promise<void> {
-  const credentialsPath = path.join(homedir(), ".claude", ".credentials.json");
+  const credentialsPath = claudeCredentialsPath();
   if (existsSync(credentialsPath)) return;
 
   if (process.platform === "darwin") {
@@ -869,7 +918,7 @@ function logExternalMcpPreflight(): void {
     // per-agent-run path will still attempt the preflight and surface
     // any genuine issue when the user actually starts a chat.
     log.warn("mcp", "preflight at boot failed; will retry per-agent-run", {
-      error: err instanceof Error ? err.message : String(err),
+      error: errorMessage(err),
     });
   }
 }
@@ -891,7 +940,10 @@ function maybeForceChatIndexBackfill(): void {
   // debugging the indexer itself.
   if (!env.chatIndexForceRunOnStartup) return;
   log.info("chat-index", "CHAT_INDEX_FORCE_RUN_ON_STARTUP=1 — running now");
-  backfillAllSessions()
+  // The startup switch is opt-in and its whole point is "regenerate
+  // every summary now"; pass `force: true` so it doesn't silently
+  // become a no-op after #1929's content-changed gate lands.
+  backfillAllSessions({ force: true })
     .then((result) => {
       log.info("chat-index", "startup backfill complete", {
         indexed: result.indexed,
@@ -902,19 +954,7 @@ function maybeForceChatIndexBackfill(): void {
     .catch(logBackgroundError("chat-index", "forced startup backfill failed"));
 }
 
-async function startRuntimeServices(httpServer: ReturnType<typeof app.listen>, port: number, pubsub: IPubSub): Promise<void> {
-  log.info("server", "listening", { port });
-
-  // The notifier engine + its pubsub are now wired in the listen
-  // callback (see PR-#1196 follow-up) so requests arriving before
-  // this function runs hit a fully-initialized engine. The pubsub
-  // is forwarded in here so the rest of `startRuntimeServices` can
-  // share the same instance.
-
-  // macOS Reminder adapter wiring lives in the `app.listen` callback,
-  // alongside `initNotifier`, so it's subscribed before the first
-  // await opens a publish-can-fire-but-no-one's-listening window.
-
+async function initBootDiagnostics(): Promise<void> {
   // --- Plugin META aggregator diagnostics ---
   // After the notifier engine is initialized so the wrapper has a
   // working sink. Surfaces any host/plugin or plugin/plugin key
@@ -927,6 +967,13 @@ async function startRuntimeServices(httpServer: ReturnType<typeof app.listen>, p
   // missing one so a feature degrading is visible instead of a
   // later opaque crash. Never throws.
   await announceOptionalDeps();
+
+  // --- Voice input sidecar warm-up ---
+  // If local voice input is enabled and its model is already on disk,
+  // pre-spawn the whisper-server sidecar now (deps were just probed) so
+  // the user's first dictation doesn't pay the ~10s+ model-load cost
+  // inside the request. No-op when voice input is off / not ready.
+  warmupVoiceInput(loadSettings());
 
   // --- Billing-suite migration ---
   // The invoicing collections moved from bundled `mc-*` presets to
@@ -946,7 +993,9 @@ async function startRuntimeServices(httpServer: ReturnType<typeof app.listen>, p
   startCollectionWatchers().catch((err: unknown) => {
     log.warn("collections", "watcher boot failed", { error: String(err) });
   });
+}
 
+function attachTransports(httpServer: ReturnType<typeof app.listen>, pubsub: IPubSub): void {
   // --- Chat socket transport (Phase A of #268) ---
   chatService.attachSocket(httpServer);
 
@@ -962,119 +1011,114 @@ async function startRuntimeServices(httpServer: ReturnType<typeof app.listen>, p
 
   // --- Session Store ---
   initSessionStore(pubsub);
+}
 
-  // --- Task Manager ---
-  // Created BEFORE the runtime plugins block so plugin runtimes
-  // (which receive `taskManager` via `MakePluginRuntimeDeps`) can
-  // close over it. The `void (async () => ...)()` IIFE below would
-  // also work via async-yield ordering, but the lint rule forbids
-  // closing over a variable declared later in the same scope.
-  const taskManager = createTaskManager({
-    tickMs: debugMode ? ONE_SECOND_MS : ONE_MINUTE_MS,
-  });
-
-  if (debugMode) {
-    registerDebugTasks(taskManager, pubsub);
-  }
-
-  // --- Runtime plugins (#1043 C-2 + #1110) ---
-  // Two sources of plugins, same RuntimePlugin shape:
-  //   1. Presets — server/plugins/preset-list.ts (loaded from node_modules)
-  //   2. User-installed — ~/mulmoclaude/plugins/plugins.json ledger
-  //
-  // Presets are merged FIRST so they win runtime-vs-runtime collision
-  // (first-loaded wins; static MCP built-ins still win over both via
-  // MCP_PLUGIN_NAMES).
-  //
-  // Factory-shape plugins (`export default definePlugin(...)`) receive a
-  // runtime constructed by `makePluginRuntime(...)` which closes over the
-  // live pubsub. Legacy `(context, args)` plugins are loaded unchanged.
-  //
-  // Failures don't abort boot — bad plugins are skipped, healthy ones
-  // still load.
-  void (async () => {
-    try {
-      const runtimeFactory = (pkgName: string) =>
-        makePluginRuntime({
-          pkgName,
-          pubsub,
-          // v1: server-side locale is a static snapshot. The frontend
-          // BrowserPluginRuntime carries the reactive ref. Future
-          // enhancement: per-request locale from Accept-Language.
-          locale: process.env.LANG?.split(/[._]/)[0] || "en",
-          // `taskManager` is created synchronously below (see "Task
-          // Manager" block) before this async IIFE awaits and yields.
-          // By the time `runtimeFactory(pkgName)` is invoked from
-          // inside `loadPresetPlugins` / `loadRuntimePlugins` /
-          // `loadDevPlugins`, the synchronous initialisation has
-          // completed and `taskManager` is ready. Backs
-          // `runtime.tasks.register()` (Phase 1 of the Encore plan).
-          taskManager,
-        });
-      const [presets, userInstalled, devLoad] = await Promise.all([
-        loadPresetPlugins({ runtimeFactory }),
-        loadRuntimePlugins({ runtimeFactory }),
-        loadDevPlugins(parseDevPluginsEnv(process.env.MULMOCLAUDE_DEV_PLUGINS, process.cwd()), { runtimeFactory }),
-      ]);
-      // Dev plugin failures (missing dist/index.js, broken package.json,
-      // …) are a setup error the dev needs to see and fix. Hard-exit
-      // so the developer can't accidentally trial-and-error against a
-      // server that silently dropped their plugin. Same policy for
-      // collisions per #1159 PR2 spec.
-      const devGate = evaluateDevPluginGate(devLoad, [...presets, ...userInstalled]);
-      if (!devGate.ok) {
-        for (const message of devGate.fatalMessages) log.error("plugins/dev", message);
-        process.exit(1);
-      }
-      // Auto-reload (#1159 PR3): watch each dev plugin's dist/ and
-      // publish on debounced change so the browser refreshes without
-      // ⌘R. Server-side `dist/index.js` cannot be hot-replaced (Node
-      // ESM cache), so the watcher logs an explicit hint when that
-      // file is in the changed set.
-      if (devLoad.plugins.length > 0) {
-        const handle = watchDevPlugins(devLoad.plugins, {
-          publish: (name, payload) =>
-            pubsub.publish(PUBSUB_CHANNELS.devPluginChanged, {
-              name,
-              changedFiles: payload.changedFiles,
-              serverSideChange: payload.serverSideChange,
-            }),
-          warnServerSideChange: (name) => log.warn("plugins/dev", `${name}: dist/index.js changed — restart mulmoclaude to pick up server-side changes`),
-          onWatcherError: (name, error) =>
-            log.warn("plugins/dev", `${name}: watcher error — auto-reload disabled for this plugin until restart`, { error: String(error) }),
-        });
-        registerShutdownHook(() => handle.close());
-      }
-      // Pass the full static-tool set (MCP plugins + ENABLED MCP tools
-      // like readXPost / searchX) as the collision policy so the floor
-      // matches the standalone mcp-server's STATIC_TOOL_NAMES exactly
-      // (#1077 / #1116 review). Filter via `isMcpToolEnabled` so the
-      // child process's `mcpToolDefs` (only enabled tools) and the
-      // parent's reservation set agree — otherwise a runtime plugin
-      // colliding with a disabled tool would be rejected here but
-      // accepted by the child, and the child's `/dispatch` would 404
-      // because the parent never registered a route for it.
-      const staticToolNames = new Set([...MCP_PLUGIN_NAMES, ...mcpTools.filter(isMcpToolEnabled).map((tool) => tool.definition.name)]);
-      const result = registerRuntimePlugins(staticToolNames, [...presets, ...userInstalled, ...devLoad.plugins]);
-      log.info("plugins/runtime", "registered runtime plugins", {
-        presets: presets.length,
-        userInstalled: userInstalled.length,
-        dev: devLoad.plugins.length,
-        registered: result.registered.length,
-        collisions: result.collisions.length,
-        oauthAliasCollisions: result.oauthAliasCollisions.length,
+// --- Runtime plugins (#1043 C-2 + #1110) ---
+// Two sources of plugins, same RuntimePlugin shape:
+//   1. Presets — server/plugins/preset-list.ts (loaded from node_modules)
+//   2. User-installed — ~/mulmoclaude/plugins/plugins.json ledger
+//
+// Presets are merged FIRST so they win runtime-vs-runtime collision
+// (first-loaded wins; static MCP built-ins still win over both via
+// MCP_PLUGIN_NAMES).
+//
+// Factory-shape plugins (`export default definePlugin(...)`) receive a
+// runtime constructed by `makePluginRuntime(...)` which closes over the
+// live pubsub. Legacy `(context, args)` plugins are loaded unchanged.
+//
+// Failures don't abort boot — bad plugins are skipped, healthy ones
+// still load.
+async function loadRuntimePluginsFor(pubsub: IPubSub, taskManager: ITaskManager): Promise<void> {
+  try {
+    const runtimeFactory = (pkgName: string) =>
+      makePluginRuntime({
+        pkgName,
+        pubsub,
+        // v1: server-side locale is a static snapshot. The frontend
+        // BrowserPluginRuntime carries the reactive ref. Future
+        // enhancement: per-request locale from Accept-Language.
+        locale: process.env.LANG?.split(/[._]/)[0] || "en",
+        // `taskManager` is created synchronously below (see "Task
+        // Manager" block) before this async IIFE awaits and yields.
+        // By the time `runtimeFactory(pkgName)` is invoked from
+        // inside `loadPresetPlugins` / `loadRuntimePlugins` /
+        // `loadDevPlugins`, the synchronous initialisation has
+        // completed and `taskManager` is ready. Backs
+        // `runtime.tasks.register()` (Phase 1 of the Encore plan).
+        taskManager,
       });
-    } catch (err) {
-      log.error("plugins/runtime", "registry init failed; runtime plugins disabled this session", { error: String(err) });
+    const [presets, userInstalled, devLoad] = await Promise.all([
+      loadPresetPlugins({ runtimeFactory }),
+      loadRuntimePlugins({ runtimeFactory }),
+      loadDevPlugins(parseDevPluginsEnv(process.env.MULMOCLAUDE_DEV_PLUGINS, process.cwd()), { runtimeFactory }),
+    ]);
+    // Dev plugin failures (missing dist/index.js, broken package.json,
+    // …) are a setup error the dev needs to see and fix. Hard-exit
+    // so the developer can't accidentally trial-and-error against a
+    // server that silently dropped their plugin. Same policy for
+    // collisions per #1159 PR2 spec.
+    const devGate = evaluateDevPluginGate(devLoad, [...presets, ...userInstalled]);
+    if (!devGate.ok) {
+      for (const message of devGate.fatalMessages) log.error("plugins/dev", message);
+      process.exit(1);
     }
-  })();
+    // Auto-reload (#1159 PR3): watch each dev plugin's dist/ and
+    // publish on debounced change so the browser refreshes without
+    // ⌘R. Server-side `dist/index.js` cannot be hot-replaced (Node
+    // ESM cache), so the watcher logs an explicit hint when that
+    // file is in the changed set.
+    if (devLoad.plugins.length > 0) {
+      const handle = watchDevPlugins(devLoad.plugins, {
+        publish: (name, payload) =>
+          pubsub.publish(PUBSUB_CHANNELS.devPluginChanged, {
+            name,
+            changedFiles: payload.changedFiles,
+            serverSideChange: payload.serverSideChange,
+          }),
+        warnServerSideChange: (name) => log.warn("plugins/dev", `${name}: dist/index.js changed — restart mulmoclaude to pick up server-side changes`),
+        onWatcherError: (name, error) =>
+          log.warn("plugins/dev", `${name}: watcher error — auto-reload disabled for this plugin until restart`, { error: String(error) }),
+      });
+      registerShutdownHook(() => handle.close());
+    }
+    // Pass the full static-tool set (MCP plugins + ENABLED MCP tools
+    // like readXPost / searchX) as the collision policy so the floor
+    // matches the standalone mcp-server's STATIC_TOOL_NAMES exactly
+    // (#1077 / #1116 review). Filter via `isMcpToolEnabled` so the
+    // child process's `mcpToolDefs` (only enabled tools) and the
+    // parent's reservation set agree — otherwise a runtime plugin
+    // colliding with a disabled tool would be rejected here but
+    // accepted by the child, and the child's `/dispatch` would 404
+    // because the parent never registered a route for it.
+    const staticToolNames = new Set([...MCP_PLUGIN_NAMES, ...mcpTools.filter(isMcpToolEnabled).map((tool) => tool.definition.name)]);
+    const result = registerRuntimePlugins(staticToolNames, [...presets, ...userInstalled, ...devLoad.plugins]);
+    log.info("plugins/runtime", "registered runtime plugins", {
+      presets: presets.length,
+      userInstalled: userInstalled.length,
+      dev: devLoad.plugins.length,
+      registered: result.registered.length,
+      collisions: result.collisions.length,
+      oauthAliasCollisions: result.oauthAliasCollisions.length,
+    });
+  } catch (err) {
+    log.error("plugins/runtime", "registry init failed; runtime plugins disabled this session", { error: String(err) });
+  }
+}
 
+function initEventPublishers(pubsub: IPubSub): void {
   // --- File-change publisher ---
   // Wired here (not at first publish) so the very first save after
   // boot already sees a live publisher.
   initFileChangePublisher(pubsub);
+  // Accounting DI (workspace root + logger) is configured at module load
+  // near the route mount; only the pub/sub instance is wired here.
   initAccountingEventPublisher(pubsub);
+  initCollectionChangePublisher(pubsub);
+}
 
+// System task defs + user-configurable schedule overrides. Split out
+// of `registerSystemSchedules` so each stays under the max-lines cap.
+function buildSystemTaskDefs(): SystemTaskDef[] {
   // --- Scheduler (Phase 1 of #357) ---
   // Register system tasks with persistence + catch-up. The journal
   // and chat-index also fire from the agent finally-hook for
@@ -1092,18 +1136,25 @@ async function startRuntimeServices(httpServer: ReturnType<typeof app.listen>, p
       id: "system:chat-index",
       name: "Chat index backfill",
       description: "Generate AI titles + summaries for un-indexed sessions",
-      schedule: { type: SCHEDULE_TYPES.interval, intervalMs: ONE_HOUR_MS },
+      // Every 6 hours. The primary trigger is the agent finally-hook
+      // (per-turn, 15-min throttle), so the scheduler exists only to
+      // catch strays: a turn skipped by isFresh whose session then
+      // went idle, an out-of-band jsonl edit, or a mid-turn server
+      // crash. Since #1929 the per-tick work is O(stat + entry read)
+      // for unchanged sessions — cheap — but there's still no UX
+      // reason to run it more often than every few hours, and less
+      // frequent runs match a user's expectation of "quiet
+      // background maintenance".
+      schedule: { type: SCHEDULE_TYPES.interval, intervalMs: 6 * ONE_HOUR_MS },
       missedRunPolicy: MISSED_RUN_POLICIES.runOnce,
       run: () => backfillAllSessions().then(() => {}),
     },
-    {
-      id: "system:feed-refresh",
-      name: "Data-source feed refresh",
-      description: "Fetch declarative data-source feeds (RSS / JSON) into their collections",
-      schedule: { type: SCHEDULE_TYPES.interval, intervalMs: ONE_HOUR_MS },
-      missedRunPolicy: MISSED_RUN_POLICIES.runOnce,
-      run: () => refreshDueFeeds().then(() => {}),
-    },
+    // Drives ALL scheduled ingest: declarative feeds (RSS / JSON) AND
+    // skill-backed `ingest.kind: "agent"` collections (dispatch a hidden
+    // worker). Shared with standalone MulmoTerminal/MulmoBooks via the core
+    // factory so the id/schedule/run can't drift across hosts. The override
+    // loop below still mutates `task.schedule` host-side.
+    feedRefreshTaskDef(),
   ];
 
   // Apply user-configurable schedule overrides from
@@ -1132,6 +1183,15 @@ async function startRuntimeServices(httpServer: ReturnType<typeof app.listen>, p
     }
   }
 
+  return systemTasks;
+}
+
+function registerSystemSchedules(taskManager: ITaskManager): void {
+  const systemTasks = buildSystemTaskDefs();
+
+  // Feeds host is configured at module load (before app.listen) — see the
+  // `configureFeeds(spawnSystemWorker)` call beside the accounting config — so it
+  // is already wired by the time `initScheduler` catch-up can fire a feed refresh.
   initScheduler(taskManager, systemTasks).catch((err) => {
     log.error("scheduler", "init failed (non-fatal)", {
       error: String(err),
@@ -1161,6 +1221,44 @@ async function startRuntimeServices(httpServer: ReturnType<typeof app.listen>, p
       }
     })
     .catch(logBackgroundError("user-tasks", "failed to register user tasks"));
+}
+
+async function startRuntimeServices(httpServer: ReturnType<typeof app.listen>, port: number, pubsub: IPubSub): Promise<void> {
+  log.info("server", "listening", { port });
+
+  // The notifier engine + its pubsub are now wired in the listen
+  // callback (see PR-#1196 follow-up) so requests arriving before
+  // this function runs hit a fully-initialized engine. The pubsub
+  // is forwarded in here so the rest of `startRuntimeServices` can
+  // share the same instance.
+
+  // macOS Reminder adapter wiring lives in the `app.listen` callback,
+  // alongside `initNotifier`, so it's subscribed before the first
+  // await opens a publish-can-fire-but-no-one's-listening window.
+
+  await initBootDiagnostics();
+
+  attachTransports(httpServer, pubsub);
+
+  // --- Task Manager ---
+  // Created BEFORE the runtime plugins block so plugin runtimes
+  // (which receive `taskManager` via `MakePluginRuntimeDeps`) can
+  // close over it. The `void (async () => ...)()` IIFE below would
+  // also work via async-yield ordering, but the lint rule forbids
+  // closing over a variable declared later in the same scope.
+  const taskManager = createTaskManager({
+    tickMs: debugMode ? ONE_SECOND_MS : ONE_MINUTE_MS,
+  });
+
+  if (debugMode) {
+    registerDebugTasks(taskManager, pubsub);
+  }
+
+  void loadRuntimePluginsFor(pubsub, taskManager);
+
+  initEventPublishers(pubsub);
+
+  registerSystemSchedules(taskManager);
 
   taskManager.start();
 
@@ -1173,7 +1271,7 @@ async function startRuntimeServices(httpServer: ReturnType<typeof app.listen>, p
 // dead token. Crashes that skip this are harmless — see
 // plans/done/feat-bearer-token-auth.md; the next startup overwrites and
 // the stale file's token no longer matches the live in-memory one.
-const shutdownHooks: (() => void)[] = [];
+const shutdownHooks: (() => void)[] = [stopWhisperSidecar];
 function registerShutdownHook(hook: () => void): void {
   shutdownHooks.push(hook);
 }

@@ -11,14 +11,16 @@
 
 import { spawn, type ChildProcessByStdio } from "child_process";
 import type { Readable, Writable } from "stream";
-import { buildCliArgs, buildDockerSpawnArgs, buildUserMessageLine } from "../config.js";
+import { buildCliArgs, buildDockerSpawnArgs, buildUserMessageLine, type CliArgsParams } from "../config.js";
 import { resolveSandboxAuth } from "../sandboxMounts.js";
 import { getCachedReferenceDirs, referenceDirMountArgs } from "../../workspace/reference-dirs.js";
 import { createStreamParser, type AgentEvent, type RawStreamEvent } from "../stream.js";
 import { createMcpFailureMonitor } from "../mcpFailureMonitor.js";
 import { log } from "../../system/logger/index.js";
+import { errorMessage } from "../../utils/errors.js";
 import { EVENT_TYPES } from "../../../src/types/events.js";
 import { env } from "../../system/env.js";
+import { claudeBinPath } from "../../utils/claudeBin.js";
 import type { AgentInput, LLMBackend } from "./types.js";
 
 type ClaudeProc = ChildProcessByStdio<Writable, Readable, Readable>;
@@ -29,7 +31,7 @@ function spawnClaude(useDocker: boolean, workspacePath: string, cliArgs: string[
     // PostToolUse hook needs to publish a `page-edit` toolResult back to
     // the right session (#963). Claude CLI's own hook payload carries
     // its internal session_id, which doesn't match our session store.
-    return spawn("claude", cliArgs, {
+    return spawn(claudeBinPath(), cliArgs, {
       cwd: workspacePath,
       stdio: ["pipe", "pipe", "pipe"],
       env: { ...process.env, MULMOCLAUDE_CHAT_SESSION_ID: chatSessionId },
@@ -177,17 +179,40 @@ async function* readAgentEvents(proc: ClaudeProc, abortSignal?: AbortSignal): As
   if (errorEvent) yield errorEvent;
 }
 
-async function* runClaudeAgent(input: AgentInput): AsyncGenerator<AgentEvent> {
-  const cliArgs = buildCliArgs({
+// The one non-pass-through mapping is `sessionToken` -> `claudeSessionId`
+// (the CLI's `--resume` id); the rest forward verbatim.
+export function cliArgsForInput(input: AgentInput): CliArgsParams {
+  return {
     systemPrompt: input.systemPrompt,
     activePlugins: input.activePlugins,
     claudeSessionId: input.sessionToken,
     mcpConfigPath: input.mcpConfigPath,
     extraAllowedTools: input.extraAllowedTools,
     effortLevel: input.effortLevel,
-  });
+  };
+}
 
-  const proc = spawnClaude(input.useDocker, input.workspacePath, cliArgs, input.sessionId);
+async function* runClaudeAgent(input: AgentInput): AsyncGenerator<AgentEvent> {
+  const cliArgs = buildCliArgs(cliArgsForInput(input));
+
+  // spawnClaude can throw synchronously when `claudeBinPath()` fails
+  // to locate `claude.exe` on Windows — surface that through the same
+  // AgentEvent error channel as the post-spawn "error" event so the
+  // server stays alive (#1364) and the user sees the actionable
+  // "install with npm install -g …" hint.
+  let proc: ReturnType<typeof spawnClaude>;
+  try {
+    proc = spawnClaude(input.useDocker, input.workspacePath, cliArgs, input.sessionId);
+  } catch (err) {
+    const target = input.useDocker ? "docker" : "claude";
+    const message = err instanceof Error ? err.message : String(err);
+    log.error("agent", `failed to resolve ${target} binary`, { error: message });
+    yield {
+      type: EVENT_TYPES.error,
+      message: `Failed to spawn ${target}: ${message}`,
+    };
+    return;
+  }
 
   // Wait for the kernel to confirm the spawn before piping anything
   // into stdin. Without this guard, a missing `claude` (or `docker`)
@@ -202,7 +227,7 @@ async function* runClaudeAgent(input: AgentInput): AsyncGenerator<AgentEvent> {
     });
   } catch (err) {
     const target = input.useDocker ? "docker" : "claude";
-    const message = err instanceof Error ? err.message : String(err);
+    const message = errorMessage(err);
     log.error("agent", `failed to spawn ${target}`, { error: message });
     yield {
       type: EVENT_TYPES.error,

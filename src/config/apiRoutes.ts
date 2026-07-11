@@ -33,11 +33,13 @@ type ResolveRoutes<R extends Readonly<Record<string, RouteSpec>>> = {
   readonly [K in keyof R]: ResolvedRoute;
 };
 type PluginApiRoutesMap<T extends BuiltInPluginMetas> = {
-  readonly [M in T[number] as M extends { readonly apiRoutes: Readonly<Record<string, RouteSpec>> }
-    ? M extends { readonly apiNamespace: infer K extends string }
-      ? K
-      : M["toolName"]
-    : never]: M extends { readonly apiRoutes: infer R extends Readonly<Record<string, RouteSpec>> } ? ResolveRoutes<R> : never;
+  readonly [
+    M in T[number] as M extends { readonly apiRoutes: Readonly<Record<string, RouteSpec>> }
+      ? M extends { readonly apiNamespace: infer K extends string }
+        ? K
+        : M["toolName"]
+      : never
+  ]: M extends { readonly apiRoutes: infer R extends Readonly<Record<string, RouteSpec>> } ? ResolveRoutes<R> : never;
 };
 
 /** Resolve every plugin route into a `ResolvedRoute` keyed by the
@@ -60,6 +62,11 @@ const HOST_API_ROUTES = {
   // the list; PUT replaces it wholesale (client owns add / remove /
   // order). Single replace-endpoint — no add/remove route sprawl.
   shortcuts: "/api/shortcuts",
+
+  // Dashboard layout (per-tile view mode + order for the favorites grid).
+  // GET reads the list; PUT replaces it wholesale (client owns order /
+  // view mode). Single replace-endpoint, mirroring `shortcuts`.
+  dashboard: "/api/dashboard",
 
   agent: {
     run: "/api/agent",
@@ -108,6 +115,19 @@ const HOST_API_ROUTES = {
     create: "/api/files/create",
     raw: "/api/files/raw",
     refRoots: "/api/files/ref-roots",
+    /** POST { path } — spawn the host OS's default handler for the
+     *  file (`open` on macOS, `xdg-open` on Linux, `start` on
+     *  Windows). The Files view exposes this as an "Open in OS"
+     *  button on binary / unsupported previews so `.xlsx` / `.pptx`
+     *  can be viewed in the native app when in-browser preview
+     *  isn't available (#1985). */
+    open: "/api/files/open",
+    /** POST { path } — open the file's containing folder in the host
+     *  file manager (file selected on macOS `open -R` / Windows
+     *  `explorer /select,`; Linux opens the folder). Exposed as a
+     *  "Show in folder" button so a generated file can be dragged
+     *  into another app (#1985 follow-up). */
+    reveal: "/api/files/reveal",
   },
 
   // `html` group migrated to META — see `src/plugins/presentHtml/meta.ts`.
@@ -131,6 +151,25 @@ const HOST_API_ROUTES = {
   // same route now — image.upload remains for canvas drawings.
   attachments: {
     upload: "/api/attachments",
+  },
+
+  // Sharing: pack an HTML artifact + its referenced local assets into a
+  // self-contained zip (index.html + assets/), streamed as a download.
+  // `packMarkdown` renders markdown / a wiki page to a self-contained
+  // HTML (images inlined) and zips that.
+  share: {
+    pack: "/api/share/pack",
+    packMarkdown: "/api/share/pack-markdown",
+  },
+
+  // Remote host over Firestore (phase 1). The server signs in to Firebase as
+  // the user (connect, body carries a browser-minted Google idToken), runs the
+  // command-loop + presence heartbeat, and exposes its running state. See
+  // plans/feat-remote-host-firestore-list-collections.md.
+  remoteHost: {
+    connect: "/api/remote-host/connect",
+    disconnect: "/api/remote-host/disconnect",
+    status: "/api/remote-host/status",
   },
 
   mcpTools: {
@@ -162,6 +201,16 @@ const HOST_API_ROUTES = {
 
   translation: {
     translate: "/api/translation",
+  },
+
+  // Local voice input (Mac-only, whisper.cpp). `run` transcribes one
+  // audio clip; `model` reports capability + download status; `modelDownload`
+  // is the opt-in trigger fired by the Settings → Voice enable toggle.
+  // See plans/done/feat-voice-input.md.
+  transcribe: {
+    run: "/api/transcribe",
+    model: "/api/transcribe/model",
+    modelDownload: "/api/transcribe/model/download",
   },
 
   // Plugin-owned endpoints that don't follow a single naming pattern.
@@ -257,6 +306,34 @@ const HOST_API_ROUTES = {
     /** GET ?id=<viewId> → the custom view's HTML file (global-bearer auth),
      *  read from data/skills/:slug/views/. The parent renders it sandboxed. */
     viewFile: "/api/collections/:slug/view-file",
+    /** GET ?id=<viewId>&locale=<tag> → a mobile (`target: "mobile"`) custom
+     *  view wrapped into its sandboxed srcdoc (global-bearer auth) →
+     *  { view, srcdoc, bytes }. Same builder as the command channel's
+     *  `getRemoteView`, so the desktop phone-frame preview renders the exact
+     *  artifact the phone receives (plans/feat-remote-custom-view.md). */
+    remoteView: "/api/collections/:slug/remote-view",
+    /** POST { op: "update"|"delete", id, patch? } → apply one mutate on behalf
+     *  of a `target: "mobile"` view, authorized by that view's declared
+     *  editableFields / allowDelete and enforced host-side (global-bearer auth).
+     *  The desktop phone-frame preview's write channel — same builder the
+     *  command channel's `mutateRemoteViewItem` uses, so preview === phone
+     *  (plans/feat-remote-writable-view.md). */
+    remoteViewMutate: "/api/collections/:slug/remote-view/:viewId/mutate",
+    /** GET ?offset&limit&fields=<csv> → one page of a `target: "mobile"` view's
+     *  records with its declared `imageFields` inlined as `data:` URL thumbnails
+     *  (global-bearer auth) → { page, inlined, omitted }. Same builder as the
+     *  command channel's `getRemoteViewItems`, so the desktop phone-frame preview
+     *  pages the exact data (incl. real thumbnails) the phone will
+     *  (plans/feat-remote-view-images.md). */
+    remoteViewItems: "/api/collections/:slug/remote-view/:viewId/items",
+    /** GET ?id=<viewId>&locale=<tag> → translation dict for one custom view
+     *  (global-bearer auth) → { locale, dict }. `dict` is the host-picked
+     *  flat map for the requested locale (fallback `"en"`, else `{}`); the
+     *  host never streams other locales' strings. Empty dict + `locale: ""`
+     *  when the view declares no `i18n` file or the file is missing /
+     *  malformed — the view keeps working via `__MC_VIEW.t()`'s key
+     *  fallback. */
+    viewI18n: "/api/collections/:slug/view-i18n",
     /** POST → mint a slug- and capability-scoped token for a custom view
      *  (global-bearer auth) → { token, exp, dataUrl, capabilities }. */
     viewToken: "/api/collections/:slug/view-token",
@@ -268,6 +345,22 @@ const HOST_API_ROUTES = {
      *  unlink its `views/<file>.html` (global-bearer auth) → { deleted, viewId }.
      *  Source-aware; refuses user-scope + preset collections. */
     viewDelete: "/api/collections/:slug/views/:viewId",
+  },
+
+  // Curated collection registry (receptron/mulmoclaude-collections). The host
+  // server-fetches the published index.json (GitHub Pages) and proxies it to the
+  // /collections Discover tab — the upstream URL is never exposed to the client.
+  collectionsRegistry: {
+    list: "/api/collections-registry",
+    /** GET ?author=&slug= → { entry, schema, meta } for one in-index collection. */
+    preview: "/api/collections-registry/preview",
+    /** POST { author, slug } → fetch + re-validate + install into .claude/skills/,
+     *  normalize dataPath, materialize seed, record provenance. */
+    import: "/api/collections-registry/import",
+    /** POST { slug, author, license?, includeSeed? } → write a registry-contribution
+     *  bundle (collections/<author>/<slug>/ + meta.json + optional seed) under
+     *  data/registry-export/ for the user to open a PR. */
+    export: "/api/collections-registry/export",
   },
 
   // `scheduler` group migrated to META — see `src/plugins/scheduler/automationsMeta.ts`.
@@ -335,9 +428,7 @@ const HOST_API_ROUTES = {
 // `defineHostAggregate` is runtime-generic; the cast on the merged
 // result narrows it back to the literal-preserving shape above.
 type ApiRoutesAggregateValue =
-  | (typeof HOST_API_ROUTES)[keyof typeof HOST_API_ROUTES]
-  | Readonly<Record<string, string>>
-  | Readonly<Record<string, ResolvedRoute>>;
+  (typeof HOST_API_ROUTES)[keyof typeof HOST_API_ROUTES] | Readonly<Record<string, string>> | Readonly<Record<string, ResolvedRoute>>;
 
 const API_ROUTES_AGGREGATE = defineHostAggregate<ApiRoutesAggregateValue>(BUILT_IN_PLUGIN_METAS, {
   label: "API_ROUTES",

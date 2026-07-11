@@ -127,13 +127,24 @@
                 paths don't resolve under `srcdoc` (base URL is
                 `about:srcdoc`), but that's the historical behavior
                 for non-`artifacts/html/` HTML. -->
-        <iframe
-          v-else-if="isHtml && htmlPreviewUrl"
-          :src="htmlPreviewUrl"
-          class="w-full h-full border-0"
-          sandbox="allow-scripts"
-          :title="t('fileContentRenderer.htmlPreview')"
-        />
+        <div v-else-if="isHtml && htmlPreviewUrl" class="relative w-full h-full">
+          <!-- Only `.html` is packable (server gates on `isHtmlPath`); a
+               `.htm` preview shows no button so the action can't 400. -->
+          <div v-if="canDownloadZip" class="absolute top-2 right-2 z-10 flex flex-col items-end gap-1">
+            <button
+              class="px-2 py-1 text-xs rounded border border-gray-300 bg-white/90 text-gray-600 hover:bg-gray-50 disabled:opacity-50 shadow-sm"
+              :title="t('fileContentRenderer.downloadZip')"
+              :disabled="packing"
+              data-testid="file-html-download"
+              @click="downloadHtmlZip"
+            >
+              <span class="material-icons text-sm align-middle">download</span>
+              {{ t("fileContentRenderer.download") }}
+            </button>
+            <span v-if="packFailed" class="text-xs text-red-600 bg-white/90 px-1 rounded" role="alert">{{ t("fileContentRenderer.downloadError") }}</span>
+          </div>
+          <iframe :src="htmlPreviewUrl" class="w-full h-full border-0" sandbox="allow-scripts" :title="t('fileContentRenderer.htmlPreview')" />
+        </div>
         <iframe
           v-else-if="isHtml"
           :srcdoc="sandboxedHtml"
@@ -227,8 +238,21 @@
         <video :key="selectedPath" :src="rawUrl(selectedPath)" controls preload="metadata" class="max-w-full max-h-full" />
       </div>
       <!-- Binary or too-large -->
-      <div v-else class="p-4 text-sm text-gray-500">
+      <div v-else class="p-4 text-sm text-gray-500 flex flex-col gap-3">
         <template v-if="'message' in content">{{ content.message }}</template>
+        <div v-if="selectedPath">
+          <button
+            type="button"
+            class="h-8 px-3 flex items-center gap-1 rounded border border-gray-300 bg-white hover:bg-gray-50 text-gray-700 font-medium disabled:opacity-50"
+            :disabled="openInOsBusy"
+            data-testid="file-open-in-os"
+            @click="openInOs"
+          >
+            <span class="material-icons text-sm">open_in_new</span>
+            {{ openInOsBusy ? t("fileContentRenderer.openingInOs") : t("fileContentRenderer.openInOs") }}
+          </button>
+          <p v-if="openInOsError" class="mt-2 text-xs text-red-600">{{ openInOsError }}</p>
+        </div>
       </div>
     </template>
   </div>
@@ -239,7 +263,7 @@ import { computed, defineAsyncComponent, ref, watch, type Component } from "vue"
 import { useI18n } from "vue-i18n";
 import TextResponseView from "../plugins/textResponse/View.vue";
 import SystemFileBanner from "./SystemFileBanner.vue";
-import type { FileContent } from "../composables/useFileSelection";
+import type { FileContent } from "../composables/useFileContentLoader";
 import type { ToolResultComplete } from "gui-chat-protocol/vue";
 import type { TextResponseData } from "../plugins/textResponse/types";
 import { JSON_TOKEN_CLASS } from "../utils/format/jsonSyntax";
@@ -247,6 +271,9 @@ import type { JsonToken, JsonlLine } from "../utils/format/jsonSyntax";
 import { formatScalarField, type MarkdownDocView } from "../composables/useMarkdownDoc";
 import { rewriteMarkdownImageRefs } from "../utils/image/rewriteMarkdownImageRefs";
 import { API_ROUTES } from "../config/apiRoutes";
+import { useSharePack } from "../composables/useSharePack";
+import { useOpenInOs } from "../composables/useOpenInOs";
+import { toRef } from "vue";
 import { descriptorForPath, jsonEditableByPolicy } from "../config/systemFileDescriptors";
 import { isMarpDocument } from "../utils/markdown/marpDetect";
 import { buildPdfFilename } from "../utils/files/filename";
@@ -289,6 +316,19 @@ const emit = defineEmits<{
 
 const systemDescriptor = computed(() => (props.selectedPath ? descriptorForPath(props.selectedPath) : null));
 
+const { packing, packFailed, downloadZip, reset: resetSharePack } = useSharePack();
+// `htmlPreviewUrl` also matches `.htm`, but the pack route only accepts
+// canonical `.html`, so gate the button on `.html` to match server policy.
+const canDownloadZip = computed(() => Boolean(props.isHtml && props.htmlPreviewUrl && props.selectedPath?.toLowerCase().endsWith(".html")));
+function downloadHtmlZip() {
+  if (props.selectedPath) void downloadZip(props.selectedPath);
+}
+// Drop a stale error banner when the user navigates to another file.
+watch(
+  () => props.selectedPath,
+  () => resetSharePack(),
+);
+
 const marpMode = computed(() => Boolean(props.mdFrontmatter && isMarpDocument(props.mdFrontmatter.meta)));
 
 const marpBaseDir = computed(() => {
@@ -310,8 +350,12 @@ const marpPdfFilename = computed(() => {
   return buildPdfFilename({ name: stem, fallback: "slides" });
 });
 
-// Inline JSON editor (#833 Phase 1). Available only for policy-editable
-// JSON config files; the read-only pretty-print stays the default.
+// "Open in OS" button on the binary / unsupported fallback (#1985).
+// State machine + fetch lives in useOpenInOs so it's unit-testable.
+// ("Show in folder" lives in FileContentHeader so it's available for
+// every file type, not just this fallback.)
+const { busy: openInOsBusy, error: openInOsError, open: openInOs } = useOpenInOs(toRef(props, "selectedPath"), () => t("fileContentRenderer.openInOsFailed"));
+
 const jsonEditing = ref(false);
 const jsonDraft = ref("");
 

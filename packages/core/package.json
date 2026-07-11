@@ -1,0 +1,187 @@
+{
+  "name": "@mulmoclaude/core",
+  "version": "0.12.1",
+  "description": "Shared server-side core for MulmoClaude and MulmoTerminal — the always-shipped-together subsystems consolidated behind subpath exports so the two hosts can't drift. Server-only except the browser-safe ./whisper/client, ./workspace-setup/slug, ./translation/client, ./remote-view and ./remote-host entries. All host specifics are injected.",
+  "type": "module",
+  "exports": {
+    "./collection": {
+      "types": "./dist/collection/index.d.ts",
+      "import": "./dist/collection/index.js",
+      "require": "./dist/collection/index.cjs",
+      "default": "./dist/collection/index.js"
+    },
+    "./collection/server": {
+      "types": "./dist/collection/server/index.d.ts",
+      "import": "./dist/collection/server/index.js",
+      "require": "./dist/collection/server/index.cjs",
+      "default": "./dist/collection/server/index.js"
+    },
+    "./collection/paths": {
+      "types": "./dist/collection/server/templatePath.d.ts",
+      "import": "./dist/collection/paths.js",
+      "require": "./dist/collection/paths.cjs",
+      "default": "./dist/collection/paths.js"
+    },
+    "./collection/registry": {
+      "types": "./dist/collection/registry/index.d.ts",
+      "import": "./dist/collection/registry/index.js",
+      "require": "./dist/collection/registry/index.cjs",
+      "default": "./dist/collection/registry/index.js"
+    },
+    "./collection/registry/server": {
+      "types": "./dist/collection/registry/server/index.d.ts",
+      "import": "./dist/collection/registry/server/index.js",
+      "require": "./dist/collection/registry/server/index.cjs",
+      "default": "./dist/collection/registry/server/index.js"
+    },
+    "./wiki": {
+      "types": "./dist/wiki/index.d.ts",
+      "import": "./dist/wiki/index.js",
+      "require": "./dist/wiki/index.cjs",
+      "default": "./dist/wiki/index.js"
+    },
+    "./wiki/server": {
+      "types": "./dist/wiki/server/index.d.ts",
+      "import": "./dist/wiki/server/index.js",
+      "require": "./dist/wiki/server/index.cjs",
+      "default": "./dist/wiki/server/index.js"
+    },
+    "./wiki/paths": {
+      "types": "./dist/wiki/server/paths.d.ts",
+      "import": "./dist/wiki/paths.js",
+      "require": "./dist/wiki/paths.cjs",
+      "default": "./dist/wiki/paths.js"
+    },
+    "./feeds": {
+      "types": "./dist/feeds/index.d.ts",
+      "import": "./dist/feeds/index.js",
+      "require": "./dist/feeds/index.cjs",
+      "default": "./dist/feeds/index.js"
+    },
+    "./feeds/server": {
+      "types": "./dist/feeds/server/index.d.ts",
+      "import": "./dist/feeds/server/index.js",
+      "require": "./dist/feeds/server/index.cjs",
+      "default": "./dist/feeds/server/index.js"
+    },
+    "./feeds/paths": {
+      "types": "./dist/feeds/paths.d.ts",
+      "import": "./dist/feeds/paths.js",
+      "require": "./dist/feeds/paths.cjs",
+      "default": "./dist/feeds/paths.js"
+    },
+    "./collection-watchers": {
+      "types": "./dist/collection-watchers/index.d.ts",
+      "import": "./dist/collection-watchers/index.js",
+      "require": "./dist/collection-watchers/index.cjs",
+      "default": "./dist/collection-watchers/index.js"
+    },
+    "./skill-bridge": {
+      "types": "./dist/skill-bridge/index.d.ts",
+      "import": "./dist/skill-bridge/index.js",
+      "require": "./dist/skill-bridge/index.cjs",
+      "default": "./dist/skill-bridge/index.js"
+    },
+    "./file-change": {
+      "types": "./dist/file-change/index.d.ts",
+      "import": "./dist/file-change/index.js",
+      "require": "./dist/file-change/index.cjs",
+      "default": "./dist/file-change/index.js"
+    },
+    "./notifier": {
+      "types": "./dist/notifier/index.d.ts",
+      "import": "./dist/notifier/index.js",
+      "require": "./dist/notifier/index.cjs",
+      "default": "./dist/notifier/index.js"
+    },
+    "./scheduler": {
+      "types": "./dist/scheduler/index.d.ts",
+      "import": "./dist/scheduler/index.js",
+      "require": "./dist/scheduler/index.cjs",
+      "default": "./dist/scheduler/index.js"
+    },
+    "./whisper": {
+      "types": "./dist/whisper/index.d.ts",
+      "import": "./dist/whisper/index.js",
+      "require": "./dist/whisper/index.cjs",
+      "default": "./dist/whisper/index.js"
+    },
+    "./whisper/client": {
+      "types": "./dist/whisper/client.d.ts",
+      "import": "./dist/whisper/client.js",
+      "require": "./dist/whisper/client.cjs",
+      "default": "./dist/whisper/client.js"
+    },
+    "./remote-view": {
+      "types": "./dist/remote-view/index.d.ts",
+      "import": "./dist/remote-view/index.js",
+      "require": "./dist/remote-view/index.cjs",
+      "default": "./dist/remote-view/index.js"
+    },
+    "./remote-host": {
+      "types": "./dist/remote-host/index.d.ts",
+      "import": "./dist/remote-host/index.js",
+      "require": "./dist/remote-host/index.cjs",
+      "default": "./dist/remote-host/index.js"
+    },
+    "./remote-host/server": {
+      "types": "./dist/remote-host/server/index.d.ts",
+      "import": "./dist/remote-host/server/index.js",
+      "require": "./dist/remote-host/server/index.cjs",
+      "default": "./dist/remote-host/server/index.js"
+    },
+    "./translation/client": {
+      "types": "./dist/translation/client.d.ts",
+      "import": "./dist/translation/client.js",
+      "require": "./dist/translation/client.cjs",
+      "default": "./dist/translation/client.js"
+    },
+    "./workspace-setup": {
+      "types": "./dist/workspace-setup/index.d.ts",
+      "import": "./dist/workspace-setup/index.js",
+      "default": "./dist/workspace-setup/index.js"
+    },
+    "./workspace-setup/slug": {
+      "types": "./dist/workspace-setup/slug.d.ts",
+      "import": "./dist/workspace-setup/slug.js",
+      "default": "./dist/workspace-setup/slug.js"
+    }
+  },
+  "files": [
+    "dist",
+    "assets"
+  ],
+  "publishConfig": {
+    "access": "public"
+  },
+  "scripts": {
+    "build": "vite build && vite build -c vite.esm.config.ts",
+    "typecheck": "tsc --noEmit",
+    "test": "tsx --test test/**/test_*.ts"
+  },
+  "dependencies": {
+    "fast-xml-parser": "^5.9.3",
+    "js-yaml": "^5.2.1",
+    "zod": "^4.4.3"
+  },
+  "peerDependencies": {
+    "@receptron/task-scheduler": "*",
+    "firebase": "^12.0.0",
+    "gui-chat-protocol": "^0.4.0"
+  },
+  "peerDependenciesMeta": {
+    "firebase": {
+      "optional": true
+    }
+  },
+  "devDependencies": {
+    "@receptron/task-scheduler": "*",
+    "@types/node": "^26.1.1",
+    "gui-chat-protocol": "^0.4.0",
+    "tsx": "^4.23.0",
+    "typescript": "^6.0.3",
+    "vite": "^8.1.3",
+    "vite-plugin-dts": "^5.0.3"
+  },
+  "license": "MIT"
+}

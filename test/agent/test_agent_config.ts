@@ -1,12 +1,14 @@
 import { describe, it, afterEach } from "node:test";
 import assert from "node:assert/strict";
-import { existsSync, unlinkSync } from "fs";
+import { existsSync, unlinkSync, mkdtempSync, mkdirSync, writeFileSync, rmSync } from "fs";
 import { tmpdir } from "os";
 import { join } from "path";
 import { __resetForTests as resetTokenState, generateAndWriteToken } from "../../server/api/auth/token.js";
 import {
   buildCliArgs,
   buildDockerSpawnArgs,
+  dockerUserCapArgs,
+  dockerBindMountArgs,
   buildMcpConfig,
   buildUserMessageLine,
   CONTAINER_WORKSPACE_PATH,
@@ -51,6 +53,45 @@ describe("buildMcpConfig", () => {
     const server = servers.mulmoclaude as Record<string, unknown>;
     const env = server.env as Record<string, string>;
     assert.equal(env.PLUGIN_NAMES, "");
+  });
+
+  function dockerServerEnv(): Record<string, string> {
+    const config = buildMcpConfig({ chatSessionId: "s", port: 3001, activePlugins: [], useDocker: true }) as Record<string, unknown>;
+    const server = (config.mcpServers as Record<string, unknown>).mulmoclaude as Record<string, unknown>;
+    return server.env as Record<string, string>;
+  }
+
+  it("docker NODE_PATH includes the junction-free workspace-modules fallback root (#1946)", async () => {
+    assert.equal(dockerServerEnv().NODE_PATH, "/app/node_modules:/app/pkg_modules");
+  });
+
+  it("native (non-docker) server carries no NODE_PATH", async () => {
+    const config = buildMcpConfig({ chatSessionId: "s", port: 3001, activePlugins: [], useDocker: false }) as Record<string, unknown>;
+    const server = (config.mcpServers as Record<string, unknown>).mulmoclaude as Record<string, unknown>;
+    assert.equal((server.env as Record<string, string>).NODE_PATH, undefined);
+  });
+
+  it("docker server registers the ESM resolver hook via a bootstrap that calls register() (#1982)", async () => {
+    const config = buildMcpConfig({ chatSessionId: "s", port: 3001, activePlugins: [], useDocker: true }) as Record<string, unknown>;
+    const server = (config.mcpServers as Record<string, unknown>).mulmoclaude as Record<string, unknown>;
+    const args = server.args as string[];
+    const importIdx = args.indexOf("--import");
+    assert.ok(importIdx !== -1, "--import flag must be present so the ESM loader hook is registered");
+    // Points at the bootstrap — NOT the loader directly. `--import
+    // <loader>` only evaluates the module's top level; a bootstrap
+    // that calls `register()` is what actually wires the resolve
+    // hook into Node's loader chain (Codex review).
+    assert.equal(args[importIdx + 1], "file:///app/server/agent/mcp-esm-bootstrap.mjs");
+    // The mcp-server script must still be the LAST arg so tsx treats it
+    // as the entry point rather than a flag operand.
+    assert.equal(args[args.length - 1], "/app/server/agent/mcp-server.ts");
+  });
+
+  it("native (non-docker) server does NOT include --import (loader hook is a Docker-only fix)", async () => {
+    const config = buildMcpConfig({ chatSessionId: "s", port: 3001, activePlugins: [], useDocker: false }) as Record<string, unknown>;
+    const server = (config.mcpServers as Record<string, unknown>).mulmoclaude as Record<string, unknown>;
+    const args = server.args as string[];
+    assert.ok(!args.includes("--import"), "--import must not leak into native mode where the loader isn't relevant");
   });
 });
 
@@ -242,6 +283,13 @@ describe("buildDockerSpawnArgs", () => {
       gid: 1000,
       platform: "darwin" as Platform,
       projectRoot: "/proj",
+      // In dev (which this test fixture mirrors) packageRoot equals
+      // projectRoot — both are the repo root. The distinction only
+      // matters in npx packaged installs (#1770 Docker-side gap):
+      // there packageRoot=<consumer>/node_modules/mulmoclaude/ while
+      // projectRoot=<consumer>/. The dedicated "packageRoot in npx
+      // layout" test below covers that case.
+      packageRoot: "/proj",
       homeDir: "/home/user",
       chatSessionId: "chat-test-session",
     };
@@ -297,6 +345,94 @@ describe("buildDockerSpawnArgs", () => {
     assert.ok(args.includes("/proj/node_modules:/app/node_modules:ro"));
     assert.ok(args.includes("/proj/server:/app/server:ro"));
     assert.ok(args.includes("/proj/src:/app/src:ro"));
+  });
+
+  // Regression for the Docker-side gap in #1770 (@ystknsh's manual
+  // smoke caught this). In packaged installs npm hoists deps to
+  // <consumer>/node_modules/ while the mulmoclaude package itself
+  // lives at <consumer>/node_modules/mulmoclaude/ — `node_modules`
+  // mount stays on projectRoot but `server`/`src` MUST come from
+  // packageRoot or the container ends up with an empty /app/server
+  // and the broker fails to spawn.
+  it("uses packageRoot for server/src mounts when it differs from projectRoot (npx layout)", async () => {
+    const args = buildDockerSpawnArgs({
+      ...baseParams(),
+      projectRoot: "/consumer",
+      packageRoot: "/consumer/node_modules/mulmoclaude",
+    });
+    // node_modules: hoisted next to consumer's package.json
+    assert.ok(args.includes("/consumer/node_modules:/app/node_modules:ro"));
+    // server + src: inside the mulmoclaude package directory
+    assert.ok(args.includes("/consumer/node_modules/mulmoclaude/server:/app/server:ro"));
+    assert.ok(args.includes("/consumer/node_modules/mulmoclaude/src:/app/src:ro"));
+    // Old (broken) shape must NOT appear
+    assert.ok(!args.includes("/consumer/server:/app/server:ro"));
+    assert.ok(!args.includes("/consumer/src:/app/src:ro"));
+  });
+
+  it("skips the /app/packages mount when packageRoot has no `packages/` dir (npx published shape)", async () => {
+    // The published mulmoclaude package's `files` whitelist excludes
+    // `packages/` — internal @mulmoclaude/* workspaces are installed
+    // as `node_modules/@mulmoclaude/*` after publish. Use a packageRoot
+    // pointing at a dir that genuinely has no `packages/` subdir so
+    // the existsSync gate fires.
+    const args = buildDockerSpawnArgs({
+      ...baseParams(),
+      projectRoot: "/consumer",
+      packageRoot: "/consumer/node_modules/mulmoclaude",
+    });
+    // No mount line referring to /app/packages should appear.
+    assert.ok(!args.some((token) => token.includes(":/app/packages:")));
+  });
+
+  // #1946: Windows yarn-workspace junctions dangle inside the Linux
+  // container, so on win32 source builds each @mulmoclaude/* package is
+  // also bind-mounted at a junction-free /app/pkg_modules/@mulmoclaude/<name>
+  // that NODE_PATH falls through to.
+  function seedWorkspacePackages(root: string): void {
+    mkdirSync(join(root, "packages", "core"), { recursive: true });
+    writeFileSync(join(root, "packages", "core", "package.json"), JSON.stringify({ name: "@mulmoclaude/core" }));
+    mkdirSync(join(root, "packages", "plugins", "x-plugin"), { recursive: true });
+    writeFileSync(join(root, "packages", "plugins", "x-plugin", "package.json"), JSON.stringify({ name: "@mulmoclaude/x-plugin" }));
+    // A non-@mulmoclaude leaf lib in the same tree must NOT be mounted.
+    mkdirSync(join(root, "packages", "plugins", "leaf-lib"), { recursive: true });
+    writeFileSync(join(root, "packages", "plugins", "leaf-lib", "package.json"), JSON.stringify({ name: "some-leaf" }));
+  }
+
+  it("win32 source build mounts each @mulmoclaude/* at /app/pkg_modules, skipping non-scoped packages (#1946)", async () => {
+    const root = mkdtempSync(join(tmpdir(), "mc-pkgroot-"));
+    try {
+      seedWorkspacePackages(root);
+      const args = buildDockerSpawnArgs({ ...baseParams(), platform: "win32" as Platform, packageRoot: root });
+      const toDocker = (hostPath: string): string => hostPath.replace(/\\/g, "/");
+      assert.ok(args.includes(`${toDocker(join(root, "packages", "core"))}:/app/pkg_modules/@mulmoclaude/core:ro`));
+      assert.ok(args.includes(`${toDocker(join(root, "packages", "plugins", "x-plugin"))}:/app/pkg_modules/@mulmoclaude/x-plugin:ro`));
+      assert.ok(!args.some((token) => token.includes("/app/pkg_modules/some-leaf")));
+      assert.ok(!args.some((token) => token.includes("leaf-lib:/app/pkg_modules")));
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  it("does NOT add /app/pkg_modules mounts on non-Windows platforms", async () => {
+    const root = mkdtempSync(join(tmpdir(), "mc-pkgroot-"));
+    try {
+      seedWorkspacePackages(root);
+      const args = buildDockerSpawnArgs({ ...baseParams(), platform: "darwin" as Platform, packageRoot: root });
+      assert.ok(!args.some((token) => token.includes(":/app/pkg_modules/")));
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  it("win32 npx install (no packages/ dir) adds no /app/pkg_modules mounts", async () => {
+    const root = mkdtempSync(join(tmpdir(), "mc-pkgroot-"));
+    try {
+      const args = buildDockerSpawnArgs({ ...baseParams(), platform: "win32" as Platform, packageRoot: root });
+      assert.ok(!args.some((token) => token.includes(":/app/pkg_modules/")));
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
   });
 
   // The package bin script (`npx mulmoclaude` / `node packages/mulmoclaude/bin/...`)
@@ -778,5 +914,55 @@ describe("buildMcpConfig — bearer token env (#325)", () => {
     const server = servers.mulmoclaude as Record<string, unknown>;
     const env = server.env as Record<string, string>;
     assert.equal(env.MULMOCLAUDE_AUTH_TOKEN, undefined);
+  });
+});
+
+describe("dockerUserCapArgs", () => {
+  it("runs the container as the host user (zero caps) when SSH forward is off", () => {
+    assert.deepEqual(dockerUserCapArgs(false, 501, 20), ["--user", "501:20"]);
+  });
+
+  it("adds the 5 minimum caps + HOST_UID/GID (no --user) when SSH forward is on", () => {
+    const args = dockerUserCapArgs(true, 501, 20);
+    assert.ok(!args.includes("--user"), "must not also pass --user");
+    for (const cap of ["CHOWN", "FOWNER", "DAC_OVERRIDE", "SETUID", "SETGID"]) {
+      assert.ok(args.includes(cap), `missing cap ${cap}`);
+    }
+    assert.ok(args.includes("HOST_UID=501"));
+    assert.ok(args.includes("HOST_GID=20"));
+  });
+});
+
+describe("dockerBindMountArgs", () => {
+  const opts = {
+    projectRoot: "/proj",
+    packageRoot: "/pkg",
+    workspacePath: "/ws",
+    homeDir: "/home/u",
+    packagesMount: ["-v", "/pkg/packages:/app/packages:ro"],
+    platform: "linux" as Platform,
+  };
+
+  it("mounts node_modules from projectRoot and server/src from packageRoot, read-only", () => {
+    const args = dockerBindMountArgs(opts);
+    assert.ok(args.includes("/proj/node_modules:/app/node_modules:ro"));
+    assert.ok(args.includes("/pkg/server:/app/server:ro"));
+    assert.ok(args.includes("/pkg/src:/app/src:ro"));
+  });
+
+  it("splices in the caller's packagesMount and mounts the workspace + .claude config", () => {
+    const args = dockerBindMountArgs(opts);
+    assert.ok(args.includes("/pkg/packages:/app/packages:ro"), "packagesMount not spliced in");
+    assert.ok(
+      args.some((arg) => arg.startsWith("/ws:")),
+      "workspace mount missing",
+    );
+    assert.ok(args.some((arg) => arg.endsWith(":/home/node/.claude")));
+    assert.ok(args.some((arg) => arg.endsWith(":/home/node/.claude.json")));
+  });
+
+  it("converts Windows backslash host paths to forward slashes for -v", () => {
+    const args = dockerBindMountArgs({ ...opts, projectRoot: "C:\\Users\\me\\proj" });
+    assert.ok(args.includes("C:/Users/me/proj/node_modules:/app/node_modules:ro"));
   });
 });

@@ -7,9 +7,26 @@ import path from 'node:path'
 
 // Token file path mirrors `WORKSPACE_PATHS.sessionToken` in
 // server/workspace-paths.ts. Duplicated here (rather than imported)
-// because Vite config runs outside the TS server tsconfig; keep in
-// sync when either side moves the workspace root.
-const TOKEN_FILE_PATH = path.join(os.homedir(), 'mulmoclaude', '.session-token')
+// because Vite config runs outside the TS server tsconfig.
+//
+// Honors MULMOCLAUDE_WORKSPACE_PATH (via process.env or directly
+// parsing .env file) so the dev token plugin reads the same workspace
+// the server is using. Local patch 2026-05-30 to fix the unauthorized
+// error when workspace is relocated.
+function resolveWorkspacePath(): string {
+  const fromProcess = process.env.MULMOCLAUDE_WORKSPACE_PATH
+  if (fromProcess && fromProcess.length > 0) return fromProcess
+  try {
+    const envPath = path.join(process.cwd(), '.env')
+    const content = fs.readFileSync(envPath, 'utf-8')
+    const match = content.match(/^MULMOCLAUDE_WORKSPACE_PATH=(.+)$/m)
+    if (match) return match[1].trim()
+  } catch {
+    /* .env not present, fall through to default */
+  }
+  return path.join(os.homedir(), 'mulmoclaude')
+}
+const TOKEN_FILE_PATH = path.join(resolveWorkspacePath(), '.session-token')
 const TOKEN_PLACEHOLDER = '__MULMOCLAUDE_AUTH_TOKEN__'
 
 // Dev-side half of the bearer-token injection (#272). The server
@@ -139,6 +156,34 @@ export default defineConfig({
       // want here: the entry's exports ARE the public surface for
       // browser-side consumers.
       preserveEntrySignatures: 'strict',
+      // Targeted build-time warning suppressions. EVERY entry here
+      // matches by code AND file/message so unrelated occurrences of
+      // the same warning code still surface.
+      //
+      // 1. INEFFECTIVE_DYNAMIC_IMPORT — `PluginScopedRoot.vue` is
+      //    dynamically imported from `src/tools/runtimeLoader.ts`
+      //    ONLY so that `test/tools/test_runtimeLoader.ts` (which
+      //    runs under tsx in Node with no Vue SFC compiler) can
+      //    import the loader module without crashing on a top-level
+      //    `.vue` import. Production code also references the
+      //    component statically (App.vue / SettingsModal.vue /
+      //    plugins/scope.ts), so the dynamic import legitimately
+      //    doesn't chunk-split — that's the intended outcome.
+      // 2. EVAL — `spreadsheet/engine/functions/logical.ts` IFS handler
+      //    uses direct `eval()` so the spreadsheet condition string
+      //    runs in strict-mode caller scope. Indirect eval
+      //    (`globalThis.eval`) would widen semantics to sloppy global
+      //    script context (Codex review on PR #1855), so the call
+      //    stays direct and the warning is suppressed instead.
+      onwarn(warning, defaultHandler) {
+        if (warning.code === 'INEFFECTIVE_DYNAMIC_IMPORT' && warning.message.includes('PluginScopedRoot.vue')) {
+          return
+        }
+        if (warning.code === 'EVAL' && warning.message.includes('spreadsheet/engine/functions/logical.ts')) {
+          return
+        }
+        defaultHandler(warning)
+      },
     },
   },
   server: {

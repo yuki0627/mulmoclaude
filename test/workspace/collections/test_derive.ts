@@ -1,3 +1,4 @@
+import "../../../server/workspace/collections/configure.js"; // configure @mulmoclaude/core/collection host binding for tests
 // Server-side computed-field enrichment (collections/derive.ts):
 // derived formulas evaluated through the SHARED deriveAll loop with
 // ref targets loaded from disk, toggles projected off their enum, and
@@ -13,10 +14,9 @@ import path from "node:path";
 
 import { ref } from "vue";
 
-import { enrichItems } from "../../../server/workspace/collections/derive.js";
-import { loadCollection, toDetail } from "../../../server/workspace/collections/discovery.js";
-import { useCollectionRendering } from "../../../src/composables/collections/useCollectionRendering.js";
-import { deriveAll } from "../../../src/utils/collections/deriveAll.js";
+import { enrichItems, loadCollection, toDetail } from "@mulmoclaude/core/collection/server";
+import { useCollectionRendering } from "@mulmoclaude/collection-plugin/vue";
+import { deriveAll } from "@mulmoclaude/core/collection";
 import type { CollectionDetail, FieldSpec } from "../../../src/components/collectionTypes.js";
 
 let workdir: string;
@@ -148,6 +148,29 @@ describe("enrichItems — derived across refs", () => {
     rmSync(path.join(workdir, "data/profile/items/me.json"), { force: true });
     const [withoutProfile] = await enrichPortfolio([{ id: "h1" }]);
     assert.equal(withoutProfile?.owner, null);
+  });
+
+  it("resolves a per-record embed (`idField`) to a different target per row", async () => {
+    // Profile is non-singleton here (multiple issuers), and the embed
+    // points at whichever one the row's `ownerId` names.
+    writeSkill("profile", { ...profileSchema, singleton: undefined });
+    writeSkill("portfolio", {
+      ...portfolioSchema,
+      fields: {
+        ...portfolioSchema.fields,
+        ownerId: { type: "ref", label: "Owner", to: "profile" },
+        owner: { type: "embed", label: "Owner", to: "profile", idField: "ownerId" },
+      },
+    });
+    writeRecord("data/profile/items", "acme", { id: "acme", name: "Acme LLC" });
+    const enriched = await enrichPortfolio([
+      { id: "h1", ownerId: "me" },
+      { id: "h2", ownerId: "acme" },
+      { id: "h3" }, // no ownerId → no embed
+    ]);
+    assert.deepEqual(enriched[0]?.owner, { id: "me", name: "Satoshi" });
+    assert.deepEqual(enriched[1]?.owner, { id: "acme", name: "Acme LLC" });
+    assert.equal(enriched[2]?.owner, null);
   });
 
   it("does not mutate the input records", async () => {

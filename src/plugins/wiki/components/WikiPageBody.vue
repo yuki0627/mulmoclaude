@@ -8,6 +8,7 @@ import { computed, ref } from "vue";
 import { renderWikiPageHtml } from "../helpers";
 import { handleExternalLinkClick } from "../../../utils/dom/externalLink";
 import { classifyWorkspacePath, resolveWikiHref } from "../../../utils/path/workspaceLinkRouter";
+import { useMermaidRenderer } from "../../../utils/markdown/useMermaid";
 
 const props = defineProps<{
   body: string;
@@ -23,6 +24,8 @@ const emit = defineEmits<{
 const rootRef = ref<HTMLElement | null>(null);
 
 const renderedHtml = computed(() => renderWikiPageHtml(props.body, props.baseDir));
+
+useMermaidRenderer(rootRef, renderedHtml);
 
 defineExpose({ rootRef });
 
@@ -143,7 +146,7 @@ function onClick(event: MouseEvent) {
   padding: 0.1rem 0.3rem;
   border-radius: 0.25rem;
   font-size: 0.85em;
-  font-family: monospace;
+  font-family: Consolas, "MS Gothic", "BIZ UDGothic", monospace;
 }
 .wiki-content :deep(pre) {
   background: #f3f4f6;

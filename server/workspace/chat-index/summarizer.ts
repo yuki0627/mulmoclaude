@@ -22,6 +22,7 @@ import { errorMessage } from "../../utils/errors.js";
 import type { SummaryResult } from "./types.js";
 import { ONE_MINUTE_MS } from "../../utils/time.js";
 import { isRecord } from "../../utils/types.js";
+import { claudeBinPath } from "../../utils/claudeBin.js";
 
 const SYSTEM_PROMPT =
   "You summarize a single chat session. Output strict JSON matching the provided schema. " +
@@ -38,28 +39,43 @@ const SUMMARY_SCHEMA = {
   required: ["title", "summary", "keywords"],
 };
 
-// Prompt-building constants.
-const MAX_INPUT_CHARS = 8000;
-const HEAD_CHARS = 3000;
-const TAIL_CHARS = 5000;
-const PER_MESSAGE_MAX = 500;
+// Default model used when a caller doesn't specify one. Sonnet, not
+// haiku: the title is the primary way a user finds a past chat, so a
+// weak title makes the history list unusable. Since #1944 the model
+// is user-selectable from Settings → Chat index — "off" disables the
+// indexer, "haiku" / "sonnet" pick the model here — so this constant
+// is only the internal fallback when the indexer runs without a
+// model override (e.g. a manual rebuild triggered before the setting
+// resolves).
+const DEFAULT_SUMMARY_MODEL = "sonnet";
+// Explicit union so a bad string from the settings layer can't reach
+// the CLI unchecked. Mirror in `AppSettings.chatIndex` (server/system/config.ts).
+export type SummaryModel = "haiku" | "sonnet";
+
+// Prompt-building constants. Sized for Sonnet's large context: the
+// window is wide enough to carry a long, topic-shifting session's
+// middle (not just head + tail), and per-message clipping keeps the
+// substance of long turns. Exported so the summarizer tests derive
+// their fixtures from them rather than hard-coding sizes that rot.
+export const MAX_INPUT_CHARS = 30000;
+export const HEAD_CHARS = 12000;
+export const TAIL_CHARS = 16000;
+export const PER_MESSAGE_MAX = 1500;
 
 // Spawn / budget constants.
 const DEFAULT_TIMEOUT_MS = 2 * ONE_MINUTE_MS;
 // Budget cap per summarization call, forwarded to `claude
-// --max-budget-usd`. Previously 0.05 but that was tight enough
-// that a first-burst call — which pays a one-time cache creation
-// cost on haiku (~28k cache-creation tokens) — would trip the cap
-// and fail with `error_max_budget_usd` even for tiny 600-char
-// transcripts. 0.15 leaves comfortable headroom for cache
-// creation + a generous output allowance while still capping a
-// full 100-session backfill to well under $20.
-const MAX_BUDGET_USD = 0.15;
+// --max-budget-usd`. A first-burst call pays a one-time cache-creation
+// cost (~28k tokens) that on Sonnet's pricing would trip a tighter cap
+// and fail with `error_max_budget_usd` — yielding NO title at all.
+// 0.40 leaves headroom for cache creation plus the wider input window
+// while still bounding a full backfill.
+const MAX_BUDGET_USD = 0.4;
 
 // Any module that wants to drive the summarizer — including the
 // indexer — takes a SummarizeFn so tests can supply a deterministic
 // fake. Production path is `defaultSummarize` below.
-export type SummarizeFn = (input: string) => Promise<SummaryResult>;
+export type SummarizeFn = (input: string, opts?: { model?: SummaryModel }) => Promise<SummaryResult>;
 
 interface JsonlEntry {
   source?: string;
@@ -94,7 +110,7 @@ export function extractText(jsonlContent: string): string {
   return parts.join("\n\n");
 }
 
-// Long sessions are clipped to first ~3000 + last ~5000 chars so
+// Long sessions are clipped to first ~12000 + last ~16000 chars so
 // claude sees both the original topic and the most recent state.
 // Distinct from the simple-tail `truncate()` in `server/utils/text.ts`
 // — the summarizer needs context from both ends, not just the head.
@@ -175,27 +191,33 @@ export async function loadJsonlInput(jsonlPath: string): Promise<string> {
 
 // --- spawn layer ----------------------------------------------------
 
-function spawnClaudeSummarize(input: string, timeoutMs: number): Promise<string> {
+// The `claude` CLI argv for one summarization. Pure — extracted so the spawn
+// executor stays small and the flag list is unit-testable on its own.
+export function buildSummarizeCliArgs(input: string, model: SummaryModel): string[] {
+  return [
+    "--print",
+    "--no-session-persistence",
+    "--output-format",
+    "json",
+    "--model",
+    model,
+    "--max-budget-usd",
+    String(MAX_BUDGET_USD),
+    "--json-schema",
+    JSON.stringify(SUMMARY_SCHEMA),
+    "--system-prompt",
+    SYSTEM_PROMPT,
+    "-p",
+    input,
+  ];
+}
+
+function spawnClaudeSummarize(input: string, timeoutMs: number, model: SummaryModel): Promise<string> {
   return new Promise((resolve, reject) => {
-    const args = [
-      "--print",
-      "--no-session-persistence",
-      "--output-format",
-      "json",
-      "--model",
-      "haiku",
-      "--max-budget-usd",
-      String(MAX_BUDGET_USD),
-      "--json-schema",
-      JSON.stringify(SUMMARY_SCHEMA),
-      "--system-prompt",
-      SYSTEM_PROMPT,
-      "-p",
-      input,
-    ];
+    const args = buildSummarizeCliArgs(input, model);
     // Run from tmpdir so claude does not load the project's
     // CLAUDE.md / plugins / memory and inflate the context.
-    const proc = spawn("claude", args, {
+    const proc = spawn(claudeBinPath(), args, {
       cwd: tmpdir(),
       stdio: ["ignore", "pipe", "pipe"],
     });
@@ -243,7 +265,8 @@ function spawnClaudeSummarize(input: string, timeoutMs: number): Promise<string>
 // Production SummarizeFn: prepare the input from a jsonl path and
 // drive the CLI. Tests inject their own SummarizeFn that bypasses
 // the CLI entirely.
-export const defaultSummarize: SummarizeFn = async (input: string) => {
-  const stdout = await spawnClaudeSummarize(input, DEFAULT_TIMEOUT_MS);
+export const defaultSummarize: SummarizeFn = async (input, opts) => {
+  const model: SummaryModel = opts?.model ?? DEFAULT_SUMMARY_MODEL;
+  const stdout = await spawnClaudeSummarize(input, DEFAULT_TIMEOUT_MS, model);
   return parseClaudeJsonResult(stdout);
 };

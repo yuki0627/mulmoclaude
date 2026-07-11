@@ -8,27 +8,27 @@
 
 [English](README.md) · [日本語](README.ja.md) · [简体中文](README.zh.md) · [한국어](README.ko.md) · [Español](README.es.md) · [Português (BR)](README.pt-BR.md) · **Français** · [Deutsch](README.de.md)
 
+**Un assistant IA qui sait tout de vous et vous accompagne 24 heures sur 24 ne se vend nulle part. Vous ne pouvez pas en acheter un — vous ne pouvez que le cultiver. MulmoClaude est un outil pour cultiver votre propre assistant IA, sur votre propre ordinateur.**
+
+La substance d'un assistant n'est pas le modèle d'IA — le modèle n'est que le moteur. Ce qui fait la valeur d'un assistant, c'est tout ce qu'il sait de vous : vos conversations, votre agenda, vos notes, vos données et les applications que vous utilisez. Une chose aussi importante ne devrait être confiée à aucun fournisseur de services — plus vous l'utilisez, plus il devient difficile de partir. MulmoClaude est open source et s'exécute localement : tout ce que votre assistant accumule — souvenirs, données, applications — reste entre vos mains, sous forme de simples fichiers dans votre workspace.
+
+Cultiver demande un environnement, et MulmoClaude en fournit un : un lieu pour accumuler des souvenirs (un wiki personnel que Claude construit et entretient lui-même), un lieu pour conserver vos données (collections pilotées par schéma, flux, fichiers simples) et un lieu pour créer des applications rien que pour vous — sans aucune connaissance en programmation. Vous dites « je voudrais quelque chose comme ça » avec des mots de tous les jours, et Claude construit la petite application dont vous avez besoin : une liste de restaurants, un suivi de factures, des exercices de vocabulaire — du logiciel pour un public d'une seule personne. Juste après l'installation, le jardin est encore vide ; vous semez des graines, vous soignez la terre, et vous cultivez un assistant qui n'appartient qu'à vous.
+
+Et l'assistant n'est pas attaché à votre bureau. Connectez-vous depuis votre téléphone — ou depuis une application de messagerie que vous utilisez déjà — et vous retrouvez le même assistant qui vit sur votre ordinateur. Le serveur relais ne fait que transporter des messages en transit — vos souvenirs, vos données et vos applications ne quittent jamais votre ordinateur.
+
+Sous le capot, MulmoClaude est une plateforme d'applications AI-natives : les capacités sont des plugins au sein d'un unique registre (aujourd'hui : un système comptable complet avec une véritable logique de tenue de livres côté serveur, un wiki personnel, un lecteur de documents SEC, et plus encore), Claude agit comme un contrôleur universel qui compose à travers eux, et le chat invoque la bonne GUI pour chaque tâche — markdown, graphiques, formulaires, wikis, feuilles de calcul ou scènes 3D.
+
 > **[How AI-Native Applications Should Be Built](MANIFEST.md)** — la thèse architecturale, UX et protocolaire derrière MulmoClaude.
-
-MulmoClaude est une plateforme d'applications AI-natives, open source, qui s'exécute localement sur votre machine. Au lieu d'applications cloisonnées, les capacités sont construites en tant que plugins au sein d'un unique registre. Les applications qui tournent dessus aujourd'hui incluent un système comptable complet (avec une véritable logique de tenue de livres côté serveur), un wiki personnel et un lecteur de documents SEC (Edgar). Claude agit comme un contrôleur universel qui compose à travers ces plugins.
-
-Vous interagissez en langage naturel, et Claude invoque la bonne GUI pour la tâche — en répondant en markdown, graphiques, formulaires, wikis, feuilles de calcul ou scènes 3D. Toutes les données vivent sous forme de fichiers simples dans votre workspace.
 
 ## Démarrage rapide
 
 ```bash
-# 1. Clone and install
-git clone git@github.com:receptron/mulmoclaude.git
-cd mulmoclaude && yarn install
-
-# 2. Configure (optional — image generation requires Gemini API key)
-cp .env.example .env   # edit .env to add GEMINI_API_KEY
-
-# 3. Run
-yarn dev
+npx mulmoclaude@latest
 ```
 
-Ouvrez [http://localhost:5173](http://localhost:5173). C'est tout — commencez à discuter.
+Le lanceur démarre le serveur et ouvre [http://localhost:3001](http://localhost:3001) dans votre navigateur. C'est tout — commencez à discuter.
+
+> **Pour le garder actif** : fermer le terminal arrête le serveur. Pour l'exécuter en arrière-plan, lancez-le dans `tmux` / `screen` (macOS/Linux) ou enregistrez-le comme tâche au démarrage dans le Planificateur de tâches Windows.
 
 ### Prérequis
 
@@ -41,6 +41,19 @@ Ouvrez [http://localhost:5173](http://localhost:5173). C'est tout — commencez 
 - **Docker Desktop** (optionnel mais recommandé) — active le mode bac à sable. Voir [Installer Docker Desktop](#installer-docker-desktop) ci-dessous
 
 > **Langue de l'interface** : 8 langues sont prises en charge (anglais, japonais, chinois, coréen, espagnol, portugais (BR), français, allemand). Par défaut, la langue est détectée automatiquement à partir de la langue du navigateur / du système d'exploitation. Pour l'indiquer explicitement, définissez `VITE_LOCALE=fr` dans `.env`. La locale est choisie au moment de la compilation / du développement ; redémarrez `yarn dev` après l'avoir modifiée. Consultez [`docs/developer.md`](docs/developer.md#i18n-vue-i18n) pour savoir comment ajouter des chaînes de caractères.
+
+### Exécuter depuis le code source (pour les développeurs)
+
+Pour modifier le code au lieu de simplement l'exécuter :
+
+```bash
+git clone git@github.com:receptron/mulmoclaude.git
+cd mulmoclaude && yarn install
+cp .env.example .env   # optionnel — ajoutez GEMINI_API_KEY pour la génération d'images
+yarn dev
+```
+
+Ouvrez [http://localhost:5173](http://localhost:5173). Voir [`docs/developer.md`](docs/developer.md) pour l'architecture et les scripts.
 
 ## Que pouvez-vous faire ?
 
@@ -507,6 +520,27 @@ Le canevas (panneau de droite) prend en charge 8 modes d'affichage, permutables 
 | `Cmd/Ctrl+8` | Roles     | `?view=roles`     | Gestion des rôles                              |
 
 Chaque mode d'affichage est piloté par l'URL : cliquer sur un bouton du lanceur met à jour `?view=`, et atterrir sur une URL avec `?view=wiki` (par exemple) restaure la vue correspondante. La liste des modes d'affichage est définie une seule fois dans `src/utils/canvas/viewMode.ts` — ajouter un nouveau mode est un simple ajout à un tableau.
+
+## Accès à distance
+
+Accédez à votre MulmoClaude en cours d'exécution depuis un téléphone (ou n'importe quel navigateur) : parcourez ses collections, ses feeds et ses vues personnalisées, et démarrez des chats, où que vous soyez. Aucun compte ni serveur distinct à configurer : l'accès est accordé simplement en vous connectant aux **deux** extrémités avec le **même compte Google**.
+
+**Comment se connecter**
+
+1. Sur le bureau, cliquez sur l'icône **phonelink** dans l'en-tête pour ouvrir le popover _Hôte distant_, puis choisissez **Se connecter avec Google**. MulmoClaude se connecte en tant que votre utilisateur Google et ouvre un canal de commandes via Firebase (le projet public partagé [`mulmoserver`](https://mulmoserver.web.app)). L'icône devient verte tant que l'hôte est en ligne.
+2. Sur votre téléphone, ouvrez **[https://mulmoserver.web.app](https://mulmoserver.web.app)** et connectez-vous avec le **même compte Google**. L'application web trouve votre hôte en ligne et s'y connecte.
+
+Comme les deux extrémités s'authentifient en tant que même utilisateur Firebase, le téléphone et le bureau ne se rencontrent qu'à l'intérieur de votre propre espace utilisateur — aucun tiers ne peut atteindre votre hôte.
+
+**Firebase et Firestore ne servent que de transport** — un relais pour transmettre les commandes et les réponses entre votre téléphone et votre bureau. Vos données ne sont **jamais stockées ni conservées** sur l'un ou l'autre. Sur l'hôte, seuls vos fichiers locaux de l'espace de travail existent ; tout ce qui doit traverser le canal (comme une pièce jointe transitant par Firebase Storage) est supprimé dès qu'il atteint sa destination.
+
+**Ce que vous pouvez faire depuis le téléphone**
+
+- Parcourir et feuilleter vos **collections** et vos **feeds**.
+- Ouvrir des **vues distantes personnalisées** (custom remote views) — des pages adaptées au mobile que Claude crée pour vous. Demandez à Claude de créer une _custom remote view_ (et non une vue personnalisée classique) ; elle peut être en lecture seule ou modifiable.
+- **Démarrer un chat** sur l'hôte et joindre des **photos, vidéos ou PDF** depuis le téléphone. Les octets des pièces jointes sont trop volumineux pour le canal de commandes ; ils transitent donc par Firebase Storage ; l'hôte télécharge chaque fichier dans son espace de travail (`data/attachments/`), supprime la copie en transit et transmet le fichier à Claude avec votre message.
+
+Le canal est basé sur des commandes et piloté par l'hôte : le téléphone envoie des requêtes et votre MulmoClaude de bureau y répond. Utilisez **Déconnecter** dans le popover (ou quittez MulmoClaude) pour mettre l'hôte hors ligne.
 
 ## Espace de travail
 

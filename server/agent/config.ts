@@ -1,11 +1,14 @@
 import { basename, dirname, join } from "path";
 import { homedir, tmpdir } from "os";
 import { createRequire } from "node:module";
+import { fileURLToPath } from "node:url";
+import { existsSync, readdirSync, readFileSync } from "node:fs";
 import type { Role } from "../../src/config/roles.js";
 import { mcpTools, isMcpToolEnabled } from "./mcp-tools/index.js";
 import { getActiveToolDescriptors } from "./activeTools.js";
 import type { EffortLevel, McpServerSpec } from "../system/config.js";
 import { startStdioHttpShim, type ShimHandle } from "./stdioHttpShim.js";
+import { claudeConfigDir, claudeConfigJson } from "../utils/claudeConfigPath.js";
 import { getCurrentToken } from "../api/auth/token.js";
 import type { Attachment } from "@mulmobridge/protocol";
 import { isImageMime, isNativeAttachmentMime } from "@mulmobridge/client";
@@ -14,6 +17,25 @@ import { log } from "../system/logger/index.js";
 import { preflightUserServers, logPreflightResult } from "./mcpPreflight.js";
 
 export const CONTAINER_WORKSPACE_PATH = "/home/node/mulmoclaude";
+
+// Junction-free NODE_PATH fallback root for the in-container MCP child.
+// On Windows the yarn-workspace `node_modules/@mulmoclaude/*` links are
+// absolute junctions that dangle inside the Linux container (#1946), so
+// each workspace package is also bind-mounted here as
+// `@mulmoclaude/<name>` and this dir is appended to NODE_PATH — CJS
+// resolution falls through to it when the primary link fails to resolve.
+// Only mounted for win32 source builds; a no-op path elsewhere.
+//
+// NODE_PATH is CJS-only per Node's spec, so the paired
+// `mcp-esm-loader.mjs` (registered via `--import`) covers the ESM side
+// by reading each pkg's package.json under this root and returning the
+// resolved entry URL (#1982).
+const CONTAINER_WORKSPACE_MODULES_PATH = "/app/pkg_modules";
+// `--import` this bootstrap; the bootstrap in turn calls
+// `node:module.register()` on the loader. Pointing `--import`
+// straight at the loader would just evaluate its top level and
+// leave the exported `resolve()` inert.
+const CONTAINER_ESM_BOOTSTRAP_URL = "file:///app/server/agent/mcp-esm-bootstrap.mjs";
 
 // `Skill` is the tool Claude Code uses to execute a discovered
 // `.claude/skills/<name>/SKILL.md`. Because `--allowedTools` is passed
@@ -235,16 +257,51 @@ function resolveProjectRoot(): string {
   }
 }
 
+// The mulmoclaude package source root — the directory that contains
+// `server/`, `src/`, and (in dev only) `packages/`. Different from
+// `resolveProjectRoot()` only in the npx layout:
+//
+//   dev (yarn dev):   packageRoot === projectRoot === <repo>
+//   npx packaged:     packageRoot = <consumer>/node_modules/mulmoclaude/
+//                     projectRoot = <consumer>/  (where node_modules lives)
+//
+// Anchored at `import.meta.url ↑3` because this file is
+// `<packageRoot>/server/agent/config.ts`.
+function resolvePackageRoot(): string {
+  return dirname(dirname(dirname(fileURLToPath(import.meta.url))));
+}
+
+// The MCP broker source (`server/agent/mcp-server.ts`) is a SIBLING of
+// THIS file inside the published mulmoclaude package. Anchor to
+// `import.meta.url` so the path is correct in both shapes:
+//
+//   - dev (yarn dev) :  <repo>/server/agent/config.ts
+//                       → broker at <repo>/server/agent/mcp-server.ts ✓
+//   - npx packaged   :  <consumer>/node_modules/mulmoclaude/server/agent/config.ts
+//                       → broker at <consumer>/node_modules/mulmoclaude/
+//                         server/agent/mcp-server.ts ✓
+//
+// The pre-#1770 code derived the broker path from `resolveProjectRoot()`
+// which anchors to wherever `node_modules/express/` lives. In dev that
+// happens to coincide with the repo root, but in packaged installs npm
+// hoists deps to <consumer>/node_modules/ while the mulmoclaude package
+// itself sits a level deeper at <consumer>/node_modules/mulmoclaude/ —
+// so `<projectRoot>/server/agent/mcp-server.ts` resolved to a path
+// that does not exist, the broker silently failed to spawn, and every
+// `mcp__mulmoclaude__*` tool (incl. `handlePermission`) vanished from
+// the agent's registry (#1770).
+const LOCAL_MCP_SERVER_PATH = join(dirname(fileURLToPath(import.meta.url)), "mcp-server.ts");
+
 function buildMulmoclaudeServer(params: { chatSessionId: string; port: number; activePlugins: string[]; useDocker: boolean }): object {
   const { chatSessionId, port, activePlugins, useDocker } = params;
   const projectRoot = resolveProjectRoot();
   const command = useDocker ? "tsx" : join(projectRoot, "node_modules/.bin/tsx");
-  const mcpServerPath = useDocker ? "/app/server/agent/mcp-server.ts" : join(projectRoot, "server/agent/mcp-server.ts");
+  const mcpServerPath = useDocker ? "/app/server/agent/mcp-server.ts" : LOCAL_MCP_SERVER_PATH;
 
   const dockerEnv = useDocker
     ? {
         MCP_HOST: "host.docker.internal",
-        NODE_PATH: "/app/node_modules",
+        NODE_PATH: `/app/node_modules:${CONTAINER_WORKSPACE_MODULES_PATH}`,
         ...collectMcpToolSentinelEnv(),
       }
     : {};
@@ -265,7 +322,12 @@ function buildMulmoclaudeServer(params: { chatSessionId: string; port: number; a
     // started silently failing some time after the CLI update.
     type: "stdio",
     command,
-    args: [mcpServerPath],
+    // Docker path: register the ESM resolver hook that plugs the
+    // Windows-junction gap in the ESM loader (#1946/#1982). Passed
+    // as a Node CLI flag; tsx forwards `--import` through. No-op on
+    // Linux/macOS Docker (the hook's catch never fires). Native
+    // mode never sees this flag.
+    args: useDocker ? ["--import", CONTAINER_ESM_BOOTSTRAP_URL, mcpServerPath] : [mcpServerPath],
     env: {
       SESSION_ID: chatSessionId,
       PORT: String(port),
@@ -526,6 +588,12 @@ export interface DockerSpawnArgsParams {
    *  store would never find a match (#963). */
   chatSessionId: string;
   projectRoot?: string;
+  /** Source root of the mulmoclaude package itself (the dir that holds
+   *  `server/` + `src/` and, in dev, `packages/`). In dev this equals
+   *  `projectRoot`; in npx packaged installs it's
+   *  `<consumer>/node_modules/mulmoclaude/`. Defaults to
+   *  `resolvePackageRoot()`. Overridable for tests. */
+  packageRoot?: string;
   homeDir?: string;
   /** Extra `-v` / `-e` tokens for opt-in host credentials (#259).
    *  Built by `resolveSandboxAuth` in `sandboxMounts.ts`. Default []. */
@@ -538,9 +606,108 @@ export interface DockerSpawnArgsParams {
   sshAgentForward?: boolean;
 }
 
+// The workspace-package dirs that ship as `@mulmoclaude/*` — `packages/core`
+// plus every `packages/plugins/*`. Source/dev layout only (npx installs have
+// no `packages/`), so an absent dir yields an empty list.
+function workspacePackageDirs(packageRoot: string): string[] {
+  const core = join(packageRoot, "packages", "core");
+  const pluginsDir = join(packageRoot, "packages", "plugins");
+  const plugins = existsSync(pluginsDir)
+    ? readdirSync(pluginsDir, { withFileTypes: true })
+        .filter((entry) => entry.isDirectory())
+        .map((entry) => join(pluginsDir, entry.name))
+    : [];
+  return [core, ...plugins].filter((dir) => existsSync(join(dir, "package.json")));
+}
+
+// The `@mulmoclaude/<name>` a package declares, or null if it isn't one of
+// ours / is unreadable — a malformed package.json never breaks a spawn.
+function scopedPackageName(pkgDir: string): string | null {
+  try {
+    const { name } = JSON.parse(readFileSync(join(pkgDir, "package.json"), "utf-8")) as { name?: unknown };
+    return typeof name === "string" && name.startsWith("@mulmoclaude/") ? name : null;
+  } catch {
+    return null;
+  }
+}
+
+// Windows-only bind mounts giving the in-container MCP child a junction-free
+// copy of each `@mulmoclaude/*` package under CONTAINER_WORKSPACE_MODULES_PATH
+// (#1946 — the yarn-workspace junctions dangle inside the Linux container).
+// Empty on every other platform and on npx installs (no `packages/`).
+function workspaceModuleMounts(packageRoot: string, platform: Platform, toDockerPath: (hostPath: string) => string): string[] {
+  if (platform !== "win32") return [];
+  const mounts: string[] = [];
+  for (const dir of workspacePackageDirs(packageRoot)) {
+    const name = scopedPackageName(dir);
+    if (name) mounts.push("-v", `${toDockerPath(dir)}:${CONTAINER_WORKSPACE_MODULES_PATH}/${name}:ro`);
+  }
+  return mounts;
+}
+
 // Pure helper that returns the full `docker run ... claude <args>`
 // argv array. Extracted from runAgent so the long flag list can be
 // inspected and tested without spawning a real subprocess.
+// Windows host paths use `\`; Docker's `-v` wants `/`. Pure.
+const toDockerPath = (hostPath: string): string => hostPath.replace(/\\/g, "/");
+
+// Cap/user posture. With SSH-agent forwarding the entrypoint needs 5 caps +
+// HOST_UID/GID to fix /etc/passwd + chown/chmod the socket, then drops them on
+// exec (`setpriv --inh-caps=-all`). Without SSH, run the whole container as the
+// host user — zero caps from the start (pre-#259 posture). Pure.
+export function dockerUserCapArgs(sshAgentForward: boolean, uid: number, gid: number): string[] {
+  if (!sshAgentForward) return ["--user", `${uid}:${gid}`];
+  return [
+    "--cap-add",
+    "CHOWN",
+    "--cap-add",
+    "FOWNER",
+    "--cap-add",
+    "DAC_OVERRIDE",
+    "--cap-add",
+    "SETUID",
+    "--cap-add",
+    "SETGID",
+    "-e",
+    `HOST_UID=${uid}`,
+    "-e",
+    `HOST_GID=${gid}`,
+  ];
+}
+
+interface DockerBindMountOpts {
+  projectRoot: string;
+  packageRoot: string;
+  workspacePath: string;
+  homeDir: string;
+  packagesMount: string[];
+  platform: Platform;
+}
+
+// The `-v` bind mounts, in order. node_modules stays on projectRoot (hoisted
+// deps live next to the consumer's package.json, not mulmoclaude's package dir,
+// #1770); server/src come from packageRoot (repo root in dev, the installed
+// package in npx). Pure given its inputs. Extracted to keep buildDockerSpawnArgs
+// under the max-lines threshold.
+export function dockerBindMountArgs(opts: DockerBindMountOpts): string[] {
+  return [
+    "-v",
+    `${toDockerPath(opts.projectRoot)}/node_modules:/app/node_modules:ro`,
+    "-v",
+    `${toDockerPath(opts.packageRoot)}/server:/app/server:ro`,
+    "-v",
+    `${toDockerPath(opts.packageRoot)}/src:/app/src:ro`,
+    ...opts.packagesMount,
+    ...workspaceModuleMounts(opts.packageRoot, opts.platform, toDockerPath),
+    "-v",
+    `${toDockerPath(opts.workspacePath)}:${CONTAINER_WORKSPACE_PATH}`,
+    "-v",
+    `${toDockerPath(claudeConfigDir(opts.homeDir))}:/home/node/.claude`,
+    "-v",
+    `${toDockerPath(claudeConfigJson(opts.homeDir))}:/home/node/.claude.json`,
+  ];
+}
+
 export function buildDockerSpawnArgs(params: DockerSpawnArgsParams): string[] {
   const {
     workspacePath,
@@ -549,12 +716,21 @@ export function buildDockerSpawnArgs(params: DockerSpawnArgsParams): string[] {
     gid,
     platform,
     projectRoot = resolveProjectRoot(),
+    packageRoot = resolvePackageRoot(),
     homeDir = homedir(),
     sandboxAuthArgs = [],
     sshAgentForward = false,
   } = params;
-  const toDockerPath = (hostPath: string): string => hostPath.replace(/\\/g, "/");
   const extraHosts: string[] = platform === "linux" ? ["--add-host", "host.docker.internal:host-gateway"] : [];
+  // `packages/` ships in the dev monorepo but NOT in the published
+  // mulmoclaude package (the `files` whitelist in
+  // `packages/mulmoclaude/package.json` excludes it — internal
+  // `@mulmoclaude/*` workspaces are installed as `node_modules/
+  // @mulmoclaude/*` after publish). Skip the bind mount when the dir
+  // is absent so `docker run` doesn't error on a missing source path
+  // in packaged installs (#1770 Docker-side gap @ystknsh flagged).
+  const packagesDir = join(packageRoot, "packages");
+  const packagesMount: string[] = existsSync(packagesDir) ? ["-v", `${toDockerPath(packagesDir)}:/app/packages:ro`] : [];
 
   return [
     "run",
@@ -565,32 +741,7 @@ export function buildDockerSpawnArgs(params: DockerSpawnArgsParams): string[] {
     "-i",
     "--cap-drop",
     "ALL",
-    // When SSH agent forwarding is active, the entrypoint needs root
-    // to fix /etc/passwd, chown /home/node, and chmod the socket.
-    // These 5 caps are the minimum set; setpriv --inh-caps=-all
-    // drops them on exec so Claude runs with zero capabilities.
-    //
-    // When SSH is OFF, use the simpler `--user uid:gid` which runs
-    // the entire container as the host user — zero caps from the
-    // start, identical to the pre-#259 security posture.
-    ...(sshAgentForward
-      ? [
-          "--cap-add",
-          "CHOWN",
-          "--cap-add",
-          "FOWNER",
-          "--cap-add",
-          "DAC_OVERRIDE",
-          "--cap-add",
-          "SETUID",
-          "--cap-add",
-          "SETGID",
-          "-e",
-          `HOST_UID=${uid}`,
-          "-e",
-          `HOST_GID=${gid}`,
-        ]
-      : ["--user", `${uid}:${gid}`]),
+    ...dockerUserCapArgs(sshAgentForward, uid, gid),
     "-e",
     "HOME=/home/node",
     // Wiki-history hook (#763 PR 2) runs inside this container after
@@ -607,20 +758,7 @@ export function buildDockerSpawnArgs(params: DockerSpawnArgsParams): string[] {
     // toolResult into its timeline.
     "-e",
     `MULMOCLAUDE_CHAT_SESSION_ID=${params.chatSessionId}`,
-    "-v",
-    `${toDockerPath(projectRoot)}/node_modules:/app/node_modules:ro`,
-    "-v",
-    `${toDockerPath(projectRoot)}/server:/app/server:ro`,
-    "-v",
-    `${toDockerPath(projectRoot)}/src:/app/src:ro`,
-    "-v",
-    `${toDockerPath(projectRoot)}/packages:/app/packages:ro`,
-    "-v",
-    `${toDockerPath(workspacePath)}:${CONTAINER_WORKSPACE_PATH}`,
-    "-v",
-    `${toDockerPath(homeDir)}/.claude:/home/node/.claude`,
-    "-v",
-    `${toDockerPath(homeDir)}/.claude.json:/home/node/.claude.json`,
+    ...dockerBindMountArgs({ projectRoot, packageRoot, workspacePath, homeDir, packagesMount, platform }),
     ...sandboxAuthArgs,
     ...extraHosts,
     "mulmoclaude-sandbox",

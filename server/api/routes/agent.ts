@@ -1,9 +1,11 @@
+import { randomUUID } from "node:crypto";
 import { Router, Request, Response } from "express";
 import { getSessionQuery } from "../../utils/request.js";
 import {
   createSessionMeta,
   backfillFirstUserMessage as backfillMeta,
   backfillOrigin,
+  incrementUserQueryCount,
   readSessionMetaFull,
   readSessionMeta,
   setClaudeSessionId as setClaudeId,
@@ -33,7 +35,14 @@ import { createArgsCache, recordToolEvent } from "../../workspace/tool-trace/ind
 import { API_ROUTES } from "../../../src/config/apiRoutes.js";
 import { EVENT_TYPES } from "../../../src/types/events.js";
 import { isSessionOrigin, SESSION_ORIGINS, type SessionOrigin } from "../../../src/types/session.js";
-import { releaseBackgroundSession } from "../../agent/backgroundSessions.js";
+import {
+  tryReserveBackgroundSession,
+  releaseBackgroundSession,
+  registerCompletionHook,
+  runCompletionHook,
+  MAX_BACKGROUND_SESSIONS,
+  type CompletionHook,
+} from "../../agent/backgroundSessions.js";
 // Imports kept commented (instead of deleted) alongside the
 // publishNotification call in `runPostTurnSideEffects` — see the
 // duplicate-notification comment there for context. (`SESSION_ORIGINS`
@@ -133,8 +142,60 @@ export interface StartChatParams {
 
 export type StartChatResult = { kind: "started"; chatSessionId: string } | { kind: "error"; error: string; status?: number };
 
+/** Outcome of launching a worker session. */
+export type SpawnSystemWorkerResult = { ok: true; chatId: string } | { ok: false; error: string };
+
+// Launch a host-side worker session. `hidden` decides visibility:
+//   - true  → origin `system`: never appears in the session list, runaway-cap
+//             reserved, `finalizeRun` invokes the completion hook + cleans up.
+//             Used for SCHEDULED agent-ingest refreshes (no one is watching).
+//   - false → origin `skill`: a normal visible chat the user can open from
+//             history, no cap, NO completion hook (the user watches it run
+//             directly). Used for a MANUAL Refresh-button refresh so it's
+//             debuggable.
+// Exported so non-MCP host callers (the agent-ingest engine, wired in via
+// `setAgentWorkerRunner`) can spawn one without going through the tool layer.
+export async function spawnSystemWorker(args: {
+  message: string;
+  roleId: string;
+  hidden: boolean;
+  /** Path-bearing attachments to hand the spawned chat (e.g. files the mobile
+   *  remote attached, ingested into the workspace). Forwarded to `startChat`,
+   *  which loads their bytes for the model like any other attachment. */
+  attachments?: Attachment[];
+  onComplete?: CompletionHook;
+}): Promise<SpawnSystemWorkerResult> {
+  const chatId = randomUUID();
+  const origin: SessionOrigin = args.hidden ? SESSION_ORIGINS.system : SESSION_ORIGINS.skill;
+  // The runaway cap guards hidden workers only — a visible run is user-initiated
+  // and self-limiting. Reserve ATOMICALLY before launching; rolled back below if
+  // the launch fails (otherwise released in `runAgentInBackground`'s finally).
+  if (args.hidden && !tryReserveBackgroundSession(chatId)) {
+    return { ok: false, error: `too many background sessions already in flight (max ${MAX_BACKGROUND_SESSIONS})` };
+  }
+  let result: StartChatResult;
+  try {
+    result = await startChat({ message: args.message, roleId: args.roleId, chatSessionId: chatId, origin, attachments: args.attachments });
+  } catch (err) {
+    // `startChat` is normally fire-and-forget, but a synchronous setup failure
+    // can reject — release the reservation so the slot isn't leaked until restart.
+    if (args.hidden) releaseBackgroundSession(chatId);
+    return { ok: false, error: errorMessage(err) };
+  }
+  if (result.kind === "error") {
+    if (args.hidden) releaseBackgroundSession(chatId); // roll back the reservation
+    return { ok: false, error: result.error };
+  }
+  // Register the completion hook AFTER a successful launch (the subprocess can't
+  // finish before this synchronous code returns, so `finalizeRun` won't miss
+  // it). Only hidden (system) sessions run it — `finalizeRun` skips the hook for
+  // visible origins, which take the normal post-turn path instead.
+  if (args.hidden && args.onComplete) registerCompletionHook(chatId, args.onComplete);
+  return { ok: true, chatId };
+}
+
 export async function startChat(params: StartChatParams): Promise<StartChatResult> {
-  const { message, roleId, chatSessionId, selectedImageData, attachments, userTimezone } = params;
+  const { message, roleId, chatSessionId, selectedImageData, attachments } = params;
   // Bridge-only compat: external bridge clients may still populate
   // `selectedImageData`. Fold it into `attachments` so the rest of
   // this function only deals with one input shape.
@@ -211,6 +272,22 @@ export async function startChat(params: StartChatParams): Promise<StartChatResul
     return { kind: "error", error: "Invalid attachments payload", status: 400 };
   }
 
+  const validOrigin = await persistUserTurn(params, { isFirstTurn, attachedPaths });
+  await dispatchAgentRun(params, { extras, resultsFilePath, abortController, validOrigin });
+
+  return { kind: "started", chatSessionId };
+}
+
+// ── Helpers ──────────────────────────────────────────────────────────
+
+// Persist the user turn: write session metadata, count the query,
+// append the user message to the jsonl, and broadcast it to other
+// tabs viewing this session. Returns the validated origin so the
+// dispatch phase can reuse it.
+async function persistUserTurn(params: StartChatParams, ctx: { isFirstTurn: boolean; attachedPaths: string[] }): Promise<SessionOrigin | undefined> {
+  const { message, roleId, chatSessionId } = params;
+  const { isFirstTurn, attachedPaths } = ctx;
+
   // Now persist the user message so callers (and other tabs) see the
   // turn. Metadata first — it powers the sidebar title cache; the
   // append follows so the jsonl is always a superset of what metadata
@@ -224,6 +301,10 @@ export async function startChat(params: StartChatParams): Promise<StartChatResul
       await backfillOrigin(chatSessionId, validOrigin);
     }
   }
+  // Count this user turn (createSessionMeta seeds no count, so the first
+  // turn bumps undefined→1). Lets the sidebar tell a one-shot apart from
+  // a long conversation.
+  await incrementUserQueryCount(chatSessionId);
 
   // Append user message for this turn
   await appendSessionLine(
@@ -240,6 +321,20 @@ export async function startChat(params: StartChatParams): Promise<StartChatResul
     message,
     ...(attachedPaths.length > 0 ? { attachments: attachedPaths } : {}),
   });
+
+  return validOrigin;
+}
+
+// Build the LLM-bound message (journal pointer + attached-file
+// markers) and kick off the detached background agent run. The
+// background run itself is fire-and-forget; this awaits only the
+// claudeSessionId read that must precede it.
+async function dispatchAgentRun(
+  params: StartChatParams,
+  ctx: { extras: RequestExtras; resultsFilePath: string; abortController: AbortController; validOrigin: SessionOrigin | undefined },
+): Promise<void> {
+  const { message, roleId, chatSessionId, userTimezone } = params;
+  const { extras, resultsFilePath, abortController, validOrigin } = ctx;
 
   const role = getRole(roleId);
   const claudeSessionId = await readClaudeSessionIdFromSession(chatSessionId);
@@ -268,11 +363,7 @@ export async function startChat(params: StartChatParams): Promise<StartChatResul
     userTimezone,
     origin: validOrigin,
   });
-
-  return { kind: "started", chatSessionId };
 }
-
-// ── Helpers ──────────────────────────────────────────────────────────
 
 interface RequestExtras {
   attachments: Attachment[] | undefined;
@@ -870,6 +961,99 @@ export const _splitSkillAndReplyForTest = splitSkillAndReply;
 //   }
 // }
 
+/** A stale `--resume` failure we can recover from by retrying without it: an
+ *  error event carrying a stale-session message, while failover budget remains. */
+function isRecoverableStaleSession(event: { type: string; message?: unknown }, failoverAttemptsRemaining: number): boolean {
+  return failoverAttemptsRemaining > 0 && event.type === EVENT_TYPES.error && typeof event.message === "string" && isStaleSessionError(event.message);
+}
+
+// What the failover stream loop reads to (re)invoke `runAgent`. A
+// subset of `BackgroundRunParams` — the per-turn teardown fields
+// (resultsFilePath, requestStartedAt, toolArgsCache, origin) stay in
+// `runAgentInBackground`.
+interface FailoverStreamArgs {
+  decoratedMessage: string;
+  role: ReturnType<typeof getRole>;
+  chatSessionId: string;
+  claudeSessionId: string | undefined;
+  abortSignal: AbortSignal;
+  attachments: Attachment[] | undefined;
+  userTimezone: string | undefined;
+}
+
+// Drive `runAgent` for one turn, retrying once without `--resume` when
+// the stored claude session id turns out to be stale (#211). Returns
+// whether a real error event was yielded, so the caller's `finally` can
+// decide hidden-worker cleanup. Split out of `runAgentInBackground` to
+// keep that function under the max-lines-per-function budget.
+async function runAgentStreamWithFailover(args: FailoverStreamArgs, eventCtx: EventContext): Promise<boolean> {
+  const { decoratedMessage, role, chatSessionId, claudeSessionId, abortSignal, attachments, userTimezone } = args;
+
+  // Retry budget for the stale `--resume` id fail-over (#211). Only
+  // meaningful when we entered with a `claudeSessionId`; a fresh
+  // session can't hit that error. One retry max so a looping CLI
+  // bug can't stack infinite replays of the transcript.
+  let failoverAttemptsRemaining = claudeSessionId ? 1 : 0;
+  let currentMessage = decoratedMessage;
+  let currentClaudeSessionId = claudeSessionId;
+  // Tracks whether this run yielded a real error event, so the caller's
+  // finally can decide whether a hidden worker session's files are safe
+  // to delete (success) or should be kept for inspection (error).
+  let didError = false;
+
+  while (true) {
+    let staleSessionDetected = false;
+    for await (const event of runAgent({
+      message: currentMessage,
+      role,
+      workspacePath,
+      sessionId: chatSessionId,
+      port: PORT,
+      claudeSessionId: currentClaudeSessionId,
+      abortSignal,
+      attachments,
+      userTimezone,
+    })) {
+      if (isRecoverableStaleSession(event, failoverAttemptsRemaining)) {
+        // Swallow the error — we're about to recover. `break`
+        // abandons the current generator; since the event is only
+        // yielded after the CLI has already exited non-zero, the
+        // subprocess is dead by this point and there's nothing to
+        // clean up beyond what `for await`'s return() already does.
+        staleSessionDetected = true;
+        failoverAttemptsRemaining--;
+        break;
+      }
+      // A yielded error event (non-zero Claude exit, missing binary, a tool
+      // surfacing an error) is a real failure even though the generator
+      // didn't throw — record it so `finalizeRun`'s hidden-worker cleanup and
+      // the agent-ingest completion hook see `didError`. The stale-session
+      // failover above breaks earlier, so a recoverable id doesn't count.
+      if (event.type === EVENT_TYPES.error) didError = true;
+      await handleAgentEvent(event, eventCtx);
+    }
+    if (!staleSessionDetected) break;
+
+    // Stale `--resume` recovery: clear the bad id from meta so the
+    // next *external* read of this session doesn't see it, build a
+    // natural-language preamble from the jsonl we already have,
+    // and loop back to `runAgent` without `--resume`. Surface a
+    // status event so the UI pause doesn't look like a hang.
+    log.warn("agent", "stale claude session id — retrying without --resume", {
+      chatSessionId,
+    });
+    await clearClaudeId(chatSessionId);
+    const preamble = await readTranscriptPreamble(chatSessionId);
+    currentMessage = preamble ? `${preamble}${decoratedMessage}` : decoratedMessage;
+    currentClaudeSessionId = undefined;
+    pushSessionEvent(chatSessionId, {
+      type: EVENT_TYPES.status,
+      message: "Previous session unavailable — continuing with local transcript.",
+    });
+  }
+  return didError;
+}
+
 async function runAgentInBackground(params: BackgroundRunParams): Promise<void> {
   const { decoratedMessage, role, chatSessionId, claudeSessionId, abortSignal, resultsFilePath, requestStartedAt, toolArgsCache, attachments, userTimezone } =
     params;
@@ -882,63 +1066,13 @@ async function runAgentInBackground(params: BackgroundRunParams): Promise<void> 
     pendingSkill: null,
   };
 
-  // Retry budget for the stale `--resume` id fail-over (#211). Only
-  // meaningful when we entered with a `claudeSessionId`; a fresh
-  // session can't hit that error. One retry max so a looping CLI
-  // bug can't stack infinite replays of the transcript.
-  let failoverAttemptsRemaining = claudeSessionId ? 1 : 0;
-  let currentMessage = decoratedMessage;
-  let currentClaudeSessionId = claudeSessionId;
-  // Tracks whether this run threw, so the finally can decide whether a
-  // hidden worker session's files are safe to delete (success) or
-  // should be kept for inspection (error).
+  // Tracks whether this run threw or yielded an error event, so the
+  // finally can decide whether a hidden worker session's files are safe
+  // to delete (success) or should be kept for inspection (error).
   let didError = false;
 
   try {
-    while (true) {
-      let staleSessionDetected = false;
-      for await (const event of runAgent({
-        message: currentMessage,
-        role,
-        workspacePath,
-        sessionId: chatSessionId,
-        port: PORT,
-        claudeSessionId: currentClaudeSessionId,
-        abortSignal,
-        attachments,
-        userTimezone,
-      })) {
-        if (failoverAttemptsRemaining > 0 && event.type === EVENT_TYPES.error && typeof event.message === "string" && isStaleSessionError(event.message)) {
-          // Swallow the error — we're about to recover. `break`
-          // abandons the current generator; since the event is only
-          // yielded after the CLI has already exited non-zero, the
-          // subprocess is dead by this point and there's nothing to
-          // clean up beyond what `for await`'s return() already does.
-          staleSessionDetected = true;
-          failoverAttemptsRemaining--;
-          break;
-        }
-        await handleAgentEvent(event, eventCtx);
-      }
-      if (!staleSessionDetected) break;
-
-      // Stale `--resume` recovery: clear the bad id from meta so the
-      // next *external* read of this session doesn't see it, build a
-      // natural-language preamble from the jsonl we already have,
-      // and loop back to `runAgent` without `--resume`. Surface a
-      // status event so the UI pause doesn't look like a hang.
-      log.warn("agent", "stale claude session id — retrying without --resume", {
-        chatSessionId,
-      });
-      await clearClaudeId(chatSessionId);
-      const preamble = await readTranscriptPreamble(chatSessionId);
-      currentMessage = preamble ? `${preamble}${decoratedMessage}` : decoratedMessage;
-      currentClaudeSessionId = undefined;
-      pushSessionEvent(chatSessionId, {
-        type: EVENT_TYPES.status,
-        message: "Previous session unavailable — continuing with local transcript.",
-      });
-    }
+    didError = await runAgentStreamWithFailover({ decoratedMessage, role, chatSessionId, claudeSessionId, abortSignal, attachments, userTimezone }, eventCtx);
     // Flush any accumulated streaming text as a single consolidated
     // line in the jsonl. This prevents per-chunk lines that would
     // appear as separate cards on session reload.
@@ -978,6 +1112,10 @@ async function finalizeRun(chatSessionId: string, origin: SessionOrigin | undefi
     // plumbing and pollute wiki backlinks), and clean up its files on
     // success — keep them on error so a failed worker stays inspectable.
     releaseBackgroundSession(chatSessionId);
+    // Fire any one-shot completion hook (e.g. agent-ingest failure tracking)
+    // AFTER the slot is freed, BEFORE files are cleaned up. Best-effort —
+    // a throwing hook is logged, never propagated.
+    await runCompletionHook(chatSessionId, { didError }).catch(logBackgroundError("background-session-completion-hook"));
     if (!didError) {
       await deleteSessionFiles(chatSessionId).catch(logBackgroundError("background-session-cleanup"));
     }

@@ -1,22 +1,33 @@
-export { discoverCollections, loadCollection, toSummary, toDetail, CollectionSchemaZ, type LoadedCollection } from "./discovery.js";
-export { validateCollectionRecords, validateRecordObject, COMPUTED_TYPES, type RecordIssue } from "./validate.js";
-export { enrichItems } from "./derive.js";
-export { deleteCollection, deleteCollectionRefusalMessage, type DeleteCollectionResult } from "./delete.js";
-export { deleteCustomView, type DeleteViewResult } from "./views.js";
+export {
+  discoverCollections,
+  loadCollection,
+  toSummary,
+  toDetail,
+  CollectionSchemaZ,
+  resolveDataDir,
+  type LoadedCollection,
+} from "@mulmoclaude/core/collection/server";
+export { validateCollectionRecords, validateRecordObject, COMPUTED_TYPES, type RecordIssue } from "@mulmoclaude/core/collection/server";
+export { enrichItems, computeCollectionIcon } from "@mulmoclaude/core/collection/server";
+export { deleteCollection, deleteCollectionRefusalMessage, type DeleteCollectionResult } from "@mulmoclaude/core/collection/server";
+export { deleteCustomView, type DeleteViewResult } from "@mulmoclaude/core/collection/server";
 export {
   listItems,
   readItem,
   writeItem,
   deleteItem,
+  safeRecordId,
   generateItemId,
   resolveCreateItemId,
   readSkillTemplate,
   readCustomViewHtml,
+  readCustomViewI18n,
   buildActionSeedPrompt,
   buildCollectionActionSeedPrompt,
+  promptPathsFor,
   type WriteItemResult,
   type DeleteItemResult,
-} from "./io.js";
+} from "@mulmoclaude/core/collection/server";
 export type {
   CollectionSchema,
   CollectionAction,

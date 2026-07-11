@@ -10,40 +10,16 @@
 //   data/attachments/YYYY/MM/<id>.<ext>            (original, always)
 //   data/attachments/YYYY/MM/<id>.pdf              (companion, PPTX only — same <id>)
 
-import { mkdir, readFile, realpath, writeFile } from "fs/promises";
+import { readFile } from "fs/promises";
 import path from "path";
 import { WORKSPACE_DIRS, WORKSPACE_PATHS } from "../../workspace/paths.js";
 import { shortId } from "../id.js";
 import { writeFileAtomic } from "./atomic.js";
 import { yearMonthUtc } from "./naming.js";
-import { resolveWithinRoot } from "./safe.js";
+import { makePathValidator } from "./path-validator.js";
+import { makeStoreResolvers } from "./store-resolvers.js";
 
-// Cache the real-path resolution per workspace root so test setups
-// that override `WORKSPACE_PATHS.attachments` mid-run still work —
-// reading the path at call time (instead of capturing it at module
-// load) means a test that points the workspace at a tmp dir
-// recomputes everything from there.
-const attachmentsDirRealByRoot = new Map<string, string>();
-
-async function ensureAttachmentsDir(): Promise<string> {
-  const root = WORKSPACE_PATHS.attachments;
-  const cached = attachmentsDirRealByRoot.get(root);
-  if (cached) return cached;
-  await mkdir(root, { recursive: true });
-  const real = await realpath(root);
-  attachmentsDirRealByRoot.set(root, real);
-  return real;
-}
-
-async function safeResolve(relativePath: string): Promise<string> {
-  const root = await ensureAttachmentsDir();
-  const name = relativePath.replace(new RegExp(`^${WORKSPACE_DIRS.attachments}/`), "");
-  const result = resolveWithinRoot(root, name);
-  if (!result) {
-    throw new Error(`path traversal rejected: ${relativePath}`);
-  }
-  return result;
-}
+const resolvers = makeStoreResolvers(() => WORKSPACE_PATHS.attachments, WORKSPACE_DIRS.attachments);
 
 // MIME ↔ extension mapping. Kept narrow on purpose — anything not
 // in this table falls back to `.bin` so we don't have to guess.
@@ -66,6 +42,12 @@ const MIME_EXT: Readonly<Record<string, string>> = {
   // TIFF — exifr can read it, and the photo plugin enumerates it
   // as a supported source format. Same rationale as HEIC.
   "image/tiff": ".tif",
+  // BMP + AVIF — routed through upload-time JPEG conversion for
+  // Claude's Messages API (see image-jpeg-convert.ts). Without these
+  // MIME_EXT entries the original would land as `<id>.bin`, breaking
+  // the `originalPath` fidelity the route response promises.
+  "image/bmp": ".bmp",
+  "image/avif": ".avif",
   "application/pdf": ".pdf",
   "application/json": ".json",
   "application/xml": ".xml",
@@ -97,6 +79,8 @@ const EXT_MIME: Readonly<Record<string, string>> = {
   ".heif": "image/heif",
   ".tif": "image/tiff",
   ".tiff": "image/tiff",
+  ".bmp": "image/bmp",
+  ".avif": "image/avif",
   ".pdf": "application/pdf",
   ".json": "application/json",
   ".xml": "application/xml",
@@ -167,7 +151,6 @@ async function runSaveAttachmentHooks(absPath: string, relativePath: string, mim
  *  caller picks the ID; companions (e.g. PPTX → PDF) reuse it via
  *  `saveCompanion()` so they share the same numeric prefix. */
 export async function saveAttachment(base64Data: string, mimeType: string): Promise<SavedAttachment> {
-  await ensureAttachmentsDir();
   const partition = yearMonthUtc();
   const ext = extensionForMime(mimeType);
   const filename = `${shortId()}${ext}`;
@@ -189,51 +172,52 @@ export async function saveAttachment(base64Data: string, mimeType: string): Prom
  *  raw Buffer — the converter already has bytes in hand and base64
  *  re-encoding would be wasted work. */
 export async function saveCompanion(originalRelativePath: string, buf: Buffer, ext: string): Promise<string> {
-  await ensureAttachmentsDir();
   const dir = path.posix.dirname(originalRelativePath);
   const base = path.posix.basename(originalRelativePath, path.posix.extname(originalRelativePath));
-  const filename = `${base}${ext}`;
-  const relativePath = path.posix.join(dir, filename);
-  const absPath = await safeResolve(relativePath);
-  // mkdir-p inside safeResolve's confined root.
-  await mkdir(path.dirname(absPath), { recursive: true });
-  await writeFile(absPath, buf);
+  const relativePath = path.posix.join(dir, `${base}${ext}`);
+  const absPath = await resolvers.forWrite(relativePath);
+  await writeFileAtomic(absPath, buf);
   return relativePath;
 }
 
 export async function loadAttachmentBase64(relativePath: string): Promise<string> {
-  const absPath = await safeResolve(relativePath);
+  const absPath = await resolvers.forRead(relativePath);
   const buf = await readFile(absPath);
   return buf.toString("base64");
 }
 
 export async function loadAttachmentBytes(relativePath: string): Promise<Buffer> {
-  const absPath = await safeResolve(relativePath);
+  const absPath = await resolvers.forRead(relativePath);
   return readFile(absPath);
 }
 
-// Reject `.` and `..` segments split on either `/` or `\` so a
-// traversal-shaped value (`data/attachments/../secrets/key.pem`,
-// `data/attachments\..\foo.pdf`) doesn't pass the prefix check
-// and reach `[Attached file: ...]` markers / chat surface
-// (Codex review on PR #1084 follow-up to #1052).
-function hasTraversalSegment(value: string): boolean {
-  return value.split(/[/\\]/).some((segment) => segment === ".." || segment === ".");
-}
-
-export function isAttachmentPath(value: string): boolean {
-  if (!value.startsWith(`${WORKSPACE_DIRS.attachments}/`)) return false;
-  if (hasTraversalSegment(value)) return false;
-  return true;
-}
+export const isAttachmentPath = makePathValidator({ prefix: WORKSPACE_DIRS.attachments });
 
 export function stripDataUri(dataUri: string): { mimeType: string; base64: string } | undefined {
-  const match = /^data:([^;,]+)(;base64)?,(.*)$/s.exec(dataUri);
-  if (!match) return undefined;
-  const [, mimeType, isBase64, payload] = match;
-  if (!isBase64) {
+  // Parse without a regex (the nested-quantifier form trips
+  // security/detect-unsafe-regex). RFC 2397 shape:
+  //   data:<mediatype>(;<param>)*(;base64)?,<payload>
+  // The first comma delimits header from payload. MediaRecorder +
+  // FileReader emit params like `;codecs=opus`, so we must tolerate
+  // them; the bare MIME type (params dropped) is what callers want for
+  // extension lookup.
+  if (!dataUri.startsWith("data:")) return undefined;
+  const commaIndex = dataUri.indexOf(",");
+  if (commaIndex === -1) return undefined;
+  const header = dataUri.slice("data:".length, commaIndex);
+  const payload = dataUri.slice(commaIndex + 1);
+  const params = header.split(";");
+  const [mimeType] = params;
+  if (!mimeType) return undefined;
+  if (!params.includes("base64")) {
     // URL-encoded inline form — convert to base64 for storage.
-    return { mimeType, base64: Buffer.from(decodeURIComponent(payload), "utf-8").toString("base64") };
+    // `decodeURIComponent` throws on malformed escapes (e.g. a lone `%`);
+    // treat that as invalid input rather than letting it bubble up.
+    try {
+      return { mimeType, base64: Buffer.from(decodeURIComponent(payload), "utf-8").toString("base64") };
+    } catch {
+      return undefined;
+    }
   }
   return { mimeType, base64: payload };
 }

@@ -1,3 +1,4 @@
+import "../../../server/workspace/collections/configure.js"; // configure @mulmoclaude/core/collection host binding for tests
 // Schema validation + field-type tests for the collections discovery
 // module. Locks in: (1) the v0 supported field-type set, (2) the
 // rejection of unknown types and structurally malformed schemas,
@@ -14,7 +15,7 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 
-import { discoverCollections, loadCollection } from "../../../server/workspace/collections/discovery.js";
+import { discoverCollections, loadCollection } from "@mulmoclaude/core/collection/server";
 
 let workdir: string;
 let emptyUserDir: string;
@@ -588,6 +589,75 @@ describe("discoverCollections — field-type support", () => {
     const collections = await listCollections();
     assert.equal(collections.length, 0);
   });
+
+  // ─── embed per-record target via `idField` ───
+
+  it("accepts `embed` with a valid `to` and an `idField` naming a real field", async () => {
+    writeSkill("test-embed-idfield", {
+      title: "Multi-issuer Invoice",
+      icon: "receipt",
+      dataPath: "data/embedidfield/items",
+      primaryKey: "id",
+      fields: {
+        id: { type: "string", label: "ID", primary: true, required: true },
+        issuerId: { type: "ref", to: "mc-profile", label: "Issuer", required: true },
+        issuer: { type: "embed", to: "mc-profile", idField: "issuerId", label: "From (issuer)" },
+      },
+    });
+    const collections = await listCollections();
+    assert.equal(collections.length, 1);
+    assert.equal(collections[0]?.schema.fields.issuer?.idField, "issuerId");
+  });
+
+  it("rejects `embed` that declares both `id` and `idField`", async () => {
+    writeSkill("test-embed-both", {
+      title: "Bad Embed",
+      icon: "warning",
+      dataPath: "data/embedboth/items",
+      primaryKey: "id",
+      fields: {
+        id: { type: "string", label: "ID", primary: true, required: true },
+        issuerId: { type: "ref", to: "mc-profile", label: "Issuer" },
+        issuer: { type: "embed", to: "mc-profile", id: "me", idField: "issuerId", label: "Issuer" },
+      },
+    });
+    const collections = await listCollections();
+    assert.equal(collections.length, 0, "embed with both `id` and `idField` must be skipped");
+  });
+
+  it("rejects `embed` whose `idField` names a non-existent field", async () => {
+    writeSkill("test-embed-idfield-missing", {
+      title: "Bad Embed",
+      icon: "warning",
+      dataPath: "data/embedidfieldmissing/items",
+      primaryKey: "id",
+      fields: {
+        id: { type: "string", label: "ID", primary: true, required: true },
+        issuer: { type: "embed", to: "mc-profile", idField: "nope", label: "Issuer" },
+      },
+    });
+    const collections = await listCollections();
+    assert.equal(collections.length, 0, "embed whose `idField` names no field must be skipped");
+  });
+
+  it("rejects `embed` whose `idField` names a non-`ref`/`string` field", async () => {
+    // The editor writes the picked id into `idField`, so it must be a field
+    // that holds a plain id — a `number` (or table/derived/embed) can't
+    // round-trip, so the schema is rejected at load.
+    writeSkill("test-embed-idfield-badtype", {
+      title: "Bad Embed",
+      icon: "warning",
+      dataPath: "data/embedidfieldbadtype/items",
+      primaryKey: "id",
+      fields: {
+        id: { type: "string", label: "ID", primary: true, required: true },
+        issuerNum: { type: "number", label: "Issuer #" },
+        issuer: { type: "embed", to: "mc-profile", idField: "issuerNum", label: "Issuer" },
+      },
+    });
+    const collections = await listCollections();
+    assert.equal(collections.length, 0, "embed whose `idField` is not a ref/string must be skipped");
+  });
 });
 
 describe("discoverCollections — structural validation", () => {
@@ -860,6 +930,100 @@ describe("discoverCollections — actions", () => {
   });
 });
 
+describe('discoverCollections — agent ingest (`ingest.kind: "agent"`)', () => {
+  const fields = { id: { type: "string", label: "ID", primary: true, required: true } };
+
+  it("accepts a valid agent ingest block", async () => {
+    writeSkill("test-agent-ingest", {
+      title: "Quotes",
+      icon: "trending_up",
+      dataPath: "data/quotes/items",
+      primaryKey: "id",
+      fields,
+      ingest: { kind: "agent", schedule: "daily", role: "investor", template: "templates/refresh.md" },
+    });
+    const collections = await listCollections();
+    assert.equal(collections.length, 1);
+    assert.equal(collections[0]?.schema.ingest?.kind, "agent");
+    assert.equal(collections[0]?.schema.ingest?.role, "investor");
+    assert.equal(collections[0]?.schema.ingest?.template, "templates/refresh.md");
+  });
+
+  it("accepts an agent ingest with a UTC atHour anchor", async () => {
+    writeSkill("test-agent-athour", {
+      title: "Quotes",
+      icon: "trending_up",
+      dataPath: "data/athour/items",
+      primaryKey: "id",
+      fields,
+      ingest: { kind: "agent", schedule: "daily", atHour: 13, role: "investor", template: "templates/refresh.md" },
+    });
+    const collections = await listCollections();
+    assert.equal(collections.length, 1);
+    assert.equal(collections[0]?.schema.ingest?.atHour, 13);
+  });
+
+  it("rejects an agent ingest missing role", async () => {
+    writeSkill("test-agent-no-role", {
+      title: "X",
+      icon: "warning",
+      dataPath: "data/agnorole/items",
+      primaryKey: "id",
+      fields,
+      ingest: { kind: "agent", schedule: "daily", template: "templates/refresh.md" },
+    });
+    assert.equal((await listCollections()).length, 0);
+  });
+
+  it("rejects an agent ingest template with path traversal", async () => {
+    writeSkill("test-agent-traversal", {
+      title: "X",
+      icon: "warning",
+      dataPath: "data/agtrav/items",
+      primaryKey: "id",
+      fields,
+      ingest: { kind: "agent", schedule: "daily", role: "investor", template: "../../etc/passwd" },
+    });
+    assert.equal((await listCollections()).length, 0);
+  });
+
+  it("rejects an agent ingest template not under templates/", async () => {
+    writeSkill("test-agent-bare-template", {
+      title: "X",
+      icon: "warning",
+      dataPath: "data/agbare/items",
+      primaryKey: "id",
+      fields,
+      ingest: { kind: "agent", schedule: "daily", role: "investor", template: "refresh.md" },
+    });
+    assert.equal((await listCollections()).length, 0);
+  });
+
+  it("rejects an atHour outside 0–23", async () => {
+    writeSkill("test-agent-bad-athour", {
+      title: "X",
+      icon: "warning",
+      dataPath: "data/agbadhour/items",
+      primaryKey: "id",
+      fields,
+      ingest: { kind: "agent", schedule: "daily", atHour: 24, role: "investor", template: "templates/refresh.md" },
+    });
+    assert.equal((await listCollections()).length, 0);
+  });
+
+  it("rejects an unknown ingest kind", async () => {
+    writeSkill("test-ingest-bad-kind", {
+      title: "X",
+      icon: "warning",
+      dataPath: "data/badkind/items",
+      primaryKey: "id",
+      fields,
+      ingest: { kind: "telepathy", schedule: "daily", role: "investor", template: "templates/refresh.md" },
+    });
+    assert.equal((await listCollections()).length, 0);
+  });
+});
+
 describe("discoverCollections — field visibility (`when`)", () => {
   it("accepts a field with a valid `when` predicate naming a sibling field", async () => {
     writeSkill("test-field-when", {
@@ -1020,6 +1184,175 @@ describe("discoverCollections — triggerField + spawn validation", () => {
     writeSkill(
       "test-spawn-carry-pred",
       recurringSchema({ spawn: { when: { field: "status", in: ["paid"] }, every: { unit: "month", interval: 1 }, carry: ["status"] } }),
+    );
+    assert.equal((await listCollections()).length, 0);
+  });
+});
+
+describe("discoverCollections — field-driven spawn.every validation", () => {
+  // A bills collection whose recurrence interval is chosen per-record by the
+  // `frequency` enum. Base is well-formed (frequency is an enum, the map
+  // covers its values exactly, and frequency is carried onto the successor).
+  function freqSchema(spawnEvery: unknown = undefined, extra: Record<string, unknown> = {}): Record<string, unknown> {
+    const every = spawnEvery ?? {
+      fromField: "frequency",
+      map: {
+        daily: { unit: "day", interval: 1 },
+        weekly: { unit: "week", interval: 1 },
+        monthly: { unit: "month", interval: 1, dayOfMonth: 1 },
+      },
+    };
+    return {
+      title: "Bills",
+      icon: "receipt",
+      dataPath: "data/bills/items",
+      primaryKey: "id",
+      fields: {
+        id: { type: "string", label: "ID", primary: true, required: true },
+        dueOn: { type: "date", label: "Due", required: true },
+        amount: { type: "number", label: "Amount" },
+        frequency: { type: "enum", values: ["daily", "weekly", "monthly"], label: "Frequency", required: true },
+        status: { type: "enum", values: ["pending", "paid"], label: "Status", required: true },
+      },
+      completionField: "status",
+      completionDoneValues: ["paid"],
+      triggerField: "dueOn",
+      spawn: { when: { field: "status", in: ["paid"] }, every, carry: ["amount", "frequency"], set: { status: "pending" } },
+      ...extra,
+    };
+  }
+
+  it("accepts a well-formed field-driven spawn (enum field, exact map, carried)", async () => {
+    writeSkill("test-freq-ok", freqSchema());
+    assert.equal((await listCollections()).length, 1);
+  });
+
+  it("rejects fromField that is not an enum field", async () => {
+    writeSkill("test-freq-non-enum", freqSchema({ fromField: "amount", map: { daily: { unit: "day", interval: 1 } } }));
+    assert.equal((await listCollections()).length, 0);
+  });
+
+  it("rejects fromField naming a missing field", async () => {
+    writeSkill("test-freq-missing", freqSchema({ fromField: "ghost", map: { daily: { unit: "day", interval: 1 } } }));
+    assert.equal((await listCollections()).length, 0);
+  });
+
+  it("rejects a map that misses an enum value", async () => {
+    // `monthly` is a value of `frequency` but absent from the map.
+    writeSkill(
+      "test-freq-missing-key",
+      freqSchema({ fromField: "frequency", map: { daily: { unit: "day", interval: 1 }, weekly: { unit: "week", interval: 1 } } }),
+    );
+    assert.equal((await listCollections()).length, 0);
+  });
+
+  it("rejects a map with an extra key not in the enum", async () => {
+    writeSkill(
+      "test-freq-extra-key",
+      freqSchema({
+        fromField: "frequency",
+        map: {
+          daily: { unit: "day", interval: 1 },
+          weekly: { unit: "week", interval: 1 },
+          monthly: { unit: "month", interval: 1 },
+          yearly: { unit: "year", interval: 1 },
+        },
+      }),
+    );
+    assert.equal((await listCollections()).length, 0);
+  });
+
+  it("rejects when fromField is not carried (and not set) onto the successor", async () => {
+    writeSkill(
+      "test-freq-not-carried",
+      freqSchema(undefined, {
+        spawn: {
+          when: { field: "status", in: ["paid"] },
+          every: {
+            fromField: "frequency",
+            map: { daily: { unit: "day", interval: 1 }, weekly: { unit: "week", interval: 1 }, monthly: { unit: "month", interval: 1, dayOfMonth: 1 } },
+          },
+          carry: ["amount"],
+          set: { status: "pending" },
+        },
+      }),
+    );
+    assert.equal((await listCollections()).length, 0);
+  });
+
+  it("accepts when fromField is written by `set` instead of carried", async () => {
+    writeSkill(
+      "test-freq-set-driver",
+      freqSchema(undefined, {
+        spawn: {
+          when: { field: "status", in: ["paid"] },
+          every: {
+            fromField: "frequency",
+            map: { daily: { unit: "day", interval: 1 }, weekly: { unit: "week", interval: 1 }, monthly: { unit: "month", interval: 1, dayOfMonth: 1 } },
+          },
+          carry: ["amount"],
+          set: { status: "pending", frequency: "monthly" },
+        },
+      }),
+    );
+    assert.equal((await listCollections()).length, 1);
+  });
+
+  it("rejects when `set` writes fromField to a value not present in the map", async () => {
+    // `yearly` isn't a map key, so the successor would be born with an
+    // unresolvable driver and the chain would silently halt after one step.
+    writeSkill(
+      "test-freq-set-unmapped",
+      freqSchema(undefined, {
+        spawn: {
+          when: { field: "status", in: ["paid"] },
+          every: {
+            fromField: "frequency",
+            map: { daily: { unit: "day", interval: 1 }, weekly: { unit: "week", interval: 1 }, monthly: { unit: "month", interval: 1, dayOfMonth: 1 } },
+          },
+          carry: ["amount"],
+          set: { status: "pending", frequency: "yearly" },
+        },
+      }),
+    );
+    assert.equal((await listCollections()).length, 0);
+  });
+
+  it("rejects when `set` writes fromField to an empty value", async () => {
+    writeSkill(
+      "test-freq-set-empty",
+      freqSchema(undefined, {
+        spawn: {
+          when: { field: "status", in: ["paid"] },
+          every: {
+            fromField: "frequency",
+            map: { daily: { unit: "day", interval: 1 }, weekly: { unit: "week", interval: 1 }, monthly: { unit: "month", interval: 1, dayOfMonth: 1 } },
+          },
+          carry: ["amount"],
+          set: { status: "pending", frequency: "" },
+        },
+      }),
+    );
+    assert.equal((await listCollections()).length, 0);
+  });
+
+  it("rejects an `every` carrying BOTH unit and fromField (strict union)", async () => {
+    writeSkill("test-freq-both", freqSchema({ unit: "month", interval: 1, fromField: "frequency", map: { daily: { unit: "day", interval: 1 } } }));
+    assert.equal((await listCollections()).length, 0);
+  });
+
+  it("rejects an `every` carrying NEITHER unit nor fromField (strict union)", async () => {
+    writeSkill("test-freq-neither", freqSchema({ map: { daily: { unit: "day", interval: 1 } } }));
+    assert.equal((await listCollections()).length, 0);
+  });
+
+  it("rejects a bad interval inside a map value", async () => {
+    writeSkill(
+      "test-freq-bad-map-interval",
+      freqSchema({
+        fromField: "frequency",
+        map: { daily: { unit: "day", interval: 0 }, weekly: { unit: "week", interval: 1 }, monthly: { unit: "month", interval: 1 } },
+      }),
     );
     assert.equal((await listCollections()).length, 0);
   });

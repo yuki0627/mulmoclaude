@@ -1,6 +1,17 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
-import { extractText, truncateMiddle, parseClaudeJsonResult, validateSummaryResult, formatSpawnError } from "../../server/workspace/chat-index/summarizer.js";
+import {
+  extractText,
+  truncateMiddle,
+  parseClaudeJsonResult,
+  validateSummaryResult,
+  formatSpawnError,
+  MAX_INPUT_CHARS,
+  HEAD_CHARS,
+  TAIL_CHARS,
+  PER_MESSAGE_MAX,
+  buildSummarizeCliArgs,
+} from "../../server/workspace/chat-index/summarizer.js";
 
 describe("extractText", () => {
   it("keeps user and assistant text turns", () => {
@@ -42,16 +53,15 @@ describe("extractText", () => {
     assert.equal(extractText(jsonl), "");
   });
 
-  it("truncates per-message at 500 chars with ellipsis", () => {
-    const long = "a".repeat(1000);
+  it("truncates an over-long message with an ellipsis", () => {
+    const long = "a".repeat(PER_MESSAGE_MAX + 1000);
     const jsonl = JSON.stringify({
       source: "user",
       type: "text",
       message: long,
     });
     const out = extractText(jsonl);
-    // Per-message limit is 500 chars + "…", still inside the
-    // overall envelope. Verify we actually clipped.
+    // Clipped to PER_MESSAGE_MAX chars + "…", so shorter than input.
     assert.ok(out.length < long.length);
     assert.ok(out.endsWith("…"));
   });
@@ -72,12 +82,12 @@ describe("truncateMiddle", () => {
     assert.equal(truncateMiddle(str), str);
   });
 
-  it("keeps head + tail for long input", () => {
-    // Anything > 8000 chars. Use distinct head/tail markers so the
-    // assertion can be specific.
-    const head = "HEAD_MARKER".padEnd(3000, "h");
-    const middle = "m".repeat(5000);
-    const tail = "TAIL_MARKER".padStart(5000, "t");
+  it("keeps head + tail and drops the middle for over-long input", () => {
+    // Distinct head/tail markers + a middle filler larger than the
+    // whole window, so the assertion can prove the middle is dropped.
+    const head = "HEAD_MARKER".padEnd(HEAD_CHARS, "h");
+    const middle = "m".repeat(MAX_INPUT_CHARS);
+    const tail = "TAIL_MARKER".padStart(TAIL_CHARS, "t");
     const out = truncateMiddle(head + middle + tail);
     assert.ok(out.length < (head + middle + tail).length);
     assert.match(out, /HEAD_MARKER/);
@@ -222,5 +232,25 @@ describe("formatSpawnError", () => {
     const msg = formatSpawnError(1, "", long);
     // 500 chars cap, plus the prefix "...exited 1: "
     assert.ok(msg.length < 600);
+  });
+});
+
+describe("buildSummarizeCliArgs", () => {
+  it("puts the model after --model and the transcript last after -p", () => {
+    const args = buildSummarizeCliArgs("the transcript", "sonnet");
+    assert.equal(args[args.indexOf("--model") + 1], "sonnet");
+    assert.equal(args[args.length - 2], "-p");
+    assert.equal(args[args.length - 1], "the transcript");
+  });
+
+  it("requests strict json output against the summary schema and runs non-interactively", () => {
+    const args = buildSummarizeCliArgs("x", "haiku");
+    assert.ok(args.includes("--print"));
+    assert.ok(args.includes("--no-session-persistence"));
+    assert.equal(args[args.indexOf("--output-format") + 1], "json");
+    assert.ok(args.includes("--json-schema"));
+    // the schema arg is valid JSON carrying the title/summary/keywords shape
+    const schema = JSON.parse(args[args.indexOf("--json-schema") + 1]);
+    assert.deepEqual(Object.keys(schema.properties).sort(), ["keywords", "summary", "title"]);
   });
 });

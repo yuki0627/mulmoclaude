@@ -214,31 +214,34 @@ test.describe("collection calendar view", () => {
     await expect(page).toHaveURL(/[?&]selected=launch\b/);
   });
 
-  test("a ?selected= deep link opens the calendar day view focused on the record", async ({ page }) => {
-    // A pasted link forces the calendar view and opens the day popup on the
-    // record's day with its detail already showing.
+  test("a ?selected= deep link opens the record modal without forcing the calendar view", async ({ page }) => {
+    // #1675: previously the deep link forced the collection to `calendar` and
+    // opened the day popup, which also permanently overwrote the user's saved
+    // view mode via the localStorage watcher. It now respects whatever view
+    // the user is in (default: table) and just opens the record modal.
     await page.goto("/collections/agenda?selected=block");
-    await expect(page.getByTestId("collection-calendar")).toBeVisible();
-    await expect(page.getByTestId("collection-day-view")).toBeVisible();
-    await expect(page.getByTestId("collection-day-view-detail")).toBeVisible();
+    await expect(page.getByTestId("collections-detail")).toBeVisible();
     await expect(page.getByTestId("collections-detail-title")).toHaveText("block");
+    // Neither the calendar grid nor the day popup should have been forced open.
+    await expect(page.getByTestId("collection-calendar")).toHaveCount(0);
+    await expect(page.getByTestId("collection-day-view")).toHaveCount(0);
   });
 
-  test("navigating back to the collection without ?selected= tears down the day popup", async ({ page }) => {
+  test("navigating back to the collection without ?selected= closes the record modal", async ({ page }) => {
     await page.goto("/collections/agenda?selected=block");
-    await expect(page.getByTestId("collection-day-view")).toBeVisible();
-    // Reopening the collection without a selection must not leave a stale popup.
+    await expect(page.getByTestId("collections-detail")).toBeVisible();
+    // Reopening the collection without a selection must not leave a stale modal.
     await page.goto("/collections/agenda");
-    await expect(page.getByTestId("collection-calendar")).toBeVisible();
+    await expect(page.getByTestId("collections-detail")).toHaveCount(0);
     await expect(page.getByTestId("collection-day-view")).toHaveCount(0);
   });
 
-  test("closing the day popup detail via its X clears the selection and popup", async ({ page }) => {
+  test("closing the record modal via its X clears the selection", async ({ page }) => {
     await page.goto("/collections/agenda?selected=block");
-    await expect(page.getByTestId("collection-day-view-detail")).toBeVisible();
-    // The detail pane's close button tears down the whole popup and the URL.
+    await expect(page.getByTestId("collections-detail")).toBeVisible();
+    // The modal's close button tears it down and drops ?selected= from the URL.
     await page.getByTestId("collections-detail-close").click();
-    await expect(page.getByTestId("collection-day-view")).toHaveCount(0);
+    await expect(page.getByTestId("collections-detail")).toHaveCount(0);
     await expect(page).not.toHaveURL(/selected=/);
   });
 
@@ -417,17 +420,6 @@ test.describe("collection calendar view", () => {
     await expect(page.getByTestId("collection-view-toggle-calendar")).toHaveCount(0);
   });
 
-  // The standalone route persists the last-used view mode per collection in
-  // localStorage, so reopening restores the prior view instead of the table.
-  test("restores the last-used view mode after a reload", async ({ page }) => {
-    await page.goto("/collections/events");
-    await page.getByTestId("collection-view-toggle-calendar").click();
-    await expect(page.getByTestId("collection-calendar")).toBeVisible();
-
-    await page.reload();
-
-    // Reopens on the calendar, not the default table.
-    await expect(page.getByTestId("collection-calendar")).toBeVisible();
-    await expect(page.getByTestId("collection-calendar-chip-launch")).toBeVisible();
-  });
+  // The view-mode reload-survives test lives in collection-state-persist.spec.ts
+  // alongside the rest of the shared localStorage state coverage.
 });
